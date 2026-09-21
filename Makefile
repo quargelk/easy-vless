@@ -132,6 +132,9 @@ define Package/easy-vless/postinst
 exit 0
 endef
 
+define Build/Compile
+endef
+
 define Package/easy-vless/prerm
 #!/bin/sh
 # Unconditional stop before removal so `opkg remove` on a running service
