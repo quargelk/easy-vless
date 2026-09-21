@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p sdk/package/easy-vless
-          rsync -a --exclude='.git' --exclude='.github' ./ sdk/package/easy-vless/
+          rsync -a --exclude='.git' --exclude='.github' --exclude='sdk' ./ sdk/package/easy-vless/
           test -f sdk/package/easy-vless/Makefile
 
       - name: Build easy-vless .ipk
