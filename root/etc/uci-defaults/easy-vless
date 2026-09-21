@@ -1,0 +1,36 @@
+#!/bin/sh
+
+if [ -e "/etc/config/ucitrack" ]; then
+	uci -q batch <<-EOF
+		delete ucitrack.@easy_vless[-1]
+		add ucitrack easy_vless
+		set ucitrack.@easy_vless[-1].init=easy_vless
+		commit ucitrack
+EOF
+fi
+
+uci -q batch <<-EOF
+	delete firewall.easy_vless
+	set firewall.easy_vless=include
+	set firewall.easy_vless.type='script'
+	set firewall.easy_vless.path='/var/etc/easy_vless.include'
+
+	set dhcp.@dnsmasq[0].localuse=1
+	commit dhcp
+
+	set uhttpd.main.max_requests=50
+	commit uhttpd
+EOF
+
+uci -q set firewall.easy_vless.reload='1'
+uci commit firewall
+
+[ ! -s "/etc/config/easy_vless" ] && cp -f /usr/share/easy_vless/0_default_config /etc/config/easy_vless
+
+chmod +x /usr/share/easy_vless/*.sh
+
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
+rm -rf /tmp/luci-modulecache/
+killall -HUP rpcd 2>/dev/null
+
+exit 0
