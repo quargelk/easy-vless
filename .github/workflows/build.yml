@@ -1,0 +1,156 @@
+name: Build easy-vless package
+
+# Reproducible package build for the `easy-vless` runtime (Stage 1).
+# Builds against the OFFICIAL OpenWrt 24.10.3 SDK for mediatek/filogic
+# (aarch64_cortex-a53). Does not clone the full OpenWrt source tree and
+# does not use any third-party/self-built toolchain - see decisions.md
+# item 48 for why this had to move to GitHub Actions (the previous dev
+# sandbox has no route to downloads.openwrt.org).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Makefile'
+      - 'files/**'
+      - 'root/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    paths:
+      - 'Makefile'
+      - 'files/**'
+      - 'root/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch: {}
+
+env:
+  OPENWRT_VERSION: "24.10.3"
+  OPENWRT_TARGET: mediatek
+  OPENWRT_SUBTARGET: filogic
+  # Expected OpenWrt package architecture for this target/subtarget, used to
+  # confirm the .ipk lands in the right SDK output tree. The package's own
+  # control-file "Architecture:" field is "all" (see the verification step
+  # below for why - PKGARCH:=all is correct here, not a bug).
+  EXPECTED_PKGARCH: aarch64_cortex-a53
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential file wget rsync unzip python3 quilt \
+            libncurses-dev zlib1g-dev
+
+      - name: Resolve and download official OpenWrt SDK
+        run: |
+          set -euxo pipefail
+          BASE_URL="https://downloads.openwrt.org/releases/${OPENWRT_VERSION}/targets/${OPENWRT_TARGET}/${OPENWRT_SUBTARGET}"
+          curl -fsSL -o sha256sums "${BASE_URL}/sha256sums"
+
+          SDK_LINE="$(grep -E '[[:space:]]\*?openwrt-sdk-.*\.tar\.(xz|zst)$' sha256sums | head -n1 || true)"
+          if [ -z "$SDK_LINE" ]; then
+            echo "::error::Could not find an openwrt-sdk-*.tar.{xz,zst} entry in ${BASE_URL}/sha256sums"
+            exit 1
+          fi
+          SDK_FILE="$(echo "$SDK_LINE" | awk '{print $2}' | sed 's/^\*//')"
+          echo "Resolved SDK file: ${SDK_FILE}"
+          echo "SDK_FILE=${SDK_FILE}" >> "$GITHUB_ENV"
+
+          curl -fsSL -o "${SDK_FILE}" "${BASE_URL}/${SDK_FILE}"
+
+          echo "Verifying sha256..."
+          grep -F "${SDK_FILE}" sha256sums | sha256sum -c -
+
+      - name: Extract SDK
+        run: |
+          set -euxo pipefail
+          mkdir -p sdk
+          tar -xf "${SDK_FILE}" -C sdk --strip-components=1
+
+      - name: Place easy-vless source into the SDK package tree
+        run: |
+          set -euxo pipefail
+          mkdir -p sdk/package/easy-vless
+          rsync -a --exclude='.git' --exclude='.github' ./ sdk/package/easy-vless/
+          test -f sdk/package/easy-vless/Makefile
+
+      - name: Build easy-vless .ipk
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+          make defconfig
+          make package/easy-vless/{clean,compile} V=s -j"$(nproc)"
+
+      - name: Locate and verify the built .ipk
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+
+          IPK="$(find bin/packages -type f -name 'easy-vless_*.ipk' | head -n1)"
+          if [ -z "${IPK}" ]; then
+            echo "::error::No easy-vless_*.ipk found under sdk/bin/packages after build"
+            find bin/packages -maxdepth 3 -type d 2>/dev/null || true
+            exit 1
+          fi
+          echo "Found ipk: ${IPK}"
+
+          case "${IPK}" in
+            *"${EXPECTED_PKGARCH}"*) : ;;
+            *)
+              echo "::error::.ipk was not produced under the expected ${EXPECTED_PKGARCH} SDK output tree: ${IPK}"
+              exit 1
+              ;;
+          esac
+
+          echo "IPK_PATH=sdk/${IPK}" >> "$GITHUB_ENV"
+
+          mkdir -p /tmp/ipk-verify
+          cp "${IPK}" /tmp/ipk-verify/pkg.ipk
+          cd /tmp/ipk-verify
+          ar x pkg.ipk
+          test -f control.tar.gz
+          test -f data.tar.gz
+          tar -xzf control.tar.gz
+          test -f control
+
+          echo "----- control file -----"
+          cat control
+          echo "-------------------------"
+
+          # 1. Package name matches Easy VLESS.
+          grep -qE '^Package:[[:space:]]*easy-vless[[:space:]]*$' control \
+            || { echo "::error::control file Package: field is not 'easy-vless'"; exit 1; }
+
+          # 2. Architecture. The Makefile sets PKGARCH:=all because this package
+          #    ships only shell/Lua sources and configs - no compiled binaries -
+          #    so "all" is the correct value here, not aarch64_cortex-a53 itself.
+          #    aarch64_cortex-a53 correspondence was already checked above via
+          #    the SDK output path the .ipk was built into.
+          grep -qE '^Architecture:[[:space:]]*all[[:space:]]*$' control \
+            || { echo "::error::control file Architecture: field is not 'all' (unexpected for a PKGARCH:=all package)"; exit 1; }
+
+          # 3. Package metadata contains the expected dependencies from the
+          #    Makefile's DEPENDS list (spot-check, not an exhaustive diff).
+          for dep in sing-box nftables lua luci-compat v2ray-geoip v2ray-geosite \
+                     geoview openssl-util lyaml kmod-nft-tproxy kmod-nft-socket; do
+            grep -q "${dep}" control \
+              || { echo "::error::expected dependency '${dep}' missing from control file Depends:"; exit 1; }
+          done
+
+          echo "All .ipk checks passed."
+
+      - name: Upload easy-vless .ipk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-ipk
+          path: ${{ env.IPK_PATH }}
+          if-no-files-found: error
+          retention-days: 14
