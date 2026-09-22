@@ -3,8 +3,8 @@ name: Build easy-vless packages
 # Reproducible package build for the Easy VLESS runtime, split into three
 # OpenWrt packages (backend-dependency split, decisions.md #49-52):
 #   - easy-vless             (core runtime, no VLESS engine)
-#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless sing-box)
-#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless xray-core)
+#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless +sing-box)
+#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless +xray-core)
 # All three are defined as sub-packages of the same Makefile/source tree
 # (package/easy-vless in the SDK), so a single `make package/easy-vless/compile`
 # builds all three .ipk in one pass.
@@ -121,13 +121,38 @@ jobs:
 
           ./scripts/feeds update -a
 
-          # Install everything from the official feeds (normal SDK usage -
-          # this is what actually resolves sing-box, xray-core, v2ray-geoip,
-          # v2ray-geosite, lyaml, kmod-nft-*, etc. for our DEPENDS).
-          ./scripts/feeds install -a -p packages
-          ./scripts/feeds install -a -p luci
-          ./scripts/feeds install -a -p routing
-          ./scripts/feeds install -a -p telephony
+          # Install only the specific packages easy-vless actually DEPENDS
+          # on from each official feed, instead of every package in it.
+          # `feeds install -a` symlinks (and therefore Kconfig-scans at
+          # `make defconfig` time) every package the feed defines, which
+          # pulled in unrelated, unwanted default-enabled packages (e.g.
+          # kmod-tcp-bbr, kmod-tcp-hybla) that easy-vless does not depend
+          # on at all. `nftables`, `kmod-nft-tproxy`, `kmod-nft-socket`,
+          # `kmod-nft-nat`, `lua`, `libuci-lua`, `ip-full`, `resolveip` and
+          # `openssl-util` are base-tree OpenWrt packages (package/network,
+          # package/system, package/utils, package/libs) - they ship with
+          # the SDK itself and need no feeds install at all. Nothing in
+          # easy-vless's DEPENDS comes from the routing/telephony feeds,
+          # so those feeds are not installed from at all anymore.
+          #
+          # "packages" feed: coreutils (its Makefile also defines
+          # coreutils-base64/-nohup/-timeout, installed as part of the
+          # same source dir), curl, v2ray-geoip (its Makefile also defines
+          # v2ray-geosite), lyaml, sing-box, xray-core.
+          ./scripts/feeds install -p packages \
+            coreutils \
+            curl \
+            v2ray-geoip \
+            v2ray-geosite \
+            lyaml \
+            sing-box \
+            xray-core
+
+          # "luci" feed: only the two LuCI support libraries easy-vless
+          # DEPENDS on.
+          ./scripts/feeds install -p luci \
+            luci-compat \
+            luci-lib-jsonc
 
           # From the third-party feed, install ONLY geoview - not `-a`, so we
           # never pull in that feed's own copies of sing-box/xray-core or any
