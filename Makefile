@@ -14,6 +14,20 @@ PKG_MAINTAINER:=
 
 include $(INCLUDE_DIR)/package.mk
 
+# This package ships only shell/Lua sources, static config templates and
+# service/hotplug scripts - there is no PKG_SOURCE and no real build step.
+# package.mk's default Build/Compile (Build/Compile/Default) unconditionally
+# runs "$(MAKE) -C $(PKG_BUILD_DIR) ..." and fails with "No targets specified
+# and no makefile found" for a source-less package like this one. Every real
+# upstream LuCI app package avoids this the same way: feeds/luci/luci.mk
+# defines an empty Build/Compile (conditionally there, unconditionally here
+# since we never have a src/ subdirectory). Verified directly against a real,
+# non-DUMP OpenWrt 24.10.3 package.mk/package-pack.mk build: without this
+# override, `make -C package/easy-vless compile` fails at our own package's
+# compile step; with it, all three .ipk are produced correctly.
+define Build/Compile
+endef
+
 define Package/easy-vless
   SECTION:=net
   CATEGORY:=Network
@@ -196,7 +210,12 @@ endef
 
 define Package/easy-vless/postinst
 #!/bin/sh
-# $(1) below is opkg's own substitution (not a Make variable) - keep verbatim.
+# $$(1) below is opkg's own postinst-script substitution (not a Make
+# variable) - escaped as $$(1) so Make's own macro expansion doesn't
+# silently strip the literal text "$(1)" when this comment is emitted
+# (confirmed via a real, non-DUMP build: without the extra "$", the "$(1)"
+# text vanishes from the built postinst-pkg script; harmless here since it
+# is inside a shell comment, but kept correct for clarity).
 [ -n "$${IPKG_INSTROOT}" ] || {
 	( . /etc/uci-defaults/easy-vless ) && rm -f /etc/uci-defaults/easy-vless
 	# Register but do not auto-start: decisions.md requires PassWall2 to be

@@ -3,11 +3,33 @@ name: Build easy-vless packages
 # Reproducible package build for the Easy VLESS runtime, split into three
 # OpenWrt packages (backend-dependency split, decisions.md #49-52):
 #   - easy-vless             (core runtime, no VLESS engine)
-#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless +sing-box)
-#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless +xray-core)
+#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless sing-box)
+#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless xray-core)
+# ("sing-box"/"xray-core" are intentionally not "+"-prefixed - see the
+# Makefile comments on those two DEPENDS lines for the Kconfig-cycle reason.)
 # All three are defined as sub-packages of the same Makefile/source tree
-# (package/easy-vless in the SDK), so a single `make package/easy-vless/compile`
-# builds all three .ipk in one pass.
+# (package/easy-vless in the SDK).
+#
+# Build mechanism (audited/changed - see "Build" step below for the full
+# rationale): the build step invokes `make -C package/easy-vless ... compile`
+# directly, NOT the usual top-level `make package/easy-vless/compile`. The
+# top-level form goes through package/Makefile's directory-tree walk, which
+# includes an auto-generated tmp/.packagedeps file that adds every one of our
+# DEPENDS entries (sing-box, xray-core, curl, nftables, kmod-nft-*, ...) as an
+# UNCONDITIONAL compile-time prerequisite of our own package's compile target
+# - by OpenWrt design, DEPENDS drives build-ordering as well as opkg runtime
+# dependencies. That is what made earlier CI runs spend 20-30+ minutes
+# building kmod-tcp-bbr/kmod-tcp-hybla/curl/sing-box/xray-core/etc., none of
+# which we need to actually compile (all three of our packages are
+# PKGARCH:=all shell/Lua/config, no compiled binaries of our own).
+# `tmp/.packagedeps` is only ever `include`d by that top-level directory-tree
+# walk, never by a package Makefile invoked standalone via `make -C
+# package/<name>` - so invoking our own Makefile that way still runs the
+# genuine, unmodified OpenWrt `package.mk`/`package-pack.mk`/`ipkg-build`
+# packaging machinery (real, opkg-installable .ipk - not a renamed tarball)
+# while never touching sing-box/xray-core/kmod-*/curl's own build steps.
+# Verified directly against a real (non-DUMP) OpenWrt 24.10.3 package.mk/
+# package-pack.mk, offline, using the actual scripts/ipkg-build.
 #
 # Package feeds used (verified directly against the pinned feed commits for
 # OpenWrt 24.10.3, not assumed):
@@ -201,28 +223,59 @@ jobs:
           rsync -a --exclude='.git' --exclude='.github' --exclude='sdk' ./ sdk/package/easy-vless/
           test -f sdk/package/easy-vless/Makefile
 
+      - name: Select the three easy-vless packages in .config
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+          # The downloaded SDK's own .config only configures the
+          # target/subtarget (mediatek/filogic/aarch64_cortex-a53) - no
+          # package is selected by default, including ours (it didn't exist
+          # in any feed until the previous step copied it in). Without this,
+          # `make defconfig` leaves CONFIG_PACKAGE_easy-vless unset, and
+          # package-pack.mk's own selection gate
+          # (`ifneq ($(CONFIG_PACKAGE_$(1))$(DEVELOPER),)`) then silently
+          # skips building every one of our three .ipk - the compile step
+          # would exit 0 having produced nothing. Appending is safe: these
+          # are new symbols not already present in the shipped .config.
+          cat >> .config <<'EOF'
+          CONFIG_PACKAGE_easy-vless=y
+          CONFIG_PACKAGE_easy-vless-sing-box=y
+          CONFIG_PACKAGE_easy-vless-xray=y
+          EOF
+
       - name: Build easy-vless, easy-vless-sing-box, easy-vless-xray .ipk
         working-directory: sdk
         run: |
           set -euxo pipefail
+          # make defconfig: (re)generates tmp/.packagedeps and fills in the
+          # rest of .config from the Kconfig defaults. This step alone never
+          # compiles anything (see the pipeline comment at the top of this
+          # file) - it's a fast Kconfig scan, not the CI bottleneck.
           make defconfig
-          # This compiles the package/easy-vless directory once and produces
-          # all three Package/... .ipk defined in its Makefile (core +
-          # sing-box + xray sub-packages) - see the Makefile's three
-          # `$(eval $(call BuildPackage,...))` calls. sing-box/xray-core
-          # themselves are ordinary DEPENDS, resolved from the feeds set up
-          # in the previous step - nothing is downloaded separately here.
-          make package/easy-vless/{clean,compile} V=s -j"$(nproc)"
+
+          # Standalone, non-top-level invocation of our own package's
+          # Makefile - see the pipeline comment at the top of this file for
+          # why this (not `make package/easy-vless/{clean,compile}`) is the
+          # correct mechanism here. TOPDIR must be passed explicitly (it is
+          # normally supplied by the top-level Makefile when it recurses into
+          # a package directory); rules.mk derives everything else (ARCH,
+          # STAGING_DIR, the cross toolchain PATH, etc.) from TOPDIR + the
+          # .config produced above. This still runs the real, unmodified
+          # package.mk/package-pack.mk/ipkg-build machinery for our own three
+          # packages - it does not build sing-box, xray-core, geoview,
+          # v2ray-geoip, v2ray-geosite, kmod-*, or any other DEPENDS; those
+          # exist here only as package metadata (opkg Depends: entries).
+          make -C package/easy-vless TOPDIR="$(pwd)" clean compile V=s -j"$(nproc)"
 
       - name: Locate and verify the easy-vless (core) .ipk
         working-directory: sdk
         run: |
           set -euxo pipefail
 
-          IPK="$(find bin/packages -type f -name 'easy-vless_*.ipk' | head -n1)"
+          IPK="$(find bin -type f -name 'easy-vless_*.ipk' | head -n1)"
           if [ -z "${IPK}" ]; then
-            echo "::error::No easy-vless_*.ipk found under sdk/bin/packages after build"
-            find bin/packages -maxdepth 3 -type d 2>/dev/null || true
+            echo "::error::No easy-vless_*.ipk found under sdk/bin after build"
+            find bin -maxdepth 4 -type d 2>/dev/null || true
             exit 1
           fi
           echo "Found ipk: ${IPK}"
@@ -308,10 +361,10 @@ jobs:
         run: |
           set -euxo pipefail
 
-          IPK="$(find bin/packages -type f -name 'easy-vless-sing-box_*.ipk' | head -n1)"
+          IPK="$(find bin -type f -name 'easy-vless-sing-box_*.ipk' | head -n1)"
           if [ -z "${IPK}" ]; then
-            echo "::error::No easy-vless-sing-box_*.ipk found under sdk/bin/packages after build"
-            find bin/packages -maxdepth 3 -type d 2>/dev/null || true
+            echo "::error::No easy-vless-sing-box_*.ipk found under sdk/bin after build"
+            find bin -maxdepth 4 -type d 2>/dev/null || true
             exit 1
           fi
           echo "Found ipk: ${IPK}"
@@ -369,10 +422,10 @@ jobs:
         run: |
           set -euxo pipefail
 
-          IPK="$(find bin/packages -type f -name 'easy-vless-xray_*.ipk' | head -n1)"
+          IPK="$(find bin -type f -name 'easy-vless-xray_*.ipk' | head -n1)"
           if [ -z "${IPK}" ]; then
-            echo "::error::No easy-vless-xray_*.ipk found under sdk/bin/packages after build"
-            find bin/packages -maxdepth 3 -type d 2>/dev/null || true
+            echo "::error::No easy-vless-xray_*.ipk found under sdk/bin after build"
+            find bin -maxdepth 4 -type d 2>/dev/null || true
             exit 1
           fi
           echo "Found ipk: ${IPK}"
