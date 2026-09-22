@@ -3,8 +3,8 @@ name: Build easy-vless packages
 # Reproducible package build for the Easy VLESS runtime, split into three
 # OpenWrt packages (backend-dependency split, decisions.md #49-52):
 #   - easy-vless             (core runtime, no VLESS engine)
-#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless +sing-box)
-#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless +xray-core)
+#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless sing-box)
+#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless xray-core)
 # All three are defined as sub-packages of the same Makefile/source tree
 # (package/easy-vless in the SDK), so a single `make package/easy-vless/compile`
 # builds all three .ipk in one pass.
@@ -143,6 +143,31 @@ jobs:
             exit 1
           fi
           echo "Confirmed: geoview is sourced only from the passwall_packages feed."
+
+          # The passwall_packages feed also ships its own copies of
+          # sing-box, sing-box-tiny, xray-core and xray-plugin (confirmed
+          # by inspecting the feed at the pinned commit). `feeds install
+          # -p passwall_packages geoview` above requests ONLY geoview, but
+          # feeds install recursively resolves a requested package's own
+          # Build-Depends/Depends within the same feed, so this is a real
+          # (if currently narrow) risk, not a theoretical one. If any of
+          # these ever get symlinked from this feed too, the aggregate
+          # package scan ends up with two Source-Makefiles both declaring
+          # the same package name (e.g. "xray-core"), which produces a
+          # structurally invalid, duplicated Kconfig symbol (reproduced
+          # directly: a duplicated "config PACKAGE_xray-core" stanza) -
+          # this is what caused CI run #1's "recursive dependency" /
+          # "missing TITLE field" failures. sing-box/xray-core/xray-plugin
+          # must come from the OFFICIAL feed only (already installed
+          # above) - fail loudly instead of silently building against
+          # whichever copy happened to win.
+          for pkg in sing-box sing-box-tiny xray-core xray-plugin xray-example; do
+            if [ -e "package/feeds/passwall_packages/$pkg" ]; then
+              echo "::error::package/feeds/passwall_packages/$pkg exists - only geoview must ever be installed from the passwall_packages feed; sing-box/xray-core must come from the official feed"
+              exit 1
+            fi
+          done
+          echo "Confirmed: no sing-box/xray-core/xray-plugin leaked in from the passwall_packages feed."
 
       - name: Place easy-vless source into the SDK package tree
         run: |

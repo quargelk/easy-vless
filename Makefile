@@ -90,7 +90,25 @@ define Package/easy-vless-sing-box
   TITLE:=Easy VLESS - sing-box backend
   URL:=
   PKGARCH:=all
-  DEPENDS:=+easy-vless +sing-box
+  # NOTE: "sing-box" is intentionally NOT "+"-prefixed. The official
+  # net/sing-box/Makefile ships a second variant, sing-box-tiny, which
+  # declares PROVIDES:=sing-box (a "virtual package" with two providers:
+  # sing-box itself and sing-box-tiny). A "+sing-box" DEPENDS makes
+  # OpenWrt's Kconfig generator (scripts/package-metadata.pl:mconf_depends)
+  # resolve "sing-box" through that virtual-package table and emit a
+  # conditional "select PACKAGE_sing-box if PACKAGE_sing-box-tiny<...",
+  # which combined with sing-box-tiny's own CONFLICTS-derived
+  # "depends on ... (PACKAGE_sing-box != y)" forms a genuine Kconfig cycle:
+  # PACKAGE_sing-box-tiny -> PACKAGE_sing-box -> PACKAGE_sing-box-tiny.
+  # Reproduced directly against the real package-metadata.pl script.
+  # A plain (non-"+") DEPENDS instead generates a simple, non-circular
+  # "depends on PACKAGE_sing-box||PACKAGE_sing-box-tiny" - verified to
+  # eliminate the cycle. The "+" flag only affects Kconfig/image-build
+  # package *selection*; it has zero effect on the real .ipk's Depends:
+  # control-file field (include/package-pack.mk strips every "+" before
+  # writing Depends:), so `opkg install easy-vless-sing-box` on a router
+  # still pulls in "sing-box" exactly as before - no behavior change.
+  DEPENDS:=+easy-vless sing-box
 endef
 
 define Package/easy-vless-sing-box/description
@@ -107,11 +125,16 @@ define Package/easy-vless-xray
   PKGARCH:=all
   # The real opkg package name in the official openwrt/packages feed is
   # "xray-core", not "xray" (net/xray-core/Makefile:
-  # $(eval $(call BuildPackage,xray-core))). The binary it installs is named
+  # $$(eval $$(call BuildPackage,xray-core))). The binary it installs is named
   # /usr/bin/xray (matching app.sh's `first_type ... xray` binary lookup),
   # but the DEPENDS token must be the real package name - verified directly
   # against the pinned feed commit, not assumed.
-  DEPENDS:=+easy-vless +xray-core
+  # "xray-core" also uses no "+" prefix, for the same reason and for
+  # consistency with easy-vless-sing-box above, even though xray-core has
+  # no PROVIDES-based variant sibling in the official feed today (verified:
+  # no cycle reproduced for it specifically). Same zero-effect-on-real-
+  # Depends: guarantee applies (see comment above).
+  DEPENDS:=+easy-vless xray-core
 endef
 
 define Package/easy-vless-xray/description
