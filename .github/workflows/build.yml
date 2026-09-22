@@ -115,7 +115,12 @@ jobs:
           mkdir -p /tmp/ipk-verify
           cp "${IPK}" /tmp/ipk-verify/pkg.ipk
           cd /tmp/ipk-verify
-          ar x pkg.ipk
+          # OpenWrt's .ipk is a gzip-compressed GNU tar archive of
+          # debian-binary/data.tar.gz/control.tar.gz (see scripts/ipkg-build
+          # in the OpenWrt tree) - it is NOT an ar archive despite the
+          # superficial resemblance to Debian's .deb format, so `ar x` fails
+          # with "file format not recognized". Use tar, like opkg itself does.
+          tar -xzf pkg.ipk
           test -f control.tar.gz
           test -f data.tar.gz
           tar -xzf control.tar.gz
