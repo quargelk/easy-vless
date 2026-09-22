@@ -1,11 +1,33 @@
-name: Build easy-vless package
+name: Build easy-vless packages
 
-# Reproducible package build for the `easy-vless` runtime (Stage 1).
+# Reproducible package build for the Easy VLESS runtime, split into three
+# OpenWrt packages (backend-dependency split, decisions.md #49-52):
+#   - easy-vless             (core runtime, no VLESS engine)
+#   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless +sing-box)
+#   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless +xray-core)
+# All three are defined as sub-packages of the same Makefile/source tree
+# (package/easy-vless in the SDK), so a single `make package/easy-vless/compile`
+# builds all three .ipk in one pass.
+#
+# Package feeds used (verified directly against the pinned feed commits for
+# OpenWrt 24.10.3, not assumed):
+#   - sing-box, xray-core, v2ray-geoip, v2ray-geosite, lyaml, openssl-util,
+#     kmod-nft-* etc. all come from the OFFICIAL feeds already declared in
+#     the SDK's feeds.conf.default (packages/luci/routing/telephony) - no
+#     third-party feed needed for these.
+#   - geoview does NOT exist in any official feed (confirmed via
+#     `git grep -il geoview` against the pinned packages/luci feed commits -
+#     zero matches). It is only available from the third-party
+#     xiaorouji/openwrt-passwall-packages feed, pinned to a specific commit
+#     below. Only geoview is installed from that feed - sing-box/xray-core
+#     are deliberately taken from the official feed, not this one, to avoid
+#     pulling in unrelated/duplicate package definitions.
+#
 # Builds against the OFFICIAL OpenWrt 24.10.3 SDK for mediatek/filogic
 # (aarch64_cortex-a53). Does not clone the full OpenWrt source tree and
-# does not use any third-party/self-built toolchain - see decisions.md
-# item 48 for why this had to move to GitHub Actions (the previous dev
-# sandbox has no route to downloads.openwrt.org).
+# does not use any third-party/self-built toolchain for the SDK itself -
+# see decisions.md item 48 for why this had to move to GitHub Actions (the
+# previous dev sandbox has no route to downloads.openwrt.org).
 
 on:
   push:
@@ -28,10 +50,15 @@ env:
   OPENWRT_TARGET: mediatek
   OPENWRT_SUBTARGET: filogic
   # Expected OpenWrt package architecture for this target/subtarget, used to
-  # confirm the .ipk lands in the right SDK output tree. The package's own
-  # control-file "Architecture:" field is "all" (see the verification step
-  # below for why - PKGARCH:=all is correct here, not a bug).
+  # confirm each .ipk lands in the right SDK output tree. All three packages'
+  # own control-file "Architecture:" field is "all" (see the verification
+  # step below for why - PKGARCH:=all is correct here, not a bug).
   EXPECTED_PKGARCH: aarch64_cortex-a53
+  # Third-party feed providing geoview (not present in any official feed -
+  # verified, see header comment). Pinned to the exact commit read while
+  # confirming geoview/Makefile's contents, for reproducibility.
+  PASSWALL_PACKAGES_FEED_URL: https://github.com/xiaorouji/openwrt-passwall-packages.git
+  PASSWALL_PACKAGES_FEED_COMMIT: 8809eaf16367a7315620f1373aed3403bbc52eb0
 
 jobs:
   build:
@@ -75,6 +102,48 @@ jobs:
           mkdir -p sdk
           tar -xf "${SDK_FILE}" -C sdk --strip-components=1
 
+      - name: Set up package feeds (official + geoview-only third-party)
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+
+          echo "----- feeds.conf.default (official, shipped by the SDK) -----"
+          cat feeds.conf.default
+          echo "----------------------------------------------------------------"
+
+          # Add the third-party PassWall packages feed *in addition to* the
+          # official ones already listed above - pinned to a specific commit,
+          # not "latest", for reproducibility. We only ever install a single
+          # named package (geoview) from it below; sing-box/xray-core/etc.
+          # are resolved from the official feeds already listed in
+          # feeds.conf.default, not from this feed.
+          echo "src-git passwall_packages ${PASSWALL_PACKAGES_FEED_URL}^${PASSWALL_PACKAGES_FEED_COMMIT}" >> feeds.conf.default
+
+          ./scripts/feeds update -a
+
+          # Install everything from the official feeds (normal SDK usage -
+          # this is what actually resolves sing-box, xray-core, v2ray-geoip,
+          # v2ray-geosite, lyaml, kmod-nft-*, etc. for our DEPENDS).
+          ./scripts/feeds install -a -p packages
+          ./scripts/feeds install -a -p luci
+          ./scripts/feeds install -a -p routing
+          ./scripts/feeds install -a -p telephony
+
+          # From the third-party feed, install ONLY geoview - not `-a`, so we
+          # never pull in that feed's own copies of sing-box/xray-core or any
+          # other package we don't need.
+          ./scripts/feeds install -p passwall_packages geoview
+
+          # Confirm geoview really came from the third-party feed directory,
+          # not silently shadowed by some future official-feed addition.
+          test -L package/feeds/passwall_packages/geoview \
+            || { echo "::error::geoview was not installed from the passwall_packages feed as expected"; exit 1; }
+          if [ -e package/feeds/packages/net/geoview ] || [ -e package/feeds/luci/geoview ]; then
+            echo "::error::geoview unexpectedly also exists in an official feed - re-check which one is actually selected"
+            exit 1
+          fi
+          echo "Confirmed: geoview is sourced only from the passwall_packages feed."
+
       - name: Place easy-vless source into the SDK package tree
         run: |
           set -euxo pipefail
@@ -82,14 +151,20 @@ jobs:
           rsync -a --exclude='.git' --exclude='.github' --exclude='sdk' ./ sdk/package/easy-vless/
           test -f sdk/package/easy-vless/Makefile
 
-      - name: Build easy-vless .ipk
+      - name: Build easy-vless, easy-vless-sing-box, easy-vless-xray .ipk
         working-directory: sdk
         run: |
           set -euxo pipefail
           make defconfig
+          # This compiles the package/easy-vless directory once and produces
+          # all three Package/... .ipk defined in its Makefile (core +
+          # sing-box + xray sub-packages) - see the Makefile's three
+          # `$(eval $(call BuildPackage,...))` calls. sing-box/xray-core
+          # themselves are ordinary DEPENDS, resolved from the feeds set up
+          # in the previous step - nothing is downloaded separately here.
           make package/easy-vless/{clean,compile} V=s -j"$(nproc)"
 
-      - name: Locate and verify the built .ipk
+      - name: Locate and verify the easy-vless (core) .ipk
         working-directory: sdk
         run: |
           set -euxo pipefail
@@ -110,11 +185,12 @@ jobs:
               ;;
           esac
 
-          echo "IPK_PATH=sdk/${IPK}" >> "$GITHUB_ENV"
+          echo "IPK_PATH_CORE=sdk/${IPK}" >> "$GITHUB_ENV"
 
-          mkdir -p /tmp/ipk-verify
-          cp "${IPK}" /tmp/ipk-verify/pkg.ipk
-          cd /tmp/ipk-verify
+          rm -rf /tmp/ipk-verify-core
+          mkdir -p /tmp/ipk-verify-core
+          cp "${IPK}" /tmp/ipk-verify-core/pkg.ipk
+          cd /tmp/ipk-verify-core
           # OpenWrt's .ipk is a gzip-compressed GNU tar archive of
           # debian-binary/data.tar.gz/control.tar.gz (see scripts/ipkg-build
           # in the OpenWrt tree) - it is NOT an ar archive despite the
@@ -126,11 +202,12 @@ jobs:
           tar -xzf control.tar.gz
           test -f control
 
-          echo "----- control file -----"
+          echo "----- control file (easy-vless) -----"
           cat control
-          echo "-------------------------"
+          echo "--------------------------------------"
 
-          # 1. Package name matches Easy VLESS.
+          # 1. Package name matches the core package exactly (anchored, so it
+          #    cannot accidentally match easy-vless-sing-box/easy-vless-xray).
           grep -qE '^Package:[[:space:]]*easy-vless[[:space:]]*$' control \
             || { echo "::error::control file Package: field is not 'easy-vless'"; exit 1; }
 
@@ -142,20 +219,184 @@ jobs:
           grep -qE '^Architecture:[[:space:]]*all[[:space:]]*$' control \
             || { echo "::error::control file Architecture: field is not 'all' (unexpected for a PKGARCH:=all package)"; exit 1; }
 
-          # 3. Package metadata contains the expected dependencies from the
-          #    Makefile's DEPENDS list (spot-check, not an exhaustive diff).
-          for dep in sing-box nftables lua luci-compat v2ray-geoip v2ray-geosite \
+          # 3. Depends: check in isolation (not the whole control file), since
+          #    the Package: line for the sub-packages contains "easy-vless" /
+          #    "sing-box"/"xray"-like substrings too and would give false
+          #    positives if we grepped the whole file.
+          DEPENDS_LINE="$(grep '^Depends:' control || true)"
+          echo "Depends: ${DEPENDS_LINE}"
+
+          for dep in nftables lua luci-compat v2ray-geoip v2ray-geosite \
                      geoview openssl-util lyaml kmod-nft-tproxy kmod-nft-socket; do
-            grep -q "${dep}" control \
-              || { echo "::error::expected dependency '${dep}' missing from control file Depends:"; exit 1; }
+            echo "${DEPENDS_LINE}" | grep -q "${dep}" \
+              || { echo "::error::expected core dependency '${dep}' missing from control file Depends:"; exit 1; }
           done
 
-          echo "All .ipk checks passed."
+          # 3b. Backend split: the core package must NOT depend on either
+          #     engine - each engine's DEPENDS lives in its own sub-package.
+          for forbidden in sing-box xray-core; do
+            if echo "${DEPENDS_LINE}" | grep -qw "${forbidden}"; then
+              echo "::error::easy-vless (core) Depends: unexpectedly contains '${forbidden}' - engine DEPENDS must live only in easy-vless-sing-box/easy-vless-xray"
+              exit 1
+            fi
+          done
 
-      - name: Upload easy-vless .ipk artifact
+          # 4. Content: the core package must ship neither engine's util_*.lua.
+          tar -xzf data.tar.gz
+          for forbidden_file in usr/lib/lua/luci/easy_vless/util_sing-box.lua \
+                                usr/lib/lua/luci/easy_vless/util_xray.lua; do
+            if find . -path "*${forbidden_file}" | grep -q .; then
+              echo "::error::easy-vless (core) unexpectedly ships ${forbidden_file} - it must only be in the matching backend sub-package"
+              exit 1
+            fi
+          done
+
+          echo "All easy-vless (core) .ipk checks passed."
+
+      - name: Locate and verify the easy-vless-sing-box .ipk
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+
+          IPK="$(find bin/packages -type f -name 'easy-vless-sing-box_*.ipk' | head -n1)"
+          if [ -z "${IPK}" ]; then
+            echo "::error::No easy-vless-sing-box_*.ipk found under sdk/bin/packages after build"
+            find bin/packages -maxdepth 3 -type d 2>/dev/null || true
+            exit 1
+          fi
+          echo "Found ipk: ${IPK}"
+
+          case "${IPK}" in
+            *"${EXPECTED_PKGARCH}"*) : ;;
+            *)
+              echo "::error::.ipk was not produced under the expected ${EXPECTED_PKGARCH} SDK output tree: ${IPK}"
+              exit 1
+              ;;
+          esac
+
+          echo "IPK_PATH_SINGBOX=sdk/${IPK}" >> "$GITHUB_ENV"
+
+          rm -rf /tmp/ipk-verify-singbox
+          mkdir -p /tmp/ipk-verify-singbox
+          cp "${IPK}" /tmp/ipk-verify-singbox/pkg.ipk
+          cd /tmp/ipk-verify-singbox
+          tar -xzf pkg.ipk
+          test -f control.tar.gz
+          test -f data.tar.gz
+          tar -xzf control.tar.gz
+          test -f control
+
+          echo "----- control file (easy-vless-sing-box) -----"
+          cat control
+          echo "------------------------------------------------"
+
+          grep -qE '^Package:[[:space:]]*easy-vless-sing-box[[:space:]]*$' control \
+            || { echo "::error::control file Package: field is not 'easy-vless-sing-box'"; exit 1; }
+
+          grep -qE '^Architecture:[[:space:]]*all[[:space:]]*$' control \
+            || { echo "::error::control file Architecture: field is not 'all' (unexpected for a PKGARCH:=all package)"; exit 1; }
+
+          DEPENDS_LINE="$(grep '^Depends:' control || true)"
+          echo "Depends: ${DEPENDS_LINE}"
+
+          echo "${DEPENDS_LINE}" | grep -qw "easy-vless" \
+            || { echo "::error::easy-vless-sing-box Depends: does not contain 'easy-vless'"; exit 1; }
+          echo "${DEPENDS_LINE}" | grep -qw "sing-box" \
+            || { echo "::error::easy-vless-sing-box Depends: does not contain 'sing-box'"; exit 1; }
+
+          tar -xzf data.tar.gz
+          find . -path '*usr/lib/lua/luci/easy_vless/util_sing-box.lua' | grep -q . \
+            || { echo "::error::easy-vless-sing-box does not ship util_sing-box.lua"; exit 1; }
+          if find . -path '*usr/lib/lua/luci/easy_vless/util_xray.lua' | grep -q .; then
+            echo "::error::easy-vless-sing-box unexpectedly ships util_xray.lua - it must only be in easy-vless-xray"
+            exit 1
+          fi
+
+          echo "All easy-vless-sing-box .ipk checks passed."
+
+      - name: Locate and verify the easy-vless-xray .ipk
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+
+          IPK="$(find bin/packages -type f -name 'easy-vless-xray_*.ipk' | head -n1)"
+          if [ -z "${IPK}" ]; then
+            echo "::error::No easy-vless-xray_*.ipk found under sdk/bin/packages after build"
+            find bin/packages -maxdepth 3 -type d 2>/dev/null || true
+            exit 1
+          fi
+          echo "Found ipk: ${IPK}"
+
+          case "${IPK}" in
+            *"${EXPECTED_PKGARCH}"*) : ;;
+            *)
+              echo "::error::.ipk was not produced under the expected ${EXPECTED_PKGARCH} SDK output tree: ${IPK}"
+              exit 1
+              ;;
+          esac
+
+          echo "IPK_PATH_XRAY=sdk/${IPK}" >> "$GITHUB_ENV"
+
+          rm -rf /tmp/ipk-verify-xray
+          mkdir -p /tmp/ipk-verify-xray
+          cp "${IPK}" /tmp/ipk-verify-xray/pkg.ipk
+          cd /tmp/ipk-verify-xray
+          tar -xzf pkg.ipk
+          test -f control.tar.gz
+          test -f data.tar.gz
+          tar -xzf control.tar.gz
+          test -f control
+
+          echo "----- control file (easy-vless-xray) -----"
+          cat control
+          echo "--------------------------------------------"
+
+          grep -qE '^Package:[[:space:]]*easy-vless-xray[[:space:]]*$' control \
+            || { echo "::error::control file Package: field is not 'easy-vless-xray'"; exit 1; }
+
+          grep -qE '^Architecture:[[:space:]]*all[[:space:]]*$' control \
+            || { echo "::error::control file Architecture: field is not 'all' (unexpected for a PKGARCH:=all package)"; exit 1; }
+
+          DEPENDS_LINE="$(grep '^Depends:' control || true)"
+          echo "Depends: ${DEPENDS_LINE}"
+
+          echo "${DEPENDS_LINE}" | grep -qw "easy-vless" \
+            || { echo "::error::easy-vless-xray Depends: does not contain 'easy-vless'"; exit 1; }
+          # The real package name is "xray-core" (see decisions.md / Makefile
+          # comment) - not "xray". Check for the exact real name here.
+          echo "${DEPENDS_LINE}" | grep -qw "xray-core" \
+            || { echo "::error::easy-vless-xray Depends: does not contain 'xray-core'"; exit 1; }
+
+          tar -xzf data.tar.gz
+          find . -path '*usr/lib/lua/luci/easy_vless/util_xray.lua' | grep -q . \
+            || { echo "::error::easy-vless-xray does not ship util_xray.lua"; exit 1; }
+          if find . -path '*usr/lib/lua/luci/easy_vless/util_sing-box.lua' | grep -q .; then
+            echo "::error::easy-vless-xray unexpectedly ships util_sing-box.lua - it must only be in easy-vless-sing-box"
+            exit 1
+          fi
+
+          echo "All easy-vless-xray .ipk checks passed."
+
+      - name: Upload easy-vless (core) .ipk artifact
         uses: actions/upload-artifact@v4
         with:
           name: easy-vless-ipk
-          path: ${{ env.IPK_PATH }}
+          path: ${{ env.IPK_PATH_CORE }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload easy-vless-sing-box .ipk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-sing-box-ipk
+          path: ${{ env.IPK_PATH_SINGBOX }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload easy-vless-xray .ipk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-xray-ipk
+          path: ${{ env.IPK_PATH_XRAY }}
           if-no-files-found: error
           retention-days: 14

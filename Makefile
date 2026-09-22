@@ -17,7 +17,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/easy-vless
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Easy VLESS - lightweight VLESS transparent proxy runtime
+  TITLE:=Easy VLESS - lightweight VLESS transparent proxy runtime (core)
   URL:=
   PKGARCH:=all
   DEPENDS:= \
@@ -36,16 +36,24 @@ define Package/easy-vless
 	+kmod-nft-socket \
 	+kmod-nft-tproxy \
 	+kmod-nft-nat \
-	+sing-box \
 	+geoview \
 	+v2ray-geoip \
 	+v2ray-geosite \
 	+openssl-util \
 	+lyaml
+  # Backend engines (sing-box/xray) are NOT core DEPENDS - see the
+  # easy-vless-sing-box / easy-vless-xray sub-packages below. This split
+  # exists because sing-box alone (~40MB) does not fit the overlay on some
+  # supported devices (e.g. Cudy WR3000E, ~37MB free); a user who only needs
+  # one backend must be able to install core + exactly one engine package.
+  # See decisions.md for the full dependency-split rationale.
+  #
   # geoview/v2ray-geoip/v2ray-geosite added in Phase 2: decisions.md #3 keeps
   # GeoIP/GeoSite for RUSSIA->DIRECT, and utils.sh's get_geoip() /
   # nftables.sh's Shunt Rules code (gen_shunt_list(), add_firewall_rule())
-  # call the real "geoview" binary at runtime.
+  # call the real "geoview" binary at runtime. This is core (not backend-
+  # specific): Shunt Rules' geoip: nftset population works purely through
+  # nftables.sh/utils.sh regardless of which engine (if any) is installed.
   # openssl-util added in Phase 3: api.lua's fetch_cert_sha256() (Reality/TLS
   # cert pinning) shells out to `openssl s_client`/`openssl x509`. Verified
   # against the real openwrt/openwrt package/libs/openssl/Makefile: the CLI
@@ -62,10 +70,54 @@ endef
 
 define Package/easy-vless/description
   Easy VLESS is a reduced, VLESS-focused fork of the PassWall2 runtime:
-  sing-box/Xray backends, Node List, HTTP URL Test, AUTO group (sing-box
-  urltest only), Shunt Rules, DNS/FakeDNS/DNS Redirect and nftables/TPROXY
-  transparent proxying. This package provides the backend/runtime only;
-  the LuCI UI ships separately as luci-app-easy-vless.
+  Node List, HTTP URL Test, AUTO group (sing-box urltest only), Shunt Rules,
+  DNS/FakeDNS/DNS Redirect and nftables/TPROXY transparent proxying. This is
+  the backend-independent core (runtime shell/Lua layer, no VLESS engine);
+  install easy-vless-sing-box and/or easy-vless-xray for an actual backend.
+  The LuCI UI ships separately as luci-app-easy-vless.
+endef
+
+# --- Backend sub-packages ---
+# Each engine is its own installable unit so a device that cannot fit both
+# backends (e.g. sing-box's ~40MB on a ~37MB-free overlay) can install core +
+# exactly one engine. Both are optional; at least one must be installed for
+# any node to actually run (app.sh's acl_node() guard reports a clear error
+# per-node otherwise - see decisions.md).
+
+define Package/easy-vless-sing-box
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=Easy VLESS - sing-box backend
+  URL:=
+  PKGARCH:=all
+  DEPENDS:=+easy-vless +sing-box
+endef
+
+define Package/easy-vless-sing-box/description
+  sing-box backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS,
+  gRPC, HTTPUpgrade, plus the AUTO group (sing-box urltest). Required for
+  AUTO/URLTest nodes - Xray has no equivalent mechanism in this project.
+endef
+
+define Package/easy-vless-xray
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=Easy VLESS - Xray backend
+  URL:=
+  PKGARCH:=all
+  # The real opkg package name in the official openwrt/packages feed is
+  # "xray-core", not "xray" (net/xray-core/Makefile:
+  # $(eval $(call BuildPackage,xray-core))). The binary it installs is named
+  # /usr/bin/xray (matching app.sh's `first_type ... xray` binary lookup),
+  # but the DEPENDS token must be the real package name - verified directly
+  # against the pinned feed commit, not assumed.
+  DEPENDS:=+easy-vless +xray-core
+endef
+
+define Package/easy-vless-xray/description
+  Xray backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS, gRPC,
+  HTTPUpgrade, XHTTP and mKCP. Required for XHTTP/mKCP transport nodes -
+  sing-box does not support them in this project.
 endef
 
 define Package/easy-vless/conffiles
@@ -73,15 +125,20 @@ define Package/easy-vless/conffiles
 endef
 
 # --- Phase 2: runtime shell layer + init/hotplug. ---
-# --- Phase 3 (this commit): Lua layer under /usr/lib/lua/luci/easy_vless/
-# (api.lua, com.lua, util_sing-box.lua, util_xray.lua) and the remaining
-# shell-adjacent Lua/shell helpers under /usr/share/easy_vless/ (i18n.lua,
-# app_acl.lua, helper_dnsmasq.lua, subscribe.lua, test.sh), all of which
-# app.sh/nftables.sh already reference by path.
+# --- Phase 3: Lua layer under /usr/lib/lua/luci/easy_vless/ (api.lua,
+# com.lua) and the remaining shell-adjacent Lua/shell helpers under
+# /usr/share/easy_vless/ (i18n.lua, app_acl.lua, helper_dnsmasq.lua,
+# subscribe.lua, test.sh), all of which app.sh/nftables.sh already
+# reference by path.
 # NOTE: rule_update.lua (GeoIP/GeoSite dataset updater, referenced by
 # app.sh's cron-registration code) is NOT YET PORTED - see Phase 3 report /
 # decisions.md for the open question about whether it's still needed given
 # the v2ray-geoip/v2ray-geosite DEPENDS added in Phase 2.
+# --- Backend split (this commit): util_sing-box.lua and util_xray.lua moved
+# out of this package into easy-vless-sing-box / easy-vless-xray below -
+# see decisions.md for the dependency-split rationale (sing-box overlay
+# footprint vs. limited-flash devices). app.sh's acl_node() detects at
+# runtime which of $UTIL_SINGBOX/$UTIL_XRAY actually exist on disk.
 define Package/easy-vless/install
 	$(INSTALL_DIR) $(1)/usr/share/easy_vless
 	$(INSTALL_DATA) ./files/0_default_config $(1)/usr/share/easy_vless/0_default_config
@@ -97,8 +154,6 @@ define Package/easy-vless/install
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/api.lua $(1)/usr/lib/lua/luci/easy_vless/api.lua
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/com.lua $(1)/usr/lib/lua/luci/easy_vless/com.lua
-	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/util_sing-box.lua $(1)/usr/lib/lua/luci/easy_vless/util_sing-box.lua
-	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/util_xray.lua $(1)/usr/lib/lua/luci/easy_vless/util_xray.lua
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/easy_vless $(1)/etc/init.d/easy_vless
@@ -132,9 +187,6 @@ define Package/easy-vless/postinst
 exit 0
 endef
 
-define Build/Compile
-endef
-
 define Package/easy-vless/prerm
 #!/bin/sh
 # Unconditional stop before removal so `opkg remove` on a running service
@@ -146,4 +198,16 @@ define Package/easy-vless/prerm
 exit 0
 endef
 
+define Package/easy-vless-sing-box/install
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
+	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/util_sing-box.lua $(1)/usr/lib/lua/luci/easy_vless/util_sing-box.lua
+endef
+
+define Package/easy-vless-xray/install
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
+	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/util_xray.lua $(1)/usr/lib/lua/luci/easy_vless/util_xray.lua
+endef
+
 $(eval $(call BuildPackage,easy-vless))
+$(eval $(call BuildPackage,easy-vless-sing-box))
+$(eval $(call BuildPackage,easy-vless-xray))
