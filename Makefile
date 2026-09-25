@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
 PKG_VERSION:=0.3.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=
@@ -260,18 +260,12 @@ endef
 
 define Package/easy-vless/postinst
 #!/bin/sh
-# $$(1) below is opkg's own postinst-script substitution (not a Make
-# variable) - escaped as $$(1) so Make's own macro expansion doesn't
-# silently strip the literal text "$(1)" when this comment is emitted
-# (confirmed via a real, non-DUMP build: without the extra "$", the "$(1)"
-# text vanishes from the built postinst-pkg script; harmless here since it
-# is inside a shell comment, but kept correct for clarity).
+# /etc/uci-defaults/easy-vless is executed and then removed by OpenWrt's
+# default_postinst (/lib/functions.sh) before this script runs; it must not
+# be sourced again here. default_postinst also enables /etc/init.d/easy_vless
+# (offline via rc.common in IPKG_INSTROOT, live via "enable"); the explicit
+# enable below is kept for the live install and is idempotent.
 [ -n "$${IPKG_INSTROOT}" ] || {
-	( . /etc/uci-defaults/easy-vless ) && rm -f /etc/uci-defaults/easy-vless
-	# Register but do not auto-start: decisions.md requires PassWall2 to be
-	# stopped and the smoke-test guard checks to pass first (see app.sh
-	# check_other_proxy_stopped/check_fwmark_table_free). The user starts
-	# Easy VLESS manually the first time.
 	/etc/init.d/easy_vless enable
 	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
 	exit 0
