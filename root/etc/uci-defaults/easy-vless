@@ -27,6 +27,20 @@ uci commit firewall
 
 [ ! -s "/etc/config/easy_vless" ] && cp -f /usr/share/easy_vless/0_default_config /etc/config/easy_vless
 
+# Upgrade path for configs created by older Easy VLESS versions: add the
+# options/sections the current runtime and LuCI expect, never touch existing
+# values.
+uci -q get easy_vless.@global[0].routing_mode >/dev/null || uci -q set easy_vless.@global[0].routing_mode='singbox'
+uci -q get easy_vless.@global[0].clash_api_port >/dev/null || uci -q set easy_vless.@global[0].clash_api_port='9095'
+if ! uci -q get easy_vless.main_router >/dev/null; then
+	uci -q set easy_vless.main_router=nodes
+	uci -q set easy_vless.main_router.remarks='Routing rules'
+	uci -q set easy_vless.main_router.type='sing-box'
+	uci -q set easy_vless.main_router.protocol='_shunt'
+	uci -q set easy_vless.main_router.default_node='_direct'
+fi
+uci -q commit easy_vless
+
 chmod +x /usr/share/easy_vless/*.sh
 
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*

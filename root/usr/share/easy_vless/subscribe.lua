@@ -29,7 +29,10 @@ local has_ss_rust = api.is_finded("sslocal")
 local has_ssr = api.is_finded("ssr-local") and api.is_finded("ssr-redir")
 local has_singbox = api.finded_com("sing-box")
 local has_xray = api.finded_com("xray")
-local DEFAULT_ALLOWINSECURE = true
+-- Easy VLESS: never silently disable certificate verification for imported
+-- TLS nodes. A link without an explicit insecure/allowInsecure parameter keeps
+-- verification on unless the user opts in via global_subscribe.allowInsecure.
+local DEFAULT_ALLOWINSECURE = (uci_get("@global_subscribe[0]", "allowInsecure") == "1")
 local DEFAULT_FILTER_KEYWORD_MODE = uci_get("@global_subscribe[0]", "filter_keyword_mode") or "0"
 local DEFAULT_FILTER_KEYWORD_DISCARD_LIST = uci_get("@global_subscribe[0]", "filter_discard_list") or {}
 local DEFAULT_FILTER_KEYWORD_KEEP_LIST = uci_get("@global_subscribe[0]", "filter_keep_list") or {}

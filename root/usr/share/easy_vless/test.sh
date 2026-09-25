@@ -22,22 +22,16 @@ test_url() {
 	echo $status
 }
 
+# Connectivity check (0 = ok, 2 = failed). Easy VLESS uses a single
+# endpoint, https://www.gstatic.com/generate_204; PassWall2's China-specific
+# fallbacks (baidu.com, ping 223.5.5.5) are not used.
 test_proxy() {
 	result=0
-	status=$(test_url "https://www.google.com/generate_204" ${retry_num} ${connect_timeout})
+	status=$(test_url "https://www.gstatic.com/generate_204" ${retry_num} ${connect_timeout})
 	if [ "$status" = "200" ]; then
 		result=0
 	else
-		status2=$(test_url "https://www.baidu.com" ${retry_num} ${connect_timeout})
-		if [ "$status2" = "200" ]; then
-			result=1
-		else
-			result=2
-			ping -c 3 -W 1 223.5.5.5 > /dev/null 2>&1
-			[ $? -eq 0 ] && {
-				result=1
-			}
-		fi
+		result=2
 	fi
 	echo $result
 }
@@ -51,8 +45,14 @@ url_test_node() {
 		NO_REC_PROCESS=1 /usr/share/${CONFIG}/app.sh run_socks flag="url_test_${node_id}" node=${node_id} bind=127.0.0.1 socks_port=${_tmp_port} config_file=url_test_${node_id}.json
 		local curlx="socks5h://127.0.0.1:${_tmp_port}"
 		sleep 2s
-		local probeUrl=$(config_n_get @global_other[0] url_test_url https://www.google.com/generate_204)
-		result=$(curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_pretransfer}" -x ${curlx} "${probeUrl}")
+		# Connectivity / HTTP test of one server: a real HTTPS request through
+		# the node's VLESS outbound (temporary sing-box SOCKS instance + curl).
+		local probeUrl=$(config_n_get @global_other[0] url_test_url https://www.gstatic.com/generate_204)
+		# Easy VLESS: time_starttransfer (first response byte through the
+		# tunnel) instead of PassWall2's time_pretransfer, which for plain
+		# http probe URLs only measures the local SOCKS handshake. This is
+		# also closer to what sing-box's own URL test reports.
+		result=$(curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_starttransfer}" -x ${curlx} "${probeUrl}")
 		# End the SS plugin process
 		local pid_file="${TMP_PATH}/url_test_${node_id}_plugin.pid"
 		[ -s "$pid_file" ] && kill -9 "$(head -n 1 "$pid_file")" >/dev/null 2>&1

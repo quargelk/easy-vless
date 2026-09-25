@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.1.0
+PKG_VERSION:=0.3.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -50,9 +50,6 @@ define Package/easy-vless
 	+kmod-nft-socket \
 	+kmod-nft-tproxy \
 	+kmod-nft-nat \
-	+geoview \
-	+v2ray-geoip \
-	+v2ray-geosite \
 	+openssl-util \
 	+lyaml
   # Backend engines (sing-box/xray) are NOT core DEPENDS - see the
@@ -62,12 +59,15 @@ define Package/easy-vless
   # one backend must be able to install core + exactly one engine package.
   # See decisions.md for the full dependency-split rationale.
   #
-  # geoview/v2ray-geoip/v2ray-geosite added in Phase 2: decisions.md #3 keeps
-  # GeoIP/GeoSite for RUSSIA->DIRECT, and utils.sh's get_geoip() /
-  # nftables.sh's Shunt Rules code (gen_shunt_list(), add_firewall_rule())
-  # call the real "geoview" binary at runtime. This is core (not backend-
-  # specific): Shunt Rules' geoip: nftset population works purely through
-  # nftables.sh/utils.sh regardless of which engine (if any) is installed.
+  # geoview/v2ray-geoip/v2ray-geosite moved to the optional sub-package
+  # easy-vless-geodata (vertical-slice stage, 2026-09-25): geoview exists only
+  # in the third-party PassWall feed, so a hard core dependency made
+  # easy-vless uninstallable on a router with official feeds only. Every
+  # runtime caller already degrades gracefully without them: utils.sh
+  # get_geoip() returns nothing when geoview or geoip.dat is missing,
+  # nftables.sh gen_shunt_list() disables geoview preloading, and
+  # util_sing-box.lua check_geoview() skips .srs conversion. Rules that
+  # reference geoip:/geosite: need easy-vless-geodata installed.
   # openssl-util added in Phase 3: api.lua's fetch_cert_sha256() (Reality/TLS
   # cert pinning) shells out to `openssl s_client`/`openssl x509`. Verified
   # against the real openwrt/openwrt package/libs/openssl/Makefile: the CLI
@@ -97,6 +97,28 @@ endef
 # exactly one engine. Both are optional; at least one must be installed for
 # any node to actually run (app.sh's acl_node() guard reports a clear error
 # per-node otherwise - see decisions.md).
+
+define Package/easy-vless-geodata
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=Easy VLESS - GeoIP/GeoSite data for Shunt Rules
+  URL:=
+  PKGARCH:=all
+  DEPENDS:=+easy-vless +geoview +v2ray-geoip +v2ray-geosite
+endef
+
+define Package/easy-vless-geodata/description
+  Meta package pulling in geoview and the v2ray geoip.dat/geosite.dat
+  datasets used by Shunt Rules entries of the form geoip:<code> and
+  geosite:<code>. geoview is provided by the third-party PassWall package
+  feed, not by the official OpenWrt feeds. Not needed for plain VLESS
+  proxying.
+endef
+
+# Meta package: ships no files of its own.
+define Package/easy-vless-geodata/install
+	true
+endef
 
 define Package/easy-vless-sing-box
   SECTION:=net
@@ -129,6 +151,9 @@ define Package/easy-vless-sing-box/description
   sing-box backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS,
   gRPC, HTTPUpgrade, plus the AUTO group (sing-box urltest). Required for
   AUTO/URLTest nodes - Xray has no equivalent mechanism in this project.
+  Depends on the virtual package "sing-box" (provided by sing-box or
+  sing-box-tiny >= 1.12). Includes the Clash API client used by LuCI to
+  read and trigger URL Test results of the running instance.
 endef
 
 define Package/easy-vless-xray
@@ -157,8 +182,31 @@ define Package/easy-vless-xray/description
   sing-box does not support them in this project.
 endef
 
+# --- LuCI UI sub-package ---
+# Kept in this Makefile (like the backend sub-packages) so the existing
+# standalone CI build keeps producing every .ipk from one source tree.
+# Plain package.mk (not feeds/luci/luci.mk): no translations/minification
+# yet, hence no luci-base/host build dependency. Files live under ./luci/.
+define Package/luci-app-easy-vless
+  SECTION:=luci
+  CATEGORY:=LuCI
+  SUBMENU:=3. Applications
+  TITLE:=LuCI interface for Easy VLESS
+  URL:=
+  PKGARCH:=all
+  DEPENDS:=+easy-vless +luci-base +rpcd
+endef
+
+define Package/luci-app-easy-vless/description
+  Web interface for Easy VLESS: server list (add/edit/delete, VLESS URL
+  import/export, per-server test), URL Test groups with live results,
+  routing rules, configuration check, start/stop and runtime status. Talks to the runtime through the rpcd plugin
+  luci.easy_vless.
+endef
+
 define Package/easy-vless/conffiles
 /etc/config/easy_vless
+/usr/share/easy_vless/direct_ip
 endef
 
 # --- Phase 2: runtime shell layer + init/hotplug. ---
@@ -187,6 +235,8 @@ define Package/easy-vless/install
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/helper_dnsmasq.lua $(1)/usr/share/easy_vless/helper_dnsmasq.lua
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/subscribe.lua $(1)/usr/share/easy_vless/subscribe.lua
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/test.sh $(1)/usr/share/easy_vless/test.sh
+	$(INSTALL_BIN) ./root/usr/share/easy_vless/lease2hosts.sh $(1)/usr/share/easy_vless/lease2hosts.sh
+	$(INSTALL_DATA) ./root/usr/share/easy_vless/direct_ip $(1)/usr/share/easy_vless/direct_ip
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/api.lua $(1)/usr/lib/lua/luci/easy_vless/api.lua
@@ -243,6 +293,9 @@ endef
 define Package/easy-vless-sing-box/install
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/util_sing-box.lua $(1)/usr/lib/lua/luci/easy_vless/util_sing-box.lua
+
+	$(INSTALL_DIR) $(1)/usr/share/easy_vless
+	$(INSTALL_BIN) ./root/usr/share/easy_vless/clash_api.lua $(1)/usr/share/easy_vless/clash_api.lua
 endef
 
 define Package/easy-vless-xray/install
@@ -250,6 +303,51 @@ define Package/easy-vless-xray/install
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/util_xray.lua $(1)/usr/lib/lua/luci/easy_vless/util_xray.lua
 endef
 
+define Package/luci-app-easy-vless/install
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/easy_vless
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/servers.js $(1)/www/luci-static/resources/view/easy_vless/servers.js
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/urltest.js $(1)/www/luci-static/resources/view/easy_vless/urltest.js
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/rules.js $(1)/www/luci-static/resources/view/easy_vless/rules.js
+
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/easy_vless
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/easy_vless/common.js $(1)/www/luci-static/resources/easy_vless/common.js
+
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ./luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json $(1)/usr/share/luci/menu.d/luci-app-easy-vless.json
+
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./luci/root/usr/share/rpcd/acl.d/luci-app-easy-vless.json $(1)/usr/share/rpcd/acl.d/luci-app-easy-vless.json
+
+	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
+	$(INSTALL_BIN) ./luci/root/usr/libexec/rpcd/luci.easy_vless $(1)/usr/libexec/rpcd/luci.easy_vless
+endef
+
+# Reload rpcd so the new ubus object luci.easy_vless and its ACL are known,
+# and drop LuCI's menu/module caches (same steps as feeds/luci/luci.mk).
+define Package/luci-app-easy-vless/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
+	rm -rf /tmp/luci-modulecache/
+	/etc/init.d/rpcd reload 2>/dev/null
+	exit 0
+}
+exit 0
+endef
+
+define Package/luci-app-easy-vless/postrm
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
+	rm -rf /tmp/luci-modulecache/
+	/etc/init.d/rpcd reload 2>/dev/null
+	exit 0
+}
+exit 0
+endef
+
 $(eval $(call BuildPackage,easy-vless))
 $(eval $(call BuildPackage,easy-vless-sing-box))
 $(eval $(call BuildPackage,easy-vless-xray))
+$(eval $(call BuildPackage,easy-vless-geodata))
+$(eval $(call BuildPackage,luci-app-easy-vless))

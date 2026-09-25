@@ -22,6 +22,15 @@ TMP_PROCESS_LIST_PATH=${TMP_PATH}/process_list
 FWMARK="0x45560000"
 EV_ROUTE_TABLE="998"
 EV_PID_FILE="/var/run/${CONFIG}.pid"
+# util_sing-box.lua emits the sing-box 1.12 configuration format (typed DNS
+# servers, domain_resolver, rule actions), so 1.12.0 is the minimum usable
+# version. Checked in app.sh:run_singbox() before any config is generated.
+EV_SINGBOX_MIN_VERSION="1.12.0"
+# sing-box Clash API of the main instance (URL Test results/control for LuCI).
+# Bound to 127.0.0.1 only, protected by a random per-start secret; the
+# "<port> <secret>" pair is published in EV_CLASH_API_FILE while running.
+EV_CLASH_API_FILE="${TMP_PATH}/clash_api"
+EV_CLASH_API_DEFAULT_PORT="9095"
 
 . /lib/functions/network.sh
 
@@ -383,6 +392,9 @@ ln_run() {
 
 	if [  "${file_func%%/*}" != "${file_func}" ]; then
 		[ ! -L "${file_func}" ] && {
+			# Easy VLESS: helper instances (test.sh url_test_node) may run
+			# while the service is stopped, when start() has not created it.
+			mkdir -p "${TMP_BIN_PATH}"
 			ln -s "${file_func}" "${TMP_BIN_PATH}/${ln_name}" >/dev/null 2>&1
 			file_func="${TMP_BIN_PATH}/${ln_name}"
 		}

@@ -135,6 +135,28 @@ write_main_pid() {
 	return 0
 }
 
+# Called right after write_main_pid(): give the freshly started process a
+# moment to parse its config and bind its ports, then make sure it is alive.
+check_main_alive() {
+	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
+	[ -n "$pid" ] || return 1
+	sleep 2
+	kill -0 "$pid" 2>/dev/null
+}
+
+# Undo a partially completed start(): keep the tail of the main process log
+# (if node logging is enabled) for the user, then run the regular, idempotent
+# stop in a NEW process and fail. Not "( stop )": start() has sourced
+# nftables.sh, whose own start()/stop() functions replace app.sh's in this
+# shell, so a subshell would only remove the firewall rules and leave the
+# processes, dnsmasq changes and $TMP_PATH behind.
+start_rollback() {
+	local main_log="${TMP_ACL_PATH}/acl_default.log"
+	[ -s "$main_log" ] && tail -n 20 "$main_log" >> "$LOG_FILE"
+	${APP_PATH}/app.sh stop >/dev/null 2>&1
+	exit 1
+}
+
 # Decision #10: never kill by pattern alone. Read the PID file, confirm via
 # /proc/<pid>/cmdline that it is still our own sing-box/xray process with our
 # own config before sending a signal, then always remove the stale PID file.
@@ -143,9 +165,13 @@ kill_main_pid() {
 	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
 	local cfg=$(get_cache_var "easy_vless_main_config")
 	if [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ]; then
-		if [ -z "$cfg" ] || tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "${cfg:-/nonexistent}"; then
-			kill -9 "$pid" >/dev/null 2>&1
-		fi
+		local cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+		# Without the cached config path (cache already gone) only accept a
+		# process that still runs one of our own configs under $TMP_PATH.
+		local match="${cfg:-${TMP_PATH}/}"
+		case "$cmdline" in
+			*"$match"*) kill -9 "$pid" >/dev/null 2>&1 ;;
+		esac
 	fi
 	rm -f "$EV_PID_FILE"
 }
@@ -190,7 +216,8 @@ run_xray() {
 		json_add_string "dns_listen_port" "${dns_listen_port}"
 		[ -n "$dns_cache" ] && json_add_string "dns_cache" "${dns_cache}"
 		[ "${node_protocol}" = "_shunt" ] && local write_ipset_direct=$(config_n_get $node write_ipset_direct 0)
-		[ "${write_ipset_direct}" = "1" ] && {
+		# A config-only check (no_run=1) must not start helper dnsmasq instances.
+		[ "${write_ipset_direct}" = "1" ] && [ -z "${no_run}" ] && {
 			direct_dnsmasq_listen_port=$(get_new_port auto)
 			local direct_ipset_conf=${TMP_ACL_PATH}/dns_${flag}_direct.conf
 			# Easy VLESS is nftables-only (decision #6): the legacy ipset
@@ -283,17 +310,30 @@ run_xray() {
 run_singbox() {
 	local flag node redir_port socks_address socks_port socks_username socks_password http_address http_port http_username http_password
 	local dns_listen_port direct_dns_query_strategy remote_dns_protocol remote_dns_udp_server remote_dns_udp_port remote_dns_tcp_server remote_dns_tcp_port remote_dns_doh remote_dns_client_ip remote_dns_detour remote_fakedns remote_dns_query_strategy remote_rewrite_ttl dns_cache
-	local loglevel log_file config_file
+	local loglevel log_file config_file no_run
 	eval_set_val $@
 	local type=$(echo $(config_n_get $node type) | tr 'A-Z' 'a-z')
 	[ -z "$type" ] && return 1
 	node_protocol=$(config_n_get $node protocol)
 	[ -n "$log_file" ] || local log_file="/dev/null"
 	[ -z "$loglevel" ] && local loglevel=$(config_n_get @global[0] loglevel "warn")
+
+	# Minimum version gate (see EV_SINGBOX_MIN_VERSION in utils.sh). Any
+	# package providing "sing-box" (sing-box, sing-box-tiny, ...) is fine as
+	# long as the binary itself is new enough for the generated config format.
+	local singbox_version=$($SINGBOX_BIN version 2>/dev/null | awk 'NR==1{print $3}')
+	if [ -z "$singbox_version" ] || [ "$(lua_api "compare_versions(\"${singbox_version}\", \">=\", \"${EV_SINGBOX_MIN_VERSION}\")")" != "true" ]; then
+		mkdir -p ${TMP_PATH}
+		_error_log_file=${TMP_PATH}/singbox_version.log
+		echo "sing-box ${singbox_version:-(not found)} is not supported: Easy VLESS requires sing-box >= ${EV_SINGBOX_MIN_VERSION} ($SINGBOX_BIN)." > ${_error_log_file}
+		log 1 "$(cat ${_error_log_file})"
+		return 1
+	fi
 	local singbox_tag=$($SINGBOX_BIN version | grep 'Tags:' | awk '{print $2}')
 
 	json_init
 	json_add_string "tags" "${singbox_tag}"
+	[ -n "$no_run" ] && json_add_string "no_run" "1"
 
 	if [ "$log_file" = "/dev/null" ]; then
 		json_add_string "log" "0"
@@ -331,7 +371,8 @@ run_singbox() {
 		json_add_string "dns_listen_port" "${dns_listen_port}"
 		[ -n "$dns_cache" ] && json_add_string "dns_cache" "${dns_cache}"
 		[ "${node_protocol}" = "_shunt" ] && local write_ipset_direct=$(config_n_get $node write_ipset_direct 0)
-		[ "${write_ipset_direct}" = "1" ] && {
+		# A config-only check (no_run=1) must not start helper dnsmasq instances.
+		[ "${write_ipset_direct}" = "1" ] && [ -z "${no_run}" ] && {
 			direct_dnsmasq_listen_port=$(get_new_port auto)
 			local direct_ipset_conf=${TMP_ACL_PATH}/dns_${flag}_direct.conf
 			# Easy VLESS is nftables-only (decision #6): the legacy ipset
@@ -406,14 +447,30 @@ run_singbox() {
 
 	json_add_string "node" "${node}"
 
+	# Clash API only for the main instance (and its config check), never for
+	# helper instances (socks relays, url tests).
+	if [ "$flag" = "acl_default" ] && [ -z "$no_run" ]; then
+		local clash_port=$(get_new_port $(config_n_get @global[0] clash_api_port ${EV_CLASH_API_DEFAULT_PORT}) tcp)
+		local clash_secret=$(head -c 64 /dev/urandom | md5sum | cut -c1-32)
+		json_add_string "clash_api_port" "${clash_port}"
+		json_add_string "clash_api_secret" "${clash_secret}"
+		echo "${clash_port} ${clash_secret}" > ${EV_CLASH_API_FILE}
+		chmod 600 ${EV_CLASH_API_FILE}
+	elif [ "$flag" = "ev_check" ]; then
+		json_add_string "clash_api_port" "${EV_CLASH_API_DEFAULT_PORT}"
+		json_add_string "clash_api_secret" "check"
+	fi
+
 	local _json_arg="$(json_dump)"
 	lua $UTIL_SINGBOX gen_config "${_json_arg}" > $config_file
 
 	test_log_file=$log_file
 	[ "$test_log_file" = "/dev/null" ] && test_log_file="${TMP_PATH}/test.log"
 
-	$SINGBOX_BIN check -c "$config_file" > $test_log_file 2>&1; local status=$?
-	if [ "${status}" == 0 ]; then
+	$SINGBOX_BIN check --disable-color -c "$config_file" > $test_log_file 2>&1; local status=$?
+	if [ "${status}" == 0 ] && [ -n "${no_run}" ]; then
+		return 0
+	elif [ "${status}" == 0 ]; then
 		ln_run ${QUEUE_RUN} "$SINGBOX_BIN" "sing-box" "${log_file}" run -c "$config_file"
 		# Decision #10/#18: remember the bin+config of the main/default node
 		# so start() can later resolve and record its real PID.
@@ -957,6 +1014,10 @@ start() {
 		log_i18n 0 "Easy VLESS did not start: %s No network state was changed." "${EV_COLLISION_ERROR}"
 		exit 1
 	fi
+	if [ "$ENABLED_DEFAULT_ACL" == 1 ] && ! check_routing_config "$NODE"; then
+		log_i18n 0 "Easy VLESS did not start: %s No network state was changed." "${EV_ROUTING_ERROR}"
+		exit 1
+	fi
 	# --- guards passed: safe to generate configs, start sing-box/xray and
 	# apply firewall rules from here on. ---
 
@@ -978,9 +1039,6 @@ start() {
 		else
 			source $APP_PATH/${USE_TABLES}.sh start
 			set_cache_var "USE_TABLES" "$USE_TABLES"
-			# Decision #10/#18: record the main process's real PID now that
-			# nftables.sh's load_acl()/acl_node() has launched it.
-			write_main_pid
 		fi
 	}
 	if [ "$ENABLED_DEFAULT_ACL" == 1 ] || [ "$ENABLED_ACLS" == 1 ]; then
@@ -994,6 +1052,21 @@ start() {
 		}
 	fi
 	run_process_queue
+	# The main sing-box/xray process is only queued by acl_node() (QUEUE_RUN=1)
+	# and really launched by run_process_queue() above, so its PID can only be
+	# resolved and verified here. If the default node was rejected or its
+	# process died right away, roll back every network change instead of
+	# leaving TPROXY rules that point at nothing.
+	if [ "$ENABLED_DEFAULT_ACL" == 1 ]; then
+		if [ -z "$(get_cache_var "easy_vless_main_config")" ]; then
+			log_i18n 0 "Easy VLESS did not start: node [%s] could not be started (see the messages above). Rolling back all network changes." "${NODE}"
+			start_rollback
+		fi
+		if ! write_main_pid || ! check_main_alive; then
+			log_i18n 0 "Easy VLESS did not start: the main process of node [%s] exited right after launch. Rolling back all network changes." "${NODE}"
+			start_rollback
+		fi
+	fi
 	start_crontab
 	log_i18n 0 "Running complete!"
 	echolog "\n"
@@ -1065,6 +1138,133 @@ stop() {
 	rm -rf /tmp/lock/${CONFIG}_lease2hosts*
 	log_i18n 0 "Clearing and closing related programs and cache complete."
 	exit 0
+}
+
+# Configuration-level guards that do not depend on the network state:
+# routing mode and optional geodata. Sets EV_ROUTING_ERROR on failure.
+check_routing_config() {
+	local node=$1
+	EV_ROUTING_ERROR=""
+	local mode=$(config_n_get @global[0] routing_mode singbox)
+	case "$mode" in
+		singbox) ;;
+		nftset)
+			EV_ROUTING_ERROR="routing_mode 'nftset' (dnsmasq -> nftset -> TPROXY) is not implemented in this version yet; set ${CONFIG}.@global[0].routing_mode='singbox'."
+			return 1
+		;;
+		*)
+			EV_ROUTING_ERROR="Unknown routing_mode '${mode}' (supported: singbox)."
+			return 1
+		;;
+	esac
+	[ -n "$node" ] && [ "$(config_n_get $node protocol)" = "_shunt" ] || return 0
+
+	# geoip:/geosite: entries need the optional easy-vless-geodata package
+	# (geoview + v2ray-geoip/v2ray-geosite). geoip:private is built in.
+	local geoview_bin=$(first_type $(config_n_get @global_app[0] geoview_file) geoview)
+	local asset=$(config_n_get @global_rules[0] v2ray_location_asset /usr/share/v2ray/)
+	asset=${asset%/}
+	local shunt_group=$(config_n_get $node shunt_group)
+	local rule codes missing
+	for rule in $(uci -q show ${CONFIG} | grep "=shunt_rules$" | cut -d '.' -f 2 | cut -d '=' -f 1); do
+		[ -n "$(config_n_get $node $rule)" ] || continue
+		[ "$shunt_group" = "$(config_n_get $rule group)" ] || continue
+		codes=$( { config_n_get $rule domain_list; echo; config_n_get $rule ip_list; } | tr -d '\r' | grep -E '^(geosite|geoip):' | grep -v '^geoip:private$')
+		[ -n "$codes" ] || continue
+		missing=""
+		[ -n "$geoview_bin" ] || missing="geoview"
+		echo "$codes" | grep -q '^geosite:' && [ ! -s "${asset}/geosite.dat" ] && missing="${missing:+${missing}, }${asset}/geosite.dat"
+		echo "$codes" | grep -q '^geoip:' && [ ! -s "${asset}/geoip.dat" ] && missing="${missing:+${missing}, }${asset}/geoip.dat"
+		if [ -n "$missing" ]; then
+			EV_ROUTING_ERROR="Rule [$(config_n_get $rule remarks $rule)] uses $(echo $codes | tr '\n' ' ' | sed 's/ $//'), but the geodata is not installed (missing: ${missing}). Install the optional package easy-vless-geodata or remove these entries."
+			return 1
+		fi
+	done
+	return 0
+}
+
+# "app.sh check [node]": generate the sing-box config for a node exactly like
+# start() would and run "sing-box check" on it. Never touches the firewall,
+# routing, dnsmasq or a running instance (separate directory, no_run=1).
+check_config() {
+	local node=${1:-$(config_n_get @global[0] node)}
+	local check_dir=/tmp/etc/${CONFIG}_check
+	if [ -z "$node" ]; then
+		echo "No node selected (${CONFIG}.@global[0].node is empty)."
+		return 1
+	fi
+	if [ "$(config_get_type $node)" != "nodes" ]; then
+		echo "Node [${node}] does not exist."
+		return 1
+	fi
+	local type=$(echo $(config_n_get $node type) | tr 'A-Z' 'a-z')
+	if [ "$type" != "sing-box" ]; then
+		echo "Node [${node}] uses backend '${type:-none}'; only sing-box nodes can be checked."
+		return 1
+	fi
+	if ! check_routing_config "$node"; then
+		echo "${EV_ROUTING_ERROR}"
+		return 1
+	fi
+	if [ -z "$SINGBOX_BIN" ] || [ ! -f "$UTIL_SINGBOX" ]; then
+		echo "The sing-box backend is not installed (sing-box binary or easy-vless-sing-box missing)."
+		return 1
+	fi
+	rm -rf "$check_dir"
+	mkdir -p "$check_dir" "$TMP_PATH"
+	get_direct_dns
+	local dns_server dns_port
+	eval $(lua -e "local api = require 'luci.easy_vless.api'
+		local s, p = api.parseDNS('$(config_n_get @global[0] remote_dns 1.1.1.1:53)')
+		print(string.format('dns_server=%q dns_port=%q', s or '', p or ''))")
+	TCP_PROXY_WAY=$(config_n_get @global_forwarding[0] tcp_proxy_way tproxy)
+	_error_log_file=""
+	run_singbox flag=ev_check node=${node} no_run=1 \
+		redir_port=1041 dns_listen_port=1042 \
+		direct_dns_query_strategy=$(config_n_get @global[0] direct_dns_query_strategy UseIP) \
+		remote_dns_protocol=$(config_n_get @global[0] remote_dns_protocol tcp) \
+		remote_dns_tcp_server=${dns_server} remote_dns_tcp_port=${dns_port} \
+		remote_dns_udp_server=${dns_server} remote_dns_udp_port=${dns_port} \
+		remote_dns_doh=$(config_n_get @global[0] remote_dns_doh https://1.1.1.1/dns-query) \
+		remote_dns_detour=$(config_n_get @global[0] remote_dns_detour remote) \
+		remote_dns_query_strategy=$(config_n_get @global[0] remote_dns_query_strategy UseIPv4) \
+		remote_fakedns=$(config_n_get @global[0] remote_fakedns 0) \
+		config_file=${check_dir}/config.json log_file=${check_dir}/check.log loglevel=warn
+	local status=$?
+	if [ "$status" = 0 ]; then
+		echo "OK: sing-box $($SINGBOX_BIN version 2>/dev/null | awk 'NR==1{print $3}') accepted the configuration of node [${node}] (${check_dir}/config.json)."
+	else
+		cat "${_error_log_file:-${check_dir}/check.log}" 2>/dev/null
+	fi
+	return $status
+}
+
+# "app.sh status": machine-readable runtime state for LuCI (JSON on stdout).
+status_json() {
+	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
+	local running=0
+	[ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "${TMP_PATH}/" && running=1
+	[ "$running" = 1 ] || pid=""
+	local nft_table=0
+	nft list table inet ${CONFIG} >/dev/null 2>&1 && nft_table=1
+	local version=""
+	[ -n "$SINGBOX_BIN" ] && version=$($SINGBOX_BIN version 2>/dev/null | awk 'NR==1{print $3}')
+	json_init
+	json_add_boolean "enabled" "$(config_n_get @global[0] enabled 0)"
+	json_add_string "node" "$(config_n_get @global[0] node)"
+	json_add_boolean "running" "$running"
+	json_add_string "pid" "$pid"
+	json_add_boolean "nft_table" "$nft_table"
+	json_add_string "singbox_bin" "$SINGBOX_BIN"
+	json_add_string "singbox_version" "$version"
+	json_add_boolean "singbox_backend" "$([ -f "$UTIL_SINGBOX" ] && echo 1 || echo 0)"
+	json_add_string "singbox_min_version" "$EV_SINGBOX_MIN_VERSION"
+	json_add_string "routing_mode" "$(config_n_get @global[0] routing_mode singbox)"
+	if [ "$running" = 1 ]; then
+		json_add_int "rss_kb" "$(awk '/^VmRSS:/{print $2}' /proc/$pid/status 2>/dev/null)"
+		json_add_int "rss_peak_kb" "$(awk '/^VmHWM:/{print $2}' /proc/$pid/status 2>/dev/null)"
+	fi
+	json_dump
 }
 
 get_direct_dns() {
@@ -1147,6 +1347,12 @@ socks_node_switch)
 	;;
 start)
 	start $@
+	;;
+check)
+	check_config $@
+	;;
+status)
+	status_json
 	;;
 stop)
 	stop

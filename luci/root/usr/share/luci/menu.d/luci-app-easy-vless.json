@@ -1,0 +1,41 @@
+{
+	"admin/services/easy_vless": {
+		"title": "Easy VLESS",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [
+				"luci-app-easy-vless"
+			],
+			"uci": {
+				"easy_vless": true
+			}
+		}
+	},
+	"admin/services/easy_vless/servers": {
+		"title": "Servers",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/servers"
+		}
+	},
+	"admin/services/easy_vless/urltest": {
+		"title": "URL Test",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/urltest"
+		}
+	},
+	"admin/services/easy_vless/rules": {
+		"title": "Routing rules",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/rules"
+		}
+	}
+}

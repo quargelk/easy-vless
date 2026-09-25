@@ -5,6 +5,8 @@ name: Build easy-vless packages
 #   - easy-vless             (core runtime, no VLESS engine)
 #   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless sing-box)
 #   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless xray-core)
+#   - luci-app-easy-vless    (LuCI UI, DEPENDS:=+easy-vless +luci-base +rpcd)
+#   - easy-vless-geodata     (optional meta package: geoview + v2ray-geoip/-geosite)
 # ("sing-box"/"xray-core" are intentionally not "+"-prefixed - see the
 # Makefile comments on those two DEPENDS lines for the Kconfig-cycle reason.)
 # All three are defined as sub-packages of the same Makefile/source tree
@@ -58,12 +60,14 @@ on:
       - 'Makefile'
       - 'files/**'
       - 'root/**'
+      - 'luci/**'
       - '.github/workflows/build.yml'
   pull_request:
     paths:
       - 'Makefile'
       - 'files/**'
       - 'root/**'
+      - 'luci/**'
       - '.github/workflows/build.yml'
   workflow_dispatch: {}
 
@@ -173,6 +177,7 @@ jobs:
           # "luci" feed: only the two LuCI support libraries easy-vless
           # DEPENDS on.
           ./scripts/feeds install -p luci \
+            luci-base \
             luci-compat \
             luci-lib-jsonc
 
@@ -223,7 +228,7 @@ jobs:
           rsync -a --exclude='.git' --exclude='.github' --exclude='sdk' ./ sdk/package/easy-vless/
           test -f sdk/package/easy-vless/Makefile
 
-      - name: Select the three easy-vless packages in .config
+      - name: Select the easy-vless packages in .config
         working-directory: sdk
         run: |
           set -euxo pipefail
@@ -241,9 +246,11 @@ jobs:
           CONFIG_PACKAGE_easy-vless=y
           CONFIG_PACKAGE_easy-vless-sing-box=y
           CONFIG_PACKAGE_easy-vless-xray=y
+          CONFIG_PACKAGE_luci-app-easy-vless=y
+          CONFIG_PACKAGE_easy-vless-geodata=y
           EOF
 
-      - name: Build easy-vless, easy-vless-sing-box, easy-vless-xray .ipk
+      - name: Build easy-vless, easy-vless-sing-box, easy-vless-xray, luci-app-easy-vless .ipk
         working-directory: sdk
         run: |
           set -euxo pipefail
@@ -329,10 +336,19 @@ jobs:
           DEPENDS_LINE="$(grep '^Depends:' control || true)"
           echo "Depends: ${DEPENDS_LINE}"
 
-          for dep in nftables lua luci-compat v2ray-geoip v2ray-geosite \
-                     geoview openssl-util lyaml kmod-nft-tproxy kmod-nft-socket; do
+          for dep in nftables lua luci-compat openssl-util lyaml \
+                     kmod-nft-tproxy kmod-nft-socket; do
             echo "${DEPENDS_LINE}" | grep -q "${dep}" \
               || { echo "::error::expected core dependency '${dep}' missing from control file Depends:"; exit 1; }
+          done
+
+          # 3a. Geo data is optional (easy-vless-geodata): core must be
+          #     installable from the official feeds only.
+          for forbidden in geoview v2ray-geoip v2ray-geosite; do
+            if echo "${DEPENDS_LINE}" | grep -qw "${forbidden}"; then
+              echo "::error::easy-vless (core) Depends: unexpectedly contains '${forbidden}' - geo data lives in easy-vless-geodata"
+              exit 1
+            fi
           done
 
           # 3b. Backend split: the core package must NOT depend on either
@@ -346,6 +362,9 @@ jobs:
 
           # 4. Content: the core package must ship neither engine's util_*.lua.
           tar -xzf data.tar.gz
+          for f in usr/share/easy_vless/app.sh usr/share/easy_vless/direct_ip usr/share/easy_vless/lease2hosts.sh; do
+            test -f "./$f" || { echo "::error::easy-vless (core) does not ship $f"; exit 1; }
+          done
           for forbidden_file in usr/lib/lua/luci/easy_vless/util_sing-box.lua \
                                 usr/lib/lua/luci/easy_vless/util_xray.lua; do
             if find . -path "*${forbidden_file}" | grep -q .; then
@@ -410,6 +429,8 @@ jobs:
           tar -xzf data.tar.gz
           find . -path '*usr/lib/lua/luci/easy_vless/util_sing-box.lua' | grep -q . \
             || { echo "::error::easy-vless-sing-box does not ship util_sing-box.lua"; exit 1; }
+          find . -path '*usr/share/easy_vless/clash_api.lua' | grep -q . \
+            || { echo "::error::easy-vless-sing-box does not ship clash_api.lua"; exit 1; }
           if find . -path '*usr/lib/lua/luci/easy_vless/util_xray.lua' | grep -q .; then
             echo "::error::easy-vless-sing-box unexpectedly ships util_xray.lua - it must only be in easy-vless-xray"
             exit 1
@@ -480,6 +501,107 @@ jobs:
 
           echo "All easy-vless-xray .ipk checks passed."
 
+      - name: Locate and verify the luci-app-easy-vless .ipk
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+
+          IPK="$(find bin -type f -name 'luci-app-easy-vless_*.ipk' | head -n1)"
+          if [ -z "${IPK}" ]; then
+            echo "::error::No luci-app-easy-vless_*.ipk found under sdk/bin after build"
+            find bin -maxdepth 4 -type d 2>/dev/null || true
+            exit 1
+          fi
+          echo "Found ipk: ${IPK}"
+          echo "IPK_PATH_LUCI=sdk/${IPK}" >> "$GITHUB_ENV"
+
+          rm -rf /tmp/ipk-verify-luci
+          mkdir -p /tmp/ipk-verify-luci
+          cp "${IPK}" /tmp/ipk-verify-luci/pkg.ipk
+          cd /tmp/ipk-verify-luci
+          tar -xzf pkg.ipk
+          tar -xzf control.tar.gz
+          echo "----- control file (luci-app-easy-vless) -----"
+          cat control
+          echo "-----------------------------------------------"
+
+          grep -qE '^Package:[[:space:]]*luci-app-easy-vless[[:space:]]*$' control \
+            || { echo "::error::control file Package: field is not 'luci-app-easy-vless'"; exit 1; }
+          grep -qE '^Architecture:[[:space:]]*all[[:space:]]*$' control \
+            || { echo "::error::control file Architecture: field is not 'all'"; exit 1; }
+          DEPENDS_LINE="$(grep '^Depends:' control || true)"
+          for dep in easy-vless luci-base rpcd; do
+            echo "${DEPENDS_LINE}" | grep -qw "${dep}" \
+              || { echo "::error::luci-app-easy-vless Depends: does not contain '${dep}'"; exit 1; }
+          done
+          for forbidden in sing-box xray-core; do
+            if echo "${DEPENDS_LINE}" | grep -qw "${forbidden}"; then
+              echo "::error::luci-app-easy-vless must not depend on a backend engine (${forbidden})"
+              exit 1
+            fi
+          done
+          test -x postinst || { echo "::error::luci-app-easy-vless has no executable postinst (rpcd reload)"; exit 1; }
+
+          tar -xzf data.tar.gz
+          for f in \
+            ./www/luci-static/resources/view/easy_vless/servers.js \
+            ./www/luci-static/resources/view/easy_vless/urltest.js \
+            ./www/luci-static/resources/view/easy_vless/rules.js \
+            ./www/luci-static/resources/easy_vless/common.js \
+            ./usr/share/luci/menu.d/luci-app-easy-vless.json \
+            ./usr/share/rpcd/acl.d/luci-app-easy-vless.json \
+            ./usr/libexec/rpcd/luci.easy_vless; do
+            test -f "$f" || { echo "::error::luci-app-easy-vless does not ship $f"; exit 1; }
+          done
+          test -x ./usr/libexec/rpcd/luci.easy_vless \
+            || { echo "::error::rpcd plugin is not executable"; exit 1; }
+          if find . -path '*usr/share/easy_vless*' -o -path '*util_sing-box.lua' -o -path '*util_xray.lua' | grep -q .; then
+            echo "::error::luci-app-easy-vless unexpectedly ships runtime files"
+            exit 1
+          fi
+          echo "All luci-app-easy-vless .ipk checks passed."
+
+      - name: Locate and verify the easy-vless-geodata .ipk
+        working-directory: sdk
+        run: |
+          set -euxo pipefail
+          IPK="$(find bin -type f -name 'easy-vless-geodata_*.ipk' | head -n1)"
+          if [ -z "${IPK}" ]; then
+            echo "::error::No easy-vless-geodata_*.ipk found under sdk/bin after build"
+            exit 1
+          fi
+          echo "IPK_PATH_GEODATA=sdk/${IPK}" >> "$GITHUB_ENV"
+          rm -rf /tmp/ipk-verify-geodata
+          mkdir -p /tmp/ipk-verify-geodata
+          cp "${IPK}" /tmp/ipk-verify-geodata/pkg.ipk
+          cd /tmp/ipk-verify-geodata
+          tar -xzf pkg.ipk
+          tar -xzf control.tar.gz
+          cat control
+          DEPENDS_LINE="$(grep '^Depends:' control || true)"
+          for dep in easy-vless geoview v2ray-geoip v2ray-geosite; do
+            echo "${DEPENDS_LINE}" | grep -qw "${dep}" \
+              || { echo "::error::easy-vless-geodata Depends: does not contain '${dep}'"; exit 1; }
+          done
+          echo "All easy-vless-geodata .ipk checks passed."
+
+      - name: Report .ipk sizes
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          echo "| package | .ipk bytes | Installed-Size (bytes) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|---:|" >> "$GITHUB_STEP_SUMMARY"
+          for IPK in $(find bin -type f \( -name 'easy-vless*.ipk' -o -name 'luci-app-easy-vless_*.ipk' \) | sort); do
+            d=$(mktemp -d)
+            tar -xzf "$IPK" -C "$d"
+            tar -xzf "$d/control.tar.gz" -C "$d"
+            inst=$(awk '/^Installed-Size:/{print $2}' "$d/control")
+            size=$(stat -c %s "$IPK")
+            echo "$(basename "$IPK"): ${size} bytes, Installed-Size ${inst:-?}"
+            echo "| $(basename "$IPK") | ${size} | ${inst:-?} |" >> "$GITHUB_STEP_SUMMARY"
+            rm -rf "$d"
+          done
+
       - name: Upload easy-vless (core) .ipk artifact
         uses: actions/upload-artifact@v4
         with:
@@ -501,5 +623,21 @@ jobs:
         with:
           name: easy-vless-xray-ipk
           path: ${{ env.IPK_PATH_XRAY }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload luci-app-easy-vless .ipk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-easy-vless-ipk
+          path: ${{ env.IPK_PATH_LUCI }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload easy-vless-geodata .ipk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-geodata-ipk
+          path: ${{ env.IPK_PATH_GEODATA }}
           if-no-files-found: error
           retention-days: 14

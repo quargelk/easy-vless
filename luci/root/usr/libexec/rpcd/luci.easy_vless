@@ -1,0 +1,193 @@
+#!/bin/sh
+# rpcd exec plugin for luci-app-easy-vless (ubus object "luci.easy_vless").
+# Thin wrapper around the easy-vless runtime; all real work is done by
+# /usr/share/easy_vless/app.sh, subscribe.lua and /etc/init.d/easy_vless.
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG=easy_vless
+APP=/usr/share/easy_vless/app.sh
+INIT=/etc/init.d/easy_vless
+LOG_FILE=/tmp/log/${CONFIG}.log
+LINKS_FILE=/tmp/links.conf
+
+# Run a service action detached from rpcd, so a slow start/stop never hits
+# the rpcd exec timeout and the UI can poll "status" meanwhile.
+run_detached() {
+	( "$@" ) </dev/null >/dev/null 2>&1 &
+}
+
+count_nodes() {
+	uci -q show ${CONFIG} | grep -c "=nodes$"
+}
+
+log_tail() {
+	local n="${1:-40}"
+	[ -f "$LOG_FILE" ] && tail -n "$n" "$LOG_FILE"
+}
+
+method_status() {
+	local st
+	st=$($APP status 2>/dev/null)
+	[ -n "$st" ] || st='{}'
+	json_load "$st"
+	json_add_string "log" "$(log_tail 40)"
+	json_dump
+}
+
+method_check() {
+	local node="$1" out code
+	out=$($APP check $node 2>&1)
+	code=$?
+	json_init
+	json_add_int "code" "$code"
+	json_add_string "output" "$out"
+	json_dump
+}
+
+method_start() {
+	local node out code
+	node=$(uci -q get ${CONFIG}.@global[0].node)
+	# Validate before touching anything: an invalid config must not change
+	# the enabled flag, the firewall or the running instance.
+	out=$($APP check 2>&1)
+	code=$?
+	json_init
+	json_add_int "code" "$code"
+	json_add_string "output" "$out"
+	if [ "$code" = 0 ]; then
+		uci -q set ${CONFIG}.@global[0].enabled='1'
+		uci -q commit ${CONFIG}
+		run_detached $INIT restart
+	fi
+	json_dump
+}
+
+method_stop() {
+	uci -q set ${CONFIG}.@global[0].enabled='0'
+	uci -q commit ${CONFIG}
+	run_detached $INIT stop
+	json_init
+	json_add_int "code" 0
+	json_dump
+}
+
+CLASH_API=/usr/share/easy_vless/clash_api.lua
+
+# Real per-server test: PassWall2's proven test.sh starts a temporary sing-box
+# SOCKS instance for the node and fetches the probe URL through it with curl.
+method_urltest_node() {
+	local node="$1" raw code t ms
+	json_init
+	if [ -z "$node" ] || [ "$(uci -q get ${CONFIG}.${node})" != "nodes" ]; then
+		json_add_boolean "ok" 0
+		json_add_string "error" "Unknown server."
+		json_dump
+		return
+	fi
+	raw=$(/usr/share/easy_vless/test.sh url_test_node "$node" 2>/dev/null | tail -n 1)
+	code=${raw%%:*}
+	t=${raw#*:}
+	json_add_string "raw" "$raw"
+	case "$code" in
+		200|204)
+			ms=$(awk -v t="$t" 'BEGIN { printf "%d", t * 1000 }')
+			json_add_boolean "ok" 1
+			json_add_int "delay" "$ms"
+		;;
+		*)
+			json_add_boolean "ok" 0
+			json_add_string "error" "Probe failed (HTTP ${code:-none})."
+		;;
+	esac
+	json_dump
+}
+
+method_groups() {
+	if [ ! -f "$CLASH_API" ]; then
+		echo '{"ok":false,"error":"easy-vless-sing-box is not installed."}'
+		return
+	fi
+	lua "$CLASH_API" groups
+}
+
+method_group_test() {
+	local group="$1" url
+	if [ ! -f "$CLASH_API" ]; then
+		echo '{"ok":false,"error":"easy-vless-sing-box is not installed."}'
+		return
+	fi
+	url=$(uci -q get ${CONFIG}.${group}.urltest_url)
+	lua "$CLASH_API" test "$group" "$url"
+}
+
+method_import() {
+	local links="$1" before after out code
+	json_init
+	case "$links" in
+		*vless://*) ;;
+		*)
+			json_add_int "code" 1
+			json_add_string "output" "No vless:// link found."
+			json_dump
+			return
+		;;
+	esac
+	before=$(count_nodes)
+	printf '%s\n' "$links" > "$LINKS_FILE"
+	# subscribe.lua reads $LINKS_FILE and deletes it; an empty group name keeps
+	# manually imported nodes ungrouped (add_mode=1).
+	out=$(lua /usr/share/easy_vless/subscribe.lua add "" 2>&1)
+	code=$?
+	rm -f "$LINKS_FILE"
+	after=$(count_nodes)
+	json_add_int "code" "$code"
+	json_add_int "added" "$((after - before))"
+	json_add_string "output" "$out"
+	json_add_string "log" "$(log_tail 15)"
+	json_dump
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "status"; json_close_object
+		json_add_object "check"; json_add_string "node" "string"; json_close_object
+		json_add_object "start"; json_close_object
+		json_add_object "stop"; json_close_object
+		json_add_object "import"; json_add_string "links" "string"; json_close_object
+		json_add_object "urltest_node"; json_add_string "node" "string"; json_close_object
+		json_add_object "groups"; json_close_object
+		json_add_object "group_test"; json_add_string "group" "string"; json_close_object
+		json_dump
+	;;
+	call)
+		input=$(cat)
+		[ -n "$input" ] || input='{}'
+		case "$2" in
+			status) method_status ;;
+			check)
+				json_load "$input"; json_get_var node node
+				method_check "$node"
+			;;
+			start) method_start ;;
+			stop) method_stop ;;
+			import)
+				json_load "$input"; json_get_var links links
+				method_import "$links"
+			;;
+			urltest_node)
+				json_load "$input"; json_get_var node node
+				method_urltest_node "$node"
+			;;
+			groups) method_groups ;;
+			group_test)
+				json_load "$input"; json_get_var group group
+				method_group_test "$group"
+			;;
+			*)
+				json_init; json_add_int "code" 2; json_add_string "output" "Unknown method"; json_dump
+			;;
+		esac
+	;;
+esac

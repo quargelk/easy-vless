@@ -1,0 +1,2 @@
+# Build artifacts are not source code (see decisions.md).
+*.ipk

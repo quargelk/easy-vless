@@ -997,6 +997,12 @@ stop() {
 		rm -rf $TMP_PATH2/singbox*
 		rm -rf $TMP_PATH2/geo_output
 	}
+	# Easy VLESS (decisions.md #24): stop removes our own table completely.
+	# PassWall2 keeps the emptied base chains and sets for a faster restart,
+	# but app.sh check_fwmark_table_free() refuses to start while
+	# "inet easy_vless" exists, so a leftover table would block every
+	# restart. Nothing else uses this table.
+	nft delete table $NFTABLE_NAME 2>/dev/null
 	flush_include
 }
 

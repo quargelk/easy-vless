@@ -9,8 +9,13 @@ local CACHE_PATH = api.CACHE_PATH
 local split = api.split
 local ech_domain = {}
 
-local local_version = api.get_app_version("sing-box"):match("[^v]+")
-local version_ge_1_14_0 = api.compare_versions(local_version, ">=", "1.14.0")
+-- Easy VLESS: this generator emits the sing-box 1.12 configuration format
+-- (typed DNS servers, domain_resolver, rule actions), so 1.12.0 is the minimum.
+-- Kept in sync with EV_SINGBOX_MIN_VERSION in /usr/share/easy_vless/utils.sh,
+-- which app.sh checks before calling gen_config. Any package providing
+-- "sing-box" (sing-box, sing-box-tiny) qualifies if its binary is new enough.
+local MIN_SINGBOX_VERSION = "1.12.0"
+local local_version = (api.get_app_version("sing-box") or ""):match("[^v]+")
 
 local GLOBAL = {
 	DNS_SERVER = {}
@@ -705,7 +710,7 @@ function gen_config(var)
 				type = "urltest",
 				tag = urltest_tag,
 				outbounds = valid_nodes,
-				url = _node.urltest_url or "https://www.gstatic.com/generate_204",
+				url = _node.urltest_url or "https://x.com", -- Easy VLESS URL Test default
 				interval = (api.format_go_time(_node.urltest_interval) ~= "0s") and api.format_go_time(_node.urltest_interval) or "3m",
 				tolerance = (_node.urltest_tolerance and tonumber(_node.urltest_tolerance) > 0) and tonumber(_node.urltest_tolerance) or 50,
 				idle_timeout = (api.format_go_time(_node.urltest_idle_timeout) ~= "0s") and api.format_go_time(_node.urltest_idle_timeout) or "30m",
@@ -1529,6 +1534,16 @@ function gen_config(var)
 		end
 	end
 	
+	-- Easy VLESS: Clash API of the main instance, used by LuCI to read and
+	-- trigger URL Test results. Listens on loopback only, secret per start.
+	if var["clash_api_port"] then
+		experimental = experimental or {}
+		experimental.clash_api = {
+			external_controller = "127.0.0.1:" .. var["clash_api_port"],
+			secret = var["clash_api_secret"]
+		}
+	end
+
 	if inbounds or outbounds then
 		local config = {
 			log = {
@@ -1651,6 +1666,10 @@ _G.geo_convert_srs = geo_convert_srs
 
 if arg[1] then
 	local func =_G[arg[1]]
+	if func and not (local_version and api.compare_versions(local_version, ">=", MIN_SINGBOX_VERSION)) then
+		io.stderr:write(string.format("sing-box %s is not supported: Easy VLESS requires sing-box >= %s\n", local_version or "(not found)", MIN_SINGBOX_VERSION))
+		os.exit(1)
+	end
 	if func then
 		local var = nil
 		if arg[2] then

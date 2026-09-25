@@ -1,0 +1,31 @@
+{
+	"luci-app-easy-vless": {
+		"description": "Grant access to Easy VLESS configuration and service control",
+		"read": {
+			"ubus": {
+				"luci.easy_vless": [
+					"status",
+					"check",
+					"groups"
+				]
+			},
+			"uci": [
+				"easy_vless"
+			]
+		},
+		"write": {
+			"ubus": {
+				"luci.easy_vless": [
+					"start",
+					"stop",
+					"import",
+					"urltest_node",
+					"group_test"
+				]
+			},
+			"uci": [
+				"easy_vless"
+			]
+		}
+	}
+}
