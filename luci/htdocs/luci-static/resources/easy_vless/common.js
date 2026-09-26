@@ -6,49 +6,90 @@
 'require dom';
 
 /*
- * Easy VLESS - helpers shared by the LuCI views (servers, urltest, rules).
+ * Easy VLESS - helpers shared by the LuCI views
+ * (Main, Node List, Rule Manage, Settings).
  *
  * UCI model (the existing easy-vless runtime schema, PassWall2-derived):
+ *   easy_vless.global.enabled       main switch
  *   easy_vless.global.node          what the runtime starts: a server, a URL
- *                                   Test group, or the routing-rules router
+ *                                   Test group, or the Main Router (shunt)
  *   config nodes, protocol=vless    a VLESS server
  *   config nodes, protocol=_urltest a URL Test group (list urltest_node)
- *   config nodes 'main_router',     the routing rules ("_shunt" node):
- *     protocol=_shunt                 default_node = default outbound,
+ *   config nodes 'main_router',     the Main Router ("_shunt" node):
+ *     protocol=_shunt                 default_node = Default target,
  *                                     option <rule id> = target of that rule
- *   config shunt_rules              one rule (domain_list, ip_list, ...)
+ *   config shunt_rules              one rule = conditions only (remarks,
+ *                                   protocol, inbound, network, source,
+ *                                   sourcePort, port, domain_list, ip_list);
+ *                                   section order = rule priority
+ *   config subscribe_list           one subscription (subscribe.lua)
  *
- * "Active target" = default outbound: global.node, or main_router.default_node
- * while routing rules are enabled (global.node == 'main_router').
+ * Targets: '_direct' (Direct), '_blackhole' (Block), '_default' (rules only:
+ * same as Default), a server id or a URL Test group id.
  */
 
 const CONFIG = 'easy_vless';
 const ROUTER = 'main_router';
+const SERVER_TEST_URL = 'https://www.gstatic.com/generate_204';
+const URL_TEST_URL = 'https://x.com';
 
-const callStatus = rpc.declare({ object: 'luci.easy_vless', method: 'status', expect: { '': {} } });
+const callStatus = rpc.declare({ object: 'luci.easy_vless', method: 'status', params: [ 'log_from' ], expect: { '': {} } });
 const callCheck = rpc.declare({ object: 'luci.easy_vless', method: 'check', params: [ 'node' ], expect: { '': {} } });
 const callStart = rpc.declare({ object: 'luci.easy_vless', method: 'start', expect: { '': {} } });
 const callStop = rpc.declare({ object: 'luci.easy_vless', method: 'stop', expect: { '': {} } });
 const callImport = rpc.declare({ object: 'luci.easy_vless', method: 'import', params: [ 'links' ], expect: { '': {} } });
+const callSubscribe = rpc.declare({ object: 'luci.easy_vless', method: 'subscribe', params: [ 'action', 'id' ], expect: { '': {} } });
 const callUrltestNode = rpc.declare({ object: 'luci.easy_vless', method: 'urltest_node', params: [ 'node' ], expect: { '': {} } });
 const callGroups = rpc.declare({ object: 'luci.easy_vless', method: 'groups', expect: { '': {} } });
 const callGroupTest = rpc.declare({ object: 'luci.easy_vless', method: 'group_test', params: [ 'group' ], expect: { '': {} } });
+/* Requires "ubus": { "uci": [ "commit" ] } in the ACL (luci-base does not
+ * grant it; without it every save silently failed - see current-state.md). */
 const callUciCommit = rpc.declare({ object: 'uci', method: 'commit', params: [ 'config' ] });
 
 function sleep(ms) {
 	return new Promise(function(resolve) { window.setTimeout(resolve, ms); });
 }
 
+/* Never let an RPC failure (ACL, timeout, rpcd error) disappear: turn it
+ * into a normal result object with the error text. */
+function safe(promise) {
+	return Promise.resolve(promise).catch(function(e) {
+		return { ok: false, code: -1, rpc_error: true, error: (e && e.message) ? e.message : String(e), output: _('RPC error: %s').format((e && e.message) ? e.message : String(e)) };
+	});
+}
+
+function lines(v) {
+	return (v || '').split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l && l.charAt(0) != '#'; });
+}
+
 return baseclass.extend({
 	CONFIG: CONFIG,
 	ROUTER: ROUTER,
+	SERVER_TEST_URL: SERVER_TEST_URL,
+	URL_TEST_URL: URL_TEST_URL,
 
-	callStatus: callStatus,
-	callCheck: callCheck,
-	callImport: callImport,
-	callUrltestNode: callUrltestNode,
-	callGroups: callGroups,
-	callGroupTest: callGroupTest,
+	sleep: sleep,
+	safe: safe,
+	lines: lines,
+
+	callStatus: function(logFrom) { return safe(callStatus(logFrom || 0)); },
+	callCheck: function(node) { return safe(callCheck(node || '')); },
+	callImport: function(links) { return safe(callImport(links)); },
+	callSubscribe: function(action, id) { return safe(callSubscribe(action, id || '')); },
+	callUrltestNode: function(sid) { return safe(callUrltestNode(sid)); },
+	callGroups: function() { return safe(callGroups()); },
+	callGroupTest: function(id) { return safe(callGroupTest(id)); },
+
+	/* Ports field: comma separated ports or from:to ranges, 1-65535. */
+	validPorts: function(v) {
+		return !v || String(v).split(',').every(function(p) {
+			const m = p.match(/^(\d+)(?::(\d+))?$/);
+			if (!m)
+				return false;
+			const a = +m[1], b = m[2] ? +m[2] : a;
+			return a >= 1 && b <= 65535 && a <= b;
+		});
+	},
 
 	/* ---------- node helpers ---------- */
 
@@ -76,8 +117,12 @@ return baseclass.extend({
 		return uci.sections(CONFIG, 'nodes').filter(function(s) { return s.protocol == '_urltest'; });
 	},
 
-	/* Random section name, so rows can be referenced (active target, rule
-	 * targets) before the first save. */
+	rules: function() {
+		return uci.sections(CONFIG, 'shunt_rules');
+	},
+
+	/* Random named section id: stable across saves and reordering (anonymous
+	 * sections get a temporary id until the first save). */
 	newName: function(prefix) {
 		const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
 		let n = prefix || '';
@@ -90,42 +135,48 @@ return baseclass.extend({
 		if (!sid)
 			return _('none');
 		if (sid == '_direct')
-			return _('Direct (no proxy)');
+			return _('Direct');
 		if (sid == '_blackhole')
 			return _('Block');
 		if (sid == '_default')
-			return _('Default outbound');
+			return _('Default target');
 		const remarks = uci.get(CONFIG, sid, 'remarks');
 		if (this.isGroup(sid))
 			return _('URL Test group') + ': ' + (remarks || sid);
 		if (this.isServer(sid))
-			return '%s (%s:%s)'.format(remarks || sid, uci.get(CONFIG, sid, 'address') || '?', uci.get(CONFIG, sid, 'port') || '?');
+			return 'VLESS: ' + (remarks || sid);
 		if (sid == ROUTER)
-			return _('Routing rules');
+			return _('Main Router (shunt)');
 		return remarks || sid;
 	},
 
-	/* Values for "outbound" selects: servers and URL Test groups. */
-	addTargetValues: function(o, withDirect) {
-		if (withDirect)
-			o.value('_direct', _('Direct (no proxy)'));
+	/* Target values for a ListValue: Direct, servers, groups, Block
+	 * (+ "Default target" for rule entries). */
+	addTargetValues: function(o, forRule) {
+		if (forRule)
+			o.value('_default', _('Default target'));
+		o.value('_direct', _('Direct'));
 		this.servers().forEach(L.bind(function(s) { o.value(s['.name'], this.label(s['.name'])); }, this));
 		this.groups().forEach(L.bind(function(s) { o.value(s['.name'], this.label(s['.name'])); }, this));
+		o.value('_blackhole', _('Block'));
 	},
 
-	rulesEnabled: function() {
+	shuntEnabled: function() {
 		return uci.get(CONFIG, 'global', 'node') == ROUTER;
 	},
 
 	ensureRouter: function() {
 		if (!uci.get(CONFIG, ROUTER)) {
 			uci.add(CONFIG, 'nodes', ROUTER);
-			uci.set(CONFIG, ROUTER, 'remarks', 'Routing rules');
+			uci.set(CONFIG, ROUTER, 'remarks', 'Main Router');
 			uci.set(CONFIG, ROUTER, 'type', 'sing-box');
 			uci.set(CONFIG, ROUTER, 'protocol', '_shunt');
+			uci.set(CONFIG, ROUTER, 'default_node', '_direct');
 		}
 	},
 
+	/* "Active target" = where default traffic goes: global.node, or the
+	 * Main Router's Default target while the shunt is the main node. */
 	activeTarget: function() {
 		const node = uci.get(CONFIG, 'global', 'node');
 		if (node == ROUTER)
@@ -133,26 +184,34 @@ return baseclass.extend({
 		return node || '';
 	},
 
+	/* "Use": with the Main Router active, a server/group becomes its Default
+	 * target (rule entries are kept); otherwise it becomes the main node. */
 	setActiveTarget: function(sid) {
-		if (this.rulesEnabled())
+		if (this.shuntEnabled())
 			uci.set(CONFIG, ROUTER, 'default_node', sid);
 		else
 			uci.set(CONFIG, 'global', 'node', sid);
 	},
 
-	setRulesEnabled: function(enabled) {
-		const target = this.activeTarget();
-		if (enabled) {
-			this.ensureRouter();
-			uci.set(CONFIG, ROUTER, 'default_node', target || '_direct');
-			uci.set(CONFIG, 'global', 'node', ROUTER);
-		}
-		else if (this.rulesEnabled()) {
-			uci.set(CONFIG, 'global', 'node', (target && target != '_direct') ? target : '');
-		}
+	/* Is a server used by the configuration (directly, via a group or as a
+	 * Main Router target)? Returns a list of human readable references. */
+	references: function(sid) {
+		const refs = [];
+		if (uci.get(CONFIG, 'global', 'node') == sid)
+			refs.push(_('Main node'));
+		if (uci.get(CONFIG, ROUTER, 'default_node') == sid)
+			refs.push(_('Main Router: Default'));
+		this.rules().forEach(L.bind(function(r) {
+			if (uci.get(CONFIG, ROUTER, r['.name']) == sid)
+				refs.push(_('Main Router: %s').format(r.remarks || r['.name']));
+		}, this));
+		this.groups().forEach(L.bind(function(g) {
+			if (g['.name'] != sid && L.toArray(g.urltest_node).indexOf(sid) > -1)
+				refs.push(this.label(g['.name']));
+		}, this));
+		return refs;
 	},
 
-	/* Is a server used by the running configuration (directly or via a group)? */
 	targetUses: function(target, sid) {
 		if (!target)
 			return false;
@@ -163,137 +222,345 @@ return baseclass.extend({
 		return false;
 	},
 
-	/* ---------- saving / service control ---------- */
-
-	/* Save the form to UCI and commit easy_vless: the runtime only reads the
-	 * committed configuration. */
-	saveAndCommit: function(map) {
-		return map.save(null, true).catch(function(e) {
-			ui.addNotification(null, E('p', _('The form contains invalid values, nothing was saved: %s').format(e.message || e)), 'error');
-			throw e;
-		}).then(function() {
-			return uci.save();
-		}).then(function() {
-			return callUciCommit(CONFIG);
-		}).then(function() {
-			return ui.changes.init();
-		});
+	/* Move a section one step up/down among the sections accepted by filter
+	 * (UCI section order = display order; for rules = priority). */
+	moveSection: function(sid, up, filter) {
+		const list = uci.sections(CONFIG, uci.get(CONFIG, sid)['.type']).filter(filter || function() { return true; });
+		const i = list.findIndex(function(s) { return s['.name'] == sid; });
+		const j = up ? i - 1 : i + 1;
+		if (i < 0 || j < 0 || j >= list.length)
+			return false;
+		return uci.move(CONFIG, sid, list[j]['.name'], !up);
 	},
 
-	showResult: function(title, ok, text) {
+	/* ---------- result / busy UI ---------- */
+
+	badge: function(text, kind) {
+		const colors = { ok: '#2e7d32', bad: '#c62828', warn: '#b26a00', idle: '#607d8b', info: '#1565c0' };
+		return E('span', {
+			'style': 'display:inline-block;padding:.1em .6em;border-radius:1em;font-size:90%;font-weight:bold;color:#fff;background:' + (colors[kind] || colors.idle)
+		}, text);
+	},
+
+	showBusy: function(title, text) {
 		ui.showModal(title, [
-			E('p', {}, E('strong', {}, ok ? _('Success.') : _('Failed.'))),
-			text ? E('pre', { 'style': 'white-space:pre-wrap;max-height:25em;overflow:auto' }, text) : '',
+			E('p', { 'class': 'spinning' }, text || _('Please wait…'))
+		]);
+	},
+
+	/* verdict: 'ok' | 'bad' | 'warn' */
+	showResult: function(title, verdict, headline, details, extra) {
+		const kind = (verdict === true) ? 'ok' : (verdict === false ? 'bad' : verdict);
+		ui.showModal(title, [
+			E('p', {}, [ this.badge(kind == 'ok' ? _('PASSED') : (kind == 'warn' ? _('WARNING') : _('FAILED')), kind), ' ', E('strong', {}, headline || '') ]),
+			extra || '',
+			details ? E('pre', { 'style': 'white-space:pre-wrap;max-height:22em;overflow:auto;font-size:90%' }, details) : '',
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close'))
 			])
 		]);
 	},
 
+	notify: function(text, kind) {
+		ui.addNotification(null, E('p', text), kind || 'info');
+	},
+
+	/* ---------- saving / service control ---------- */
+
+	/* Save the form and commit easy_vless: the runtime reads only the
+	 * committed configuration. Deliberately not LuCI's "apply" (that would
+	 * restart the service through ucitrack without the sing-box check). */
+	saveAndCommit: function(map) {
+		const maps = map ? L.toArray(map) : [];
+		let stage = 'form';
+		return Promise.all(maps.map(function(m) { return m.save(null, true); })).then(function() {
+			stage = 'save';
+			return uci.save();
+		}).then(function() {
+			stage = 'commit';
+			return callUciCommit(CONFIG);
+		}).catch(function(e) {
+			const msg = (e && e.message) ? e.message : String(e);
+			if (stage == 'form')
+				ui.addNotification(null, E('p', _('The form contains invalid values, nothing was saved: %s').format(msg)), 'error');
+			else
+				ui.addNotification(null, E('p', _('Saving failed (%s): %s').format(stage == 'commit' ? 'uci commit' : 'uci save', msg)), 'error');
+			throw e;
+		}).then(function() {
+			return ui.changes.init();
+		});
+	},
+
+	handleSave: function(map) {
+		return this.saveAndCommit(map).then(L.bind(function() {
+			this.notify(_('Configuration saved. Running service is not changed; use Save & Apply to apply it.'));
+		}, this)).catch(function() {});
+	},
+
+	/* Save & Apply (PassWall2 semantics): main switch on -> check + (re)start,
+	 * main switch off -> stop. */
+	handleApply: function(map) {
+		return this.saveAndCommit(map).then(L.bind(function() {
+			if (uci.get(CONFIG, 'global', 'enabled') == '1')
+				return this.startFlow().then(L.bind(this.reloadMaps, this, map));
+			return this.callStatus().then(L.bind(function(st) {
+				if (st.running || st.nft_table)
+					return this.stopFlow();
+				this.notify(_('Saved. The main switch is off, Easy VLESS stays stopped.'));
+			}, this));
+		}, this)).catch(function() {});
+	},
+
 	handleCheck: function(map) {
-		return this.saveAndCommit(map).then(function() {
-			return callCheck('');
-		}).then(L.bind(function(res) {
-			this.showResult(_('Configuration check'), res.code == 0, res.output);
-		}, this));
+		return this.saveAndCommit(map).then(L.bind(function() {
+			this.showBusy(_('Check config'), _('Generating the sing-box configuration and running "sing-box check"…'));
+			return this.callCheck('');
+		}, this)).then(L.bind(function(res) {
+			if (!res)
+				return;
+			if (res.ok || res.code === 0)
+				this.showResult(_('Check config'), 'ok', _('sing-box configuration is valid'), res.output);
+			else
+				this.showResult(_('Check config'), 'bad', res.rpc_error ? _('Check could not run') : _('sing-box rejected the configuration'), res.output || res.error);
+		}, this)).catch(function() {});
 	},
 
-	/* Validate (sing-box check) first; only then enable and (re)start. */
 	handleStart: function(map) {
-		return this.saveAndCommit(map).then(function() {
-			return callStart();
-		}).then(L.bind(function(res) {
-			if (res.code != 0)
-				return this.showResult(_('Not started: configuration check failed'), false, res.output);
-			ui.addNotification(null, E('p', _('Easy VLESS is (re)starting with the saved configuration…')), 'info');
-			return sleep(4000).then(L.bind(this.refreshStatus, this));
+		return this.saveAndCommit(map).then(L.bind(this.startFlow, this))
+			.then(L.bind(this.reloadMaps, this, map)).catch(function() {});
+	},
+
+	/* Stop also turns the main switch off (done by the rpcd "stop" method). */
+	handleStop: function(map) {
+		return this.stopFlow().then(L.bind(this.reloadMaps, this, map)).catch(function() {});
+	},
+
+	/* start/stop change global.enabled on the router: reload the forms so the
+	 * Main switch shows the real value. */
+	reloadMaps: function(map) {
+		const maps = map ? L.toArray(map) : [];
+		if (!maps.length)
+			return;
+		uci.unload(CONFIG);
+		return Promise.all(maps.map(function(m) {
+			return m.load().then(function() { return m.reset(); });
+		}));
+	},
+
+	/* check -> enable + detached restart -> poll status (health) -> result. */
+	startFlow: function() {
+		let before;
+		this.showBusy(_('Start'), _('Checking the configuration with sing-box…'));
+		return this.callStatus().then(L.bind(function(st) {
+			before = st || {};
+			return safe(callStart());
+		}, this)).then(L.bind(function(res) {
+			if (res.rpc_error)
+				return this.showResult(_('Start'), 'bad', _('Start request failed'), res.output);
+			if (!res.ok && res.code !== 0)
+				return this.showResult(_('Start'), 'bad', _('Not started: configuration check failed. Network settings were not changed.'), res.output);
+			this.showBusy(_('Start'), _('Configuration valid. Starting sing-box, firewall and DNS…'));
+			return this.waitFor(function(st, sawBusy, elapsed) {
+				if (st.busy)
+					return null;
+				if (st.running && (!before.running || st.pid != before.pid))
+					return true;
+				if (sawBusy || elapsed > 12000)
+					return false;
+				return null;
+			}, 45000, res.log_mark).then(L.bind(function(r) {
+				this.lastStatus = r.status;
+				this.refreshStatus();
+				if (r.done) {
+					const st = r.status;
+					this.showResult(_('Start'), 'ok', _('Running'), null, E('ul', {}, [
+						E('li', {}, _('PID: %s').format(st.pid)),
+						E('li', {}, _('sing-box: %s').format(st.singbox_version || '?')),
+						E('li', {}, _('Firewall: %s').format(st.nft_table ? _('nft table inet easy_vless present') : _('absent'))),
+						E('li', {}, _('Memory: %s').format(st.rss_kb ? '%.1f MiB'.format(st.rss_kb / 1024) : '-'))
+					]));
+				}
+				else {
+					this.showResult(_('Start'), 'bad', r.timeout ? _('Start did not finish in time') : _('sing-box is not running (the start was rolled back)'), (r.status && r.status.log) || '');
+				}
+			}, this));
 		}, this));
 	},
 
-	handleStop: function() {
-		return callStop().then(L.bind(function() {
-			ui.addNotification(null, E('p', _('Easy VLESS is stopping…')), 'info');
-			return sleep(3000).then(L.bind(this.refreshStatus, this));
+	stopFlow: function() {
+		this.showBusy(_('Stop'), _('Stopping Easy VLESS and removing its firewall rules…'));
+		return safe(callStop()).then(L.bind(function(res) {
+			if (res.rpc_error)
+				return this.showResult(_('Stop'), 'bad', _('Stop request failed'), res.output);
+			return this.waitFor(function(st, sawBusy, elapsed) {
+				if (st.busy)
+					return null;
+				if (!st.running && (sawBusy || elapsed > 3000))
+					return true;
+				return elapsed > 20000 ? false : null;
+			}, 30000, res.log_mark).then(L.bind(function(r) {
+				this.lastStatus = r.status;
+				this.refreshStatus();
+				if (r.done && !r.status.nft_table)
+					this.showResult(_('Stop'), 'ok', _('Stopped. sing-box, nft table, ip rules and DNS changes were removed.'));
+				else if (r.done)
+					this.showResult(_('Stop'), 'warn', _('Stopped, but the nft table inet easy_vless is still present.'), r.status.log);
+				else
+					this.showResult(_('Stop'), 'bad', _('Easy VLESS did not stop in time.'), (r.status && r.status.log) || '');
+			}, this));
 		}, this));
 	},
 
-	/* Apply a changed active target: restart only if the service is running. */
+	/* Poll status until cond(status, sawBusy, elapsed) returns true/false. */
+	waitFor: function(cond, timeout, logFrom) {
+		const t0 = Date.now();
+		let sawBusy = false;
+		const step = L.bind(function() {
+			return sleep(1500).then(L.bind(function() { return this.callStatus(logFrom); }, this)).then(function(st) {
+				st = st || {};
+				if (st.busy)
+					sawBusy = true;
+				const elapsed = Date.now() - t0;
+				const r = st.rpc_error ? null : cond(st, sawBusy, elapsed);
+				if (r === true || r === false)
+					return { done: r, status: st };
+				if (elapsed > timeout)
+					return { done: false, timeout: true, status: st };
+				return step();
+			});
+		}, this);
+		return step();
+	},
+
+	/* Apply a changed target right away if the service is running. */
 	applyIfRunning: function(map) {
-		return this.saveAndCommit(map).then(function() {
-			return callStatus();
-		}).then(L.bind(function(st) {
+		return this.saveAndCommit(map).then(L.bind(function() {
+			return this.callStatus();
+		}, this)).then(L.bind(function(st) {
 			if (st.running)
-				return this.handleStart(map);
-			ui.addNotification(null, E('p', _('Saved. Easy VLESS is stopped; the change applies on the next start.')), 'info');
-		}, this));
+				return this.startFlow();
+			this.notify(_('Saved. Easy VLESS is stopped; the change applies on the next start.'));
+		}, this)).catch(function() {});
 	},
 
 	/* ---------- status ---------- */
 
 	lastStatus: {},
 
-	renderStatus: function(st) {
-		const running = !!st.running;
-		const node = st.node;
-		let target = node ? this.label(node) : _('none selected');
-		if (node == ROUTER)
-			target = _('Routing rules, default: %s').format(this.label(uci.get(CONFIG, ROUTER, 'default_node') || '_direct'));
+	card: function(title, value, sub) {
+		return E('div', { 'style': 'border:1px solid rgba(128,128,128,.35);border-radius:.5em;padding:.6em .8em;min-width:0' }, [
+			E('div', { 'style': 'font-size:85%;opacity:.75' }, title),
+			E('div', { 'style': 'font-size:115%;font-weight:bold;margin-top:.2em;overflow:hidden;text-overflow:ellipsis' }, value),
+			sub ? E('div', { 'style': 'font-size:85%;opacity:.75;margin-top:.2em;overflow:hidden;text-overflow:ellipsis' }, sub) : ''
+		]);
+	},
 
-		const rows = [
-			[ _('Service'), running
-				? E('strong', { 'style': 'color:#2e7d32' }, _('Running') + (st.pid ? ' (PID %s)'.format(st.pid) : ''))
-				: E('strong', { 'style': 'color:#c62828' }, _('Stopped')) ],
-			[ _('Main switch'), st.enabled ? _('Enabled (starts on boot)') : _('Disabled') ],
-			[ _('Active'), target ],
-			[ _('Memory (sing-box)'), running && st.rss_kb
-				? _('%s MiB (peak %s MiB)').format((st.rss_kb / 1024).toFixed(1), ((st.rss_peak_kb || 0) / 1024).toFixed(1)) : '-' ],
-			[ _('Firewall'), st.nft_table ? _('nft table inet easy_vless present') : _('no Easy VLESS rules') ],
-			[ _('sing-box'), st.singbox_version
-				? '%s (%s)%s'.format(st.singbox_version, st.singbox_bin || '-',
-					st.singbox_backend ? '' : ' - ' + _('easy-vless-sing-box is not installed'))
-				: _('not found (requires sing-box >= %s)').format(st.singbox_min_version || '1.12.0') ]
+	activeText: function(node) {
+		if (!node)
+			return _('none selected');
+		if (node == ROUTER)
+			return _('Main Router');
+		return uci.get(CONFIG, node, 'remarks') || node;
+	},
+
+	renderStatus: function(st, compact) {
+		st = st || {};
+		const running = !!st.running;
+		const node = st.node || uci.get(CONFIG, 'global', 'node');
+		let core;
+		if (st.rpc_error)
+			core = this.badge(_('unknown'), 'warn');
+		else if (st.busy)
+			core = this.badge(_('Starting / stopping…'), 'info');
+		else if (running)
+			core = this.badge(_('Running'), 'ok');
+		else
+			core = this.badge(_('Stopped'), st.enabled ? 'bad' : 'idle');
+
+		const cards = [
+			this.card(_('Core'), core, running ? _('PID %s').format(st.pid) : (st.enabled && !st.busy ? _('main switch is on, but not running') : '')),
+			this.card(_('Main switch'), st.enabled ? _('Enabled') : _('Disabled'), st.enabled ? _('starts on boot') : ''),
+			this.card(_('Active'), this.activeText(node), node == ROUTER ? _('Default: %s').format(this.label(uci.get(CONFIG, ROUTER, 'default_node') || '_direct')) : '')
 		];
+		if (!compact) {
+			cards.push(
+				this.card(_('sing-box'), st.singbox_version || _('not found'),
+					st.singbox_version ? (st.singbox_backend ? '' : _('easy-vless-sing-box missing')) : _('requires sing-box >= %s').format(st.singbox_min_version || '1.12.0')),
+				this.card(_('Memory (RSS)'), running && st.rss_kb ? '%.1f MiB'.format(st.rss_kb / 1024) : '-',
+					running && st.rss_peak_kb ? _('peak %.1f MiB').format(st.rss_peak_kb / 1024) : ''),
+				this.card(_('Firewall'), st.nft_table ? _('present') : _('absent'), 'nft inet easy_vless'),
+				this.card(_('Routing mode'), st.routing_mode || 'singbox', '')
+			);
+		}
+		if (st.rpc_error)
+			cards.push(E('div', { 'class': 'alert-message warning', 'style': 'grid-column:1/-1' }, _('Status unavailable: %s').format(st.error)));
 
 		return E('div', {}, [
-			E('table', { 'class': 'table' }, rows.map(function(r) {
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td left', 'style': 'width:33%' }, r[0]),
-					E('td', { 'class': 'td left' }, r[1])
-				]);
-			})),
-			E('details', {}, [
+			E('div', { 'style': 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6em' }, cards),
+			compact ? '' : E('details', { 'style': 'margin-top:.6em' }, [
 				E('summary', {}, _('Recent log')),
-				E('pre', { 'style': 'white-space:pre-wrap;max-height:20em;overflow:auto' }, st.log || _('(empty)'))
+				E('pre', { 'style': 'white-space:pre-wrap;max-height:20em;overflow:auto;font-size:90%' }, st.log || _('(empty)'))
 			])
 		]);
 	},
 
+	statusBoxes: [],
+
 	refreshStatus: function() {
-		return callStatus().then(L.bind(function(st) {
+		return this.callStatus().then(L.bind(function(st) {
 			this.lastStatus = st;
-			const box = document.getElementById('easy-vless-status');
-			if (box)
-				dom.content(box, this.renderStatus(st));
+			document.querySelectorAll('[data-ev-status]').forEach(L.bind(function(box) {
+				dom.content(box, this.renderStatus(st, box.getAttribute('data-ev-status') == 'compact'));
+			}, this));
 			return st;
 		}, this));
 	},
 
-	/* Status box + service buttons, shown on top of every page. */
-	renderHeader: function(map, st, extraButtons) {
+	/* Status block + service buttons. */
+	renderHeader: function(map, st, extraButtons, compact) {
 		this.lastStatus = st || {};
 		const buttons = [
-			E('button', { 'class': 'btn cbi-button cbi-button-apply', 'click': ui.createHandlerFn(this, 'handleStart', map) }, _('Apply & Start')),
+			E('button', { 'class': 'btn cbi-button cbi-button-apply', 'click': ui.createHandlerFn(this, 'handleStart', map) }, _('Save & Start')),
 			' ',
-			E('button', { 'class': 'btn cbi-button cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleStop') }, _('Stop')),
+			E('button', { 'class': 'btn cbi-button cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleStop', map) }, _('Stop')),
 			' ',
 			E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleCheck', map) }, _('Check config'))
 		].concat(extraButtons || []);
 
 		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Status')),
-			E('div', { 'id': 'easy-vless-status' }, this.renderStatus(this.lastStatus)),
-			E('div', { 'style': 'margin:1em 0' }, buttons)
+			E('div', { 'data-ev-status': compact ? 'compact' : 'full' }, this.renderStatus(this.lastStatus, compact)),
+			E('div', { 'style': 'margin:.8em 0 0' }, buttons)
 		]);
+	},
+
+	/* ---------- Server Test ---------- */
+
+	testResults: {},
+
+	testText: function(r) {
+		if (!r)
+			return '-';
+		if (r.pending)
+			return E('em', {}, _('testing…'));
+		if (r.ok)
+			return E('span', { 'title': '%s → HTTP %s'.format(r.url || SERVER_TEST_URL, r.http_code || '') },
+				[ this.badge(_('PASS'), 'ok'), ' ', _('%d ms').format(r.delay), E('br'), E('small', { 'style': 'opacity:.7' }, 'HTTP ' + (r.http_code || '')) ]);
+		const err = r.error || _('failed');
+		return E('span', { 'title': err }, [ this.badge(_('FAIL'), 'bad'), E('br'),
+			E('small', {}, err.length > 60 ? err.substr(0, 57) + '…' : err) ]);
+	},
+
+	/* Real per-server test: temporary sing-box instance with the server's
+	 * VLESS outbound + HTTPS request to https://www.gstatic.com/generate_204. */
+	serverTest: function(sid) {
+		this.testResults[sid] = { pending: true, time: Date.now() };
+		return this.callUrltestNode(sid).then(L.bind(function(res) {
+			if (res.rpc_error)
+				res = { ok: false, error: res.error };
+			res.time = Date.now();
+			this.testResults[sid] = res;
+			return res;
+		}, this));
 	},
 
 	/* ---------- VLESS URL export ---------- */
@@ -356,16 +623,6 @@ return baseclass.extend({
 			add('host', first(g('http_host')));
 			add('path', g('http_path'));
 			break;
-		case 'mkcp':
-			type = 'kcp';
-			add('headerType', g('mkcp_guise'));
-			add('seed', g('mkcp_seed'));
-			break;
-		case 'xhttp':
-			add('host', g('xhttp_host'));
-			add('path', g('xhttp_path'));
-			add('mode', g('xhttp_mode'));
-			break;
 		default:
 			warnings.push(_('Transport "%s" has no standard VLESS URL form.').format(transport));
 		}
@@ -427,10 +684,12 @@ return baseclass.extend({
 		return Promise.resolve(ok);
 	},
 
+	/* URL modal: URL + Copy + QR code (QR needs the optional luci-lib-uqr). */
 	showVlessUrl: function(sid) {
 		const r = this.buildVlessUrl(sid);
 		const field = E('textarea', { 'class': 'cbi-input-textarea', 'style': 'width:100%', 'rows': 4, 'readonly': 'readonly' }, r.url || '');
-		const note = E('span', { 'style': 'margin-left:1em' });
+		const note = E('span', { 'style': 'margin-right:1em' });
+		const qrBox = E('div', { 'style': 'text-align:center;margin:.5em 0' });
 
 		ui.showModal(_('VLESS URL') + ' » ' + (uci.get(CONFIG, sid, 'remarks') || sid), [
 			field,
@@ -438,6 +697,7 @@ return baseclass.extend({
 				E('p', {}, _('Not included in the URL:')),
 				E('ul', {}, r.warnings.map(function(w) { return E('li', {}, w); }))
 			]) : '',
+			qrBox,
 			E('p', { 'class': 'cbi-value-description' }, _('Generated from the saved settings; unsaved edits are not included.')),
 			E('div', { 'class': 'right' }, [
 				note,
@@ -455,5 +715,16 @@ return baseclass.extend({
 			])
 		]);
 		field.select();
+
+		if (r.url) {
+			L.require('uqr').then(function(uqr) {
+				qrBox.innerHTML = uqr.renderSVG(r.url, { pixelSize: 3, whiteColor: '#fff', blackColor: '#000' });
+				const svg = qrBox.querySelector('svg');
+				if (svg)
+					svg.setAttribute('style', 'max-width:260px;height:auto;background:#fff;padding:6px');
+			}).catch(function() {
+				qrBox.appendChild(E('small', { 'style': 'opacity:.7' }, _('QR code: install the optional package luci-lib-uqr.')));
+			});
+		}
 	}
 });

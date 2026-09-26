@@ -48,6 +48,8 @@ info "Preconditions"
 dnsmasq --help 2>/dev/null | grep -q -- '--nftset' && ok "dnsmasq supports --nftset" \
 	|| bad "dnsmasq has no --nftset (install dnsmasq-full manually; Easy VLESS never does it)"
 ubus list luci.easy_vless >/dev/null 2>&1 && ok "ubus object luci.easy_vless registered" || bad "ubus object luci.easy_vless missing"
+# LuCI saves with ubus "uci commit"; luci-base does not grant it (0.4.0 fix).
+grep -q '"commit"' /usr/share/rpcd/acl.d/luci-app-easy-vless.json 2>/dev/null && ok "ACL grants ubus uci commit (LuCI Save/Check/Start)" || bad "ACL lacks ubus uci commit: LuCI saves fail silently"
 NODE=${1:-$(uci -q get ${CONFIG}.@global[0].node)}
 [ "$NODE" = "main_router" ] && NODE=$(uci -q get ${CONFIG}.main_router.default_node)
 if [ -z "$NODE" ] || [ "$(uci -q get ${CONFIG}.${NODE}.protocol)" != "vless" ]; then

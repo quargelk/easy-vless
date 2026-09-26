@@ -1,7 +1,9 @@
 #!/bin/sh
 # rpcd exec plugin for luci-app-easy-vless (ubus object "luci.easy_vless").
 # Thin wrapper around the easy-vless runtime; all real work is done by
-# /usr/share/easy_vless/app.sh, subscribe.lua and /etc/init.d/easy_vless.
+# /usr/share/easy_vless/app.sh, test.sh, subscribe.lua, clash_api.lua and
+# /etc/init.d/easy_vless. Every method answers with JSON; failures carry a
+# human readable reason ("output"/"error") so LuCI never fails silently.
 
 . /usr/share/libubox/jshn.sh
 
@@ -10,9 +12,11 @@ APP=/usr/share/easy_vless/app.sh
 INIT=/etc/init.d/easy_vless
 LOG_FILE=/tmp/log/${CONFIG}.log
 LINKS_FILE=/tmp/links.conf
+CLASH_API=/usr/share/easy_vless/clash_api.lua
+SUBSCRIBE=/usr/share/easy_vless/subscribe.lua
 
 # Run a service action detached from rpcd, so a slow start/stop never hits
-# the rpcd exec timeout and the UI can poll "status" meanwhile.
+# the rpcd exec timeout; LuCI polls "status" (running/busy) meanwhile.
 run_detached() {
 	( "$@" ) </dev/null >/dev/null 2>&1 &
 }
@@ -21,44 +25,79 @@ count_nodes() {
 	uci -q show ${CONFIG} | grep -c "=nodes$"
 }
 
+log_lines() {
+	[ -f "$LOG_FILE" ] && wc -l < "$LOG_FILE" || echo 0
+}
+
 log_tail() {
 	local n="${1:-40}"
 	[ -f "$LOG_FILE" ] && tail -n "$n" "$LOG_FILE"
 }
 
+# Log lines written after line number $1 (the log may have been truncated
+# meanwhile; then everything is new).
+log_since() {
+	local from="$1" now
+	now=$(log_lines)
+	[ "$now" -ge "$from" ] 2>/dev/null || from=0
+	[ -f "$LOG_FILE" ] && tail -n "$((now - from))" "$LOG_FILE"
+}
+
+# status [log_from]: runtime state; "log" = the last 40 log lines, or the
+# lines written after line number log_from (start/stop result dialogs).
 method_status() {
-	local st
+	local from="$1" st
 	st=$($APP status 2>/dev/null)
 	[ -n "$st" ] || st='{}'
 	json_load "$st"
-	json_add_string "log" "$(log_tail 40)"
+	json_add_boolean "subscribe_busy" "$([ -f /var/lock/${CONFIG}_subscribe.lock ] && echo 1 || echo 0)"
+	if [ -n "$from" ] && [ "$from" -gt 0 ] 2>/dev/null; then
+		json_add_string "log" "$(log_since "$from" | tail -n 60)"
+	else
+		json_add_string "log" "$(log_tail 40)"
+	fi
+	json_add_int "log_lines" "$(log_lines)"
 	json_dump
 }
 
+# check: generate the sing-box config and run "sing-box check" on it
+# (app.sh check_config: no firewall/routing/service changes).
 method_check() {
 	local node="$1" out code
+	[ -n "$node" ] || node=$(uci -q get ${CONFIG}.@global[0].node)
 	out=$($APP check $node 2>&1)
 	code=$?
 	json_init
 	json_add_int "code" "$code"
+	json_add_boolean "ok" "$([ "$code" = 0 ] && echo 1 || echo 0)"
+	json_add_string "node" "$node"
 	json_add_string "output" "$out"
 	json_dump
 }
 
+# start: check first; only a valid configuration enables the main switch and
+# (re)starts the service. The restart itself runs detached; LuCI then polls
+# "status" until the service is up (or rolled back, see app.sh start).
 method_start() {
 	local node out code
 	node=$(uci -q get ${CONFIG}.@global[0].node)
-	# Validate before touching anything: an invalid config must not change
-	# the enabled flag, the firewall or the running instance.
 	out=$($APP check 2>&1)
 	code=$?
 	json_init
 	json_add_int "code" "$code"
+	json_add_boolean "ok" "$([ "$code" = 0 ] && echo 1 || echo 0)"
+	json_add_string "node" "$node"
 	json_add_string "output" "$out"
+	json_add_int "log_mark" "$(log_lines)"
 	if [ "$code" = 0 ]; then
 		uci -q set ${CONFIG}.@global[0].enabled='1'
 		uci -q commit ${CONFIG}
 		run_detached $INIT restart
+	else
+		# Save & Apply may have committed enabled=1 from the form: an invalid
+		# configuration must not be started on the next boot either.
+		uci -q set ${CONFIG}.@global[0].enabled='0'
+		uci -q commit ${CONFIG}
 	fi
 	json_dump
 }
@@ -66,18 +105,19 @@ method_start() {
 method_stop() {
 	uci -q set ${CONFIG}.@global[0].enabled='0'
 	uci -q commit ${CONFIG}
-	run_detached $INIT stop
 	json_init
 	json_add_int "code" 0
+	json_add_boolean "ok" 1
+	json_add_int "log_mark" "$(log_lines)"
+	run_detached $INIT stop
 	json_dump
 }
 
-CLASH_API=/usr/share/easy_vless/clash_api.lua
-
-# Real per-server test: PassWall2's proven test.sh starts a temporary sing-box
-# SOCKS instance for the node and fetches the probe URL through it with curl.
+# Server Test: PassWall2's test.sh starts a temporary sing-box SOCKS instance
+# for the node (its real VLESS outbound) and fetches
+# https://www.gstatic.com/generate_204 through it with curl.
 method_urltest_node() {
-	local node="$1" raw code t ms
+	local node="$1" raw code t rest exitcode errmsg ms
 	json_init
 	if [ -z "$node" ] || [ "$(uci -q get ${CONFIG}.${node})" != "nodes" ]; then
 		json_add_boolean "ok" 0
@@ -85,10 +125,21 @@ method_urltest_node() {
 		json_dump
 		return
 	fi
+	if [ ! -f /usr/lib/lua/luci/easy_vless/util_sing-box.lua ]; then
+		json_add_boolean "ok" 0
+		json_add_string "error" "The sing-box backend is not installed (easy-vless-sing-box and a sing-box package are required)."
+		json_dump
+		return
+	fi
 	raw=$(/usr/share/easy_vless/test.sh url_test_node "$node" 2>/dev/null | tail -n 1)
-	code=${raw%%:*}
-	t=${raw#*:}
+	# raw = <http code>:<seconds>:<curl exit code>:<curl error message>
+	code=${raw%%:*}; rest=${raw#*:}
+	t=${rest%%:*}; rest=${rest#*:}
+	exitcode=${rest%%:*}; errmsg=${rest#*:}
+	[ "$errmsg" = "$rest" ] && errmsg=""
 	json_add_string "raw" "$raw"
+	json_add_string "url" "$(uci -q get ${CONFIG}.@global_other[0].url_test_url || echo https://www.gstatic.com/generate_204)"
+	json_add_string "http_code" "$code"
 	case "$code" in
 		200|204)
 			ms=$(awk -v t="$t" 'BEGIN { printf "%d", t * 1000 }')
@@ -97,7 +148,13 @@ method_urltest_node() {
 		;;
 		*)
 			json_add_boolean "ok" 0
-			json_add_string "error" "Probe failed (HTTP ${code:-none})."
+			case "$exitcode" in
+				7|97) errmsg="The temporary sing-box instance for this server did not start (${errmsg:-no SOCKS listener}). Run Check config for details." ;;
+				28) errmsg="Connection timeout (${errmsg:-no response within 5 s})." ;;
+				52|56) errmsg="No answer through the VLESS connection: the server is unreachable or rejected the connection (${errmsg})." ;;
+			esac
+			[ -n "$errmsg" ] || errmsg="Probe failed (HTTP ${code:-none})."
+			json_add_string "error" "$errmsg"
 		;;
 	esac
 	json_dump
@@ -121,41 +178,99 @@ method_group_test() {
 	lua "$CLASH_API" test "$group" "$url"
 }
 
+# Import one or more vless:// links through the existing subscribe.lua parser.
 method_import() {
-	local links="$1" before after out code
+	local links="$1" before after out code mark found newlog skipped
 	json_init
 	case "$links" in
 		*vless://*) ;;
 		*)
 			json_add_int "code" 1
+			json_add_int "found" 0
+			json_add_int "added" 0
 			json_add_string "output" "No vless:// link found."
 			json_dump
 			return
 		;;
 	esac
+	found=$(printf '%s\n' "$links" | grep -c '://')
 	before=$(count_nodes)
+	mark=$(log_lines)
 	printf '%s\n' "$links" > "$LINKS_FILE"
 	# subscribe.lua reads $LINKS_FILE and deletes it; an empty group name keeps
 	# manually imported nodes ungrouped (add_mode=1).
-	out=$(lua /usr/share/easy_vless/subscribe.lua add "" 2>&1)
+	out=$(lua $SUBSCRIBE add "" 2>&1)
 	code=$?
 	rm -f "$LINKS_FILE"
 	after=$(count_nodes)
+	newlog=$(log_since "$mark")
+	skipped=$((found - (after - before)))
+	[ "$skipped" -ge 0 ] || skipped=0
 	json_add_int "code" "$code"
+	json_add_int "found" "$found"
 	json_add_int "added" "$((after - before))"
+	json_add_int "skipped" "$skipped"
 	json_add_string "output" "$out"
-	json_add_string "log" "$(log_tail 15)"
+	json_add_string "log" "$newlog"
+	json_dump
+}
+
+# Subscriptions (config subscribe_list): "update" downloads and parses the
+# subscription(s) with subscribe.lua (detached, may take long; LuCI polls
+# status.subscribe_busy), "truncate" deletes the nodes of one subscription.
+method_subscribe() {
+	local action="$1" id="$2" remark
+	json_init
+	case "$action" in
+		update)
+			[ -n "$id" ] || id=all
+			if [ "$id" != "all" ] && [ "$(uci -q get ${CONFIG}.${id})" != "subscribe_list" ]; then
+				json_add_int "code" 1
+				json_add_string "output" "Unknown subscription."
+				json_dump
+				return
+			fi
+			if [ -f /var/lock/${CONFIG}_subscribe.lock ]; then
+				json_add_int "code" 1
+				json_add_string "output" "A subscription update is already running."
+				json_dump
+				return
+			fi
+			json_add_int "code" 0
+			json_add_int "log_mark" "$(log_lines)"
+			json_add_int "nodes" "$(count_nodes)"
+			run_detached lua $SUBSCRIBE start "$id" manual
+		;;
+		truncate)
+			remark=$(uci -q get ${CONFIG}.${id}.remark)
+			if [ "$(uci -q get ${CONFIG}.${id})" != "subscribe_list" ] || [ -z "$remark" ]; then
+				json_add_int "code" 1
+				json_add_string "output" "Unknown subscription."
+				json_dump
+				return
+			fi
+			local before=$(count_nodes)
+			lua $SUBSCRIBE truncate "$remark" >/dev/null 2>&1
+			json_add_int "code" 0
+			json_add_int "removed" "$((before - $(count_nodes)))"
+		;;
+		*)
+			json_add_int "code" 2
+			json_add_string "output" "Unknown action."
+		;;
+	esac
 	json_dump
 }
 
 case "$1" in
 	list)
 		json_init
-		json_add_object "status"; json_close_object
+		json_add_object "status"; json_add_int "log_from" 0; json_close_object
 		json_add_object "check"; json_add_string "node" "string"; json_close_object
 		json_add_object "start"; json_close_object
 		json_add_object "stop"; json_close_object
 		json_add_object "import"; json_add_string "links" "string"; json_close_object
+		json_add_object "subscribe"; json_add_string "action" "string"; json_add_string "id" "string"; json_close_object
 		json_add_object "urltest_node"; json_add_string "node" "string"; json_close_object
 		json_add_object "groups"; json_close_object
 		json_add_object "group_test"; json_add_string "group" "string"; json_close_object
@@ -165,7 +280,10 @@ case "$1" in
 		input=$(cat)
 		[ -n "$input" ] || input='{}'
 		case "$2" in
-			status) method_status ;;
+			status)
+				json_load "$input"; json_get_var log_from log_from
+				method_status "$log_from"
+			;;
 			check)
 				json_load "$input"; json_get_var node node
 				method_check "$node"
@@ -175,6 +293,10 @@ case "$1" in
 			import)
 				json_load "$input"; json_get_var links links
 				method_import "$links"
+			;;
+			subscribe)
+				json_load "$input"; json_get_var action action; json_get_var id id
+				method_subscribe "$action" "$id"
 			;;
 			urltest_node)
 				json_load "$input"; json_get_var node node

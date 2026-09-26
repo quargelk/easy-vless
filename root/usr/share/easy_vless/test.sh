@@ -52,7 +52,10 @@ url_test_node() {
 		# tunnel) instead of PassWall2's time_pretransfer, which for plain
 		# http probe URLs only measures the local SOCKS handshake. This is
 		# also closer to what sing-box's own URL test reports.
-		result=$(curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_starttransfer}" -x ${curlx} "${probeUrl}")
+		# Output: <http code>:<seconds>:<curl exit code>:<curl error message>
+		# (the rpcd plugin turns this into PASS/FAIL, latency, HTTP status and
+		# the real error reason).
+		result=$(curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_starttransfer}:%{exitcode}:%{errormsg}" -x ${curlx} "${probeUrl}")
 		# End the SS plugin process
 		local pid_file="${TMP_PATH}/url_test_${node_id}_plugin.pid"
 		[ -s "$pid_file" ] && kill -9 "$(head -n 1 "$pid_file")" >/dev/null 2>&1

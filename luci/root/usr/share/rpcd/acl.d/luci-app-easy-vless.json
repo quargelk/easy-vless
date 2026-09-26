@@ -19,8 +19,12 @@
 					"start",
 					"stop",
 					"import",
+					"subscribe",
 					"urltest_node",
 					"group_test"
+				],
+				"uci": [
+					"commit"
 				]
 			},
 			"uci": [

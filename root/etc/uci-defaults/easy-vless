@@ -34,7 +34,7 @@ uci -q get easy_vless.@global[0].routing_mode >/dev/null || uci -q set easy_vles
 uci -q get easy_vless.@global[0].clash_api_port >/dev/null || uci -q set easy_vless.@global[0].clash_api_port='9095'
 if ! uci -q get easy_vless.main_router >/dev/null; then
 	uci -q set easy_vless.main_router=nodes
-	uci -q set easy_vless.main_router.remarks='Routing rules'
+	uci -q set easy_vless.main_router.remarks='Main Router'
 	uci -q set easy_vless.main_router.type='sing-box'
 	uci -q set easy_vless.main_router.protocol='_shunt'
 	uci -q set easy_vless.main_router.default_node='_direct'

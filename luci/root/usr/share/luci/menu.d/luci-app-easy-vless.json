@@ -14,28 +14,36 @@
 			}
 		}
 	},
-	"admin/services/easy_vless/servers": {
-		"title": "Servers",
+	"admin/services/easy_vless/main": {
+		"title": "Main",
 		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/main"
+		}
+	},
+	"admin/services/easy_vless/servers": {
+		"title": "Node List",
+		"order": 20,
 		"action": {
 			"type": "view",
 			"path": "easy_vless/servers"
 		}
 	},
-	"admin/services/easy_vless/urltest": {
-		"title": "URL Test",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "easy_vless/urltest"
-		}
-	},
 	"admin/services/easy_vless/rules": {
-		"title": "Routing rules",
+		"title": "Rule Manage",
 		"order": 30,
 		"action": {
 			"type": "view",
 			"path": "easy_vless/rules"
+		}
+	},
+	"admin/services/easy_vless/settings": {
+		"title": "Settings",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/settings"
 		}
 	}
 }

@@ -544,9 +544,10 @@ jobs:
 
           tar -xzf data.tar.gz
           for f in \
+            ./www/luci-static/resources/view/easy_vless/main.js \
             ./www/luci-static/resources/view/easy_vless/servers.js \
-            ./www/luci-static/resources/view/easy_vless/urltest.js \
             ./www/luci-static/resources/view/easy_vless/rules.js \
+            ./www/luci-static/resources/view/easy_vless/settings.js \
             ./www/luci-static/resources/easy_vless/common.js \
             ./usr/share/luci/menu.d/luci-app-easy-vless.json \
             ./usr/share/rpcd/acl.d/luci-app-easy-vless.json \

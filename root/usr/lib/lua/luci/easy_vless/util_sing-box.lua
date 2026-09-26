@@ -975,8 +975,10 @@ function gen_config(var)
 						rule.source_ip_is_private = source_is_private and true or nil
 					end
 
-					--[[
-					-- Too low usage rate, hidden
+					-- Easy VLESS: source port condition enabled (PassWall2 25.5.15-1
+					-- ships this block commented out as "too low usage rate";
+					-- sing-box 1.12 supports source_port/source_port_range and
+					-- Rule Manage exposes the field).
 					if e.sourcePort then
 						local source_port = {}
 						local source_port_range = {}
@@ -990,7 +992,6 @@ function gen_config(var)
 						rule.source_port = #source_port > 0 and source_port or nil
 						rule.source_port_range = #source_port_range > 0 and source_port_range or nil
 					end
-					]]--
 
 					if e.port then
 						local port = {}

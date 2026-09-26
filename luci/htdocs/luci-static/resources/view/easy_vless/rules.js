@@ -7,88 +7,128 @@
 'require easy_vless.common as ev';
 
 /*
- * Easy VLESS - Routing rules (routing_mode=singbox).
- * Rules are the existing PassWall2-derived "shunt" model: shunt_rules
- * sections evaluated in order by sing-box, each with a target stored in the
- * router node (main_router.<rule id>). Traffic matching no rule uses the
- * default outbound (main_router.default_node).
- * geoip:/geosite: entries need the optional easy-vless-geodata package; the
- * runtime refuses to start with a clear message when it is missing.
+ * Easy VLESS - Rule Manage (PassWall2 "Rule Manage" + "Shunt Rule" model).
+ * A rule (config shunt_rules) holds CONDITIONS only: protocol, inbound,
+ * network, source, source port, port, domains, IPs. Its ACTION/target is a
+ * shunt entry of the Main Router (main_router.<rule id>), chosen on Main (and
+ * editable here as well - same UCI value). Rules are evaluated top to bottom
+ * (UCI section order), exactly as util_sing-box.lua emits them.
+ * Field formats are the ones util_sing-box.lua parses:
+ *   protocol / inbound / source: space separated, network: "tcp,udp",
+ *   port / sourcePort: comma separated ports or "from:to" ranges,
+ *   domain_list / ip_list: one entry per line.
  */
 
 const CONFIG = ev.CONFIG;
 const ROUTER = ev.ROUTER;
 
+/* Store a multi-value field as one space separated option (the runtime
+ * parses a string, not a UCI list). */
+function joinedList(o, sep) {
+	o.cfgvalue = function(section_id) {
+		const v = uci.get(CONFIG, section_id, this.option);
+		if (Array.isArray(v))
+			return v;
+		return (v || '').split(sep == ',' ? /,/ : /\s+/).filter(function(x) { return x; });
+	};
+	o.write = function(section_id, value) {
+		uci.set(CONFIG, section_id, this.option, L.toArray(value).join(sep));
+	};
+}
+
+function summary(section_id) {
+	const g = function(k) { return uci.get(CONFIG, section_id, k); };
+	const parts = [];
+	const d = ev.lines(g('domain_list')), i = ev.lines(g('ip_list'));
+	if (d.length) parts.push(_('%d domains').format(d.length));
+	if (i.length) parts.push(_('%d IPs').format(i.length));
+	if (g('network') && g('network') != 'tcp,udp') parts.push(String(g('network')).toUpperCase());
+	if (g('port')) parts.push(_('port %s').format(g('port')));
+	if (g('sourcePort')) parts.push(_('source port %s').format(g('sourcePort')));
+	if (g('source')) parts.push(_('source %s').format(L.toArray(g('source')).join(' ')));
+	if (g('protocol')) parts.push(_('protocol %s').format(L.toArray(g('protocol')).join(' ')));
+	if (g('inbound')) parts.push(_('inbound %s').format(L.toArray(g('inbound')).join(' ')));
+	const geo = d.concat(i).filter(function(l) { return /^(geosite|geoip):/.test(l) && l != 'geoip:private'; }).length;
+	if (geo) parts.push(_('%d geodata entries').format(geo));
+	return parts.length ? parts.join(' · ') : _('no conditions (matches all)');
+}
+
 return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.load(CONFIG),
-			ev.callStatus().catch(function() { return {}; })
+			ev.callStatus()
 		]);
 	},
 
-	/* Saved immediately (like "Make active"), then the page is reloaded. */
-	handleToggle: function(enable) {
-		ev.setRulesEnabled(enable);
-		return ev.applyIfRunning(this.map).then(function() {
-			window.setTimeout(function() { window.location.reload(); }, 500);
-		});
+	handleMove: function(sid, up) {
+		if (!ev.moveSection(sid, up))
+			return Promise.resolve();
+		return ev.saveAndCommit(this.map).catch(function() {});
 	},
 
 	render: function(data) {
 		const status = data[1] || {};
 		let m, s, o;
+		const view_ = this;
 
-		m = this.map = new form.Map(CONFIG, _('Easy VLESS - Routing rules'),
-			_('Without rules all traffic goes through the active server or group. With rules enabled, matching traffic goes to the rule target and everything else to the default outbound. Rules are checked from top to bottom.'));
+		ev.ensureRouter();
 
-		if (ev.rulesEnabled()) {
-			s = m.section(form.NamedSection, 'global', 'global');
-			s.anonymous = true;
+		m = this.map = new form.Map(CONFIG);
 
-			/* Default outbound = main_router.default_node while rules are on;
-			 * the same value "Make active" sets on the Servers page. */
-			o = s.option(form.ListValue, '_default_target', _('Default outbound'),
-				_('Traffic that matches no rule.'));
-			ev.addTargetValues(o, true);
-			o.cfgvalue = function() {
-				return ev.activeTarget() || '_direct';
-			};
-			o.write = function(section_id, value) {
-				ev.setActiveTarget(value);
-			};
-		}
-
-		s = m.section(form.GridSection, 'shunt_rules', _('Rule list'));
+		s = m.section(form.GridSection, 'shunt_rules', _('Shunt rules'),
+			_('Rules are checked from top to bottom: the higher a rule, the higher its priority. A rule only describes conditions; its target is set on Main (Main Router entries) or here. A rule whose target is "Not used" is inactive.'));
 		s.addremove = true;
 		s.anonymous = true;
-		s.sortable = true;
+		s.sortable = false;
 		s.nodescriptions = true;
 		s.addbtntitle = _('Add rule');
 		s.modaltitle = function(section_id) {
-			return _('Rule') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New rule'));
+			return _('Shunt Rule') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New rule'));
 		};
 		s.handleAdd = function(ev_, name) {
 			/* Named section: the target is stored in main_router under the
-			 * rule's section name, which must be stable across the save. */
+			 * rule's section name, which must be stable across saves and
+			 * reordering. */
 			const section_id = this.map.data.add(CONFIG, this.sectiontype, ev.newName('rule_'));
-			ev.ensureRouter();
-			this.map.data.set(CONFIG, ROUTER, section_id, '_direct');
+			this.map.data.set(CONFIG, section_id, 'network', 'tcp,udp');
 			this.map.addedSection = section_id;
 			return this.renderMoreOptionsModal(section_id);
 		};
+		s.handleRemove = function(section_id, ev_) {
+			uci.unset(CONFIG, ROUTER, section_id);
+			return form.GridSection.prototype.handleRemove.apply(this, [ section_id, ev_ ]);
+		};
+		s.renderRowActions = function(section_id) {
+			const td = form.GridSection.prototype.renderRowActions.apply(this, [ section_id ]);
+			const box = td.lastElementChild;
+			box.insertBefore(E('button', { 'class': 'btn cbi-button', 'title': _('Down'), 'click': ui.createHandlerFn(view_, 'handleMove', section_id, false) }, '↓'), box.firstChild);
+			box.insertBefore(E('button', { 'class': 'btn cbi-button', 'title': _('Up'), 'click': ui.createHandlerFn(view_, 'handleMove', section_id, true) }, '↑'), box.firstChild);
+			return td;
+		};
 
-		o = s.option(form.Value, 'remarks', _('Name'));
+		s.tab('main', _('Rule'));
+		s.tab('match', _('Conditions'));
+
+		o = s.taboption('main', form.Value, 'remarks', _('Name'));
 		o.rmempty = false;
 
-		o = s.option(form.ListValue, '_target', _('Target'));
-		o.value('_direct', _('Direct (no proxy)'));
-		o.value('_default', _('Default outbound'));
-		o.value('_blackhole', _('Block'));
-		ev.servers().forEach(function(srv) { o.value(srv['.name'], ev.label(srv['.name'])); });
-		ev.groups().forEach(function(g) { o.value(g['.name'], ev.label(g['.name'])); });
+		o = s.taboption('main', form.DummyValue, '_order', _('Order'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			return String(ev.rules().findIndex(function(r) { return r['.name'] == section_id; }) + 1);
+		};
+
+		o = s.taboption('main', form.DummyValue, '_conditions', _('Conditions'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) { return summary(section_id); };
+
+		o = s.taboption('main', form.ListValue, '_target', _('Target'),
+			_('Stored in the Main Router; also shown on Main. Takes effect while the Main Router is the main node.'));
+		o.value('', _('Not used (rule off)'));
+		ev.addTargetValues(o, true);
 		o.cfgvalue = function(section_id) {
-			return uci.get(CONFIG, ROUTER, section_id) || '_direct';
+			return uci.get(CONFIG, ROUTER, section_id) || '';
 		};
 		o.write = function(section_id, value) {
 			ev.ensureRouter();
@@ -97,64 +137,99 @@ return view.extend({
 		o.remove = function(section_id) {
 			uci.unset(CONFIG, ROUTER, section_id);
 		};
-
-		o = s.option(form.TextValue, 'domain_list', _('Domains'),
-			_('One entry per line: <code>domain:example.com</code> (domain and subdomains), <code>full:www.example.com</code> (exact), <code>regexp:...</code>, a plain word matches as keyword. <code>geosite:ru</code> needs easy-vless-geodata.'));
-		o.rows = 6;
-		o.modalonly = true;
 		o.textvalue = function(section_id) {
-			const v = (this.cfgvalue(section_id) || '').split(/\n/).filter(function(l) { return l.trim() && l.charAt(0) != '#'; });
-			return v.length ? _('%d domain entries').format(v.length) : '-';
+			const t = uci.get(CONFIG, ROUTER, section_id);
+			return t ? ev.label(t) : E('em', {}, _('Not used'));
 		};
 
-		o = s.option(form.TextValue, 'ip_list', _('IP addresses'),
-			_('One IP or CIDR per line, e.g. <code>192.0.2.0/24</code>. <code>geoip:private</code> is built in; other <code>geoip:</code> codes need easy-vless-geodata.'));
-		o.rows = 4;
+		o = s.taboption('match', form.MultiValue, 'protocol', _('Protocol'),
+			_('Sniffed protocol of the connection.'));
 		o.modalonly = true;
+		o.value('http', 'HTTP');
+		o.value('tls', 'TLS');
+		o.value('quic', 'QUIC');
+		o.value('bittorrent', 'BitTorrent');
+		joinedList(o, ' ');
 
-		o = s.option(form.DummyValue, '_summary', _('Matches'));
-		o.modalonly = false;
-		o.textvalue = function(section_id) {
-			const count = function(opt) {
-				return (uci.get(CONFIG, section_id, opt) || '').split(/\n/).filter(function(l) { return l.trim() && l.charAt(0) != '#'; });
-			};
-			const d = count('domain_list'), i = count('ip_list');
-			const geo = d.concat(i).filter(function(l) { return /^(geosite|geoip):/.test(l) && l != 'geoip:private'; }).length;
-			let t = _('%d domains, %d IPs').format(d.length, i.length);
-			if (geo)
-				t += ' ' + _('(%d geodata entries)').format(geo);
-			return t;
-		};
+		o = s.taboption('match', form.MultiValue, 'inbound', _('Inbound'),
+			_('Transparent proxy = TPROXY/redirect traffic of LAN and router; SOCKS = the node SOCKS port (Settings → Other).'));
+		o.modalonly = true;
+		o.value('tproxy', _('Transparent proxy'));
+		o.value('socks', _('SOCKS'));
+		joinedList(o, ' ');
 
-		o = s.option(form.ListValue, 'network', _('Network'));
-		o.value('tcp,udp', _('TCP and UDP'));
+		o = s.taboption('match', form.ListValue, 'network', _('Network'));
+		o.modalonly = true;
+		o.value('tcp,udp', 'TCP UDP');
 		o.value('tcp', 'TCP');
 		o.value('udp', 'UDP');
 		o.default = 'tcp,udp';
-		o.modalonly = true;
 
-		o = s.option(form.Value, 'port', _('Destination ports'), _('Optional, e.g. <code>443</code> or <code>1000:2000</code>, comma separated.'));
+		o = s.taboption('match', form.DynamicList, 'source', _('Source'),
+			_('IP <code>192.168.1.100</code>, CIDR <code>192.168.1.0/24</code> or <code>geoip:private</code>.'));
 		o.modalonly = true;
 		o.validate = function(section_id, value) {
-			if (value && !/^\d+(:\d+)?(,\d+(:\d+)?)*$/.test(value))
-				return _('Expecting ports or ranges separated by commas');
-			return true;
+			if (!value || value == 'geoip:private' || /^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(value))
+				return true;
+			return _('Expecting an IP address, a CIDR or geoip:private');
+		};
+		joinedList(o, ' ');
+
+		o = s.taboption('match', form.Value, 'sourcePort', _('Source port'),
+			_('Comma separated ports or ranges, e.g. <code>1000:2000,5000</code>.'));
+		o.modalonly = true;
+		o.validate = function(section_id, value) {
+			return ev.validPorts(value) ? true : _('Expecting ports (1-65535) or ranges from:to separated by commas');
 		};
 
-		const enabled = ev.rulesEnabled();
-		const toggle = E('div', { 'class': 'cbi-section' }, [
-			E('p', {}, enabled
-				? E('strong', { 'style': 'color:#2e7d32' }, _('Routing rules are enabled.'))
-				: E('strong', {}, _('Routing rules are disabled: all traffic uses the active server or group.'))),
-			E('button', {
-				'class': 'btn cbi-button ' + (enabled ? 'cbi-button-reset' : 'cbi-button-apply'),
-				'click': ui.createHandlerFn(this, 'handleToggle', !enabled)
-			}, enabled ? _('Disable routing rules') : _('Enable routing rules'))
-		]);
+		o = s.taboption('match', form.Value, 'port', _('Port'),
+			_('Destination port(s), e.g. <code>443</code> or <code>1000:2000,8443</code>.'));
+		o.modalonly = true;
+		o.validate = function(section_id, value) {
+			return ev.validPorts(value) ? true : _('Expecting ports (1-65535) or ranges from:to separated by commas');
+		};
+
+		o = s.taboption('match', form.TextValue, 'domain_list', _('Domain'),
+			_('One entry per line:') + '<br/>' +
+			_('<code>example.com</code> plain text: keyword, matches any domain containing it') + '<br/>' +
+			_('<code>domain:example.com</code> the domain and its subdomains (recommended)') + '<br/>' +
+			_('<code>full:www.example.com</code> exactly this domain') + '<br/>' +
+			_('<code>regexp:\\.ru$</code> regular expression') + '<br/>' +
+			_('<code>geosite:category</code> predefined list, needs the optional easy-vless-geodata package') + '<br/>' +
+			_('Lines starting with # are comments.'));
+		o.modalonly = true;
+		o.rows = 8;
+		o.validate = function(section_id, value) {
+			const bad = ev.lines(value).filter(function(l) {
+				const m = l.match(/^([a-z-]+):/);
+				return m && [ 'domain', 'full', 'regexp', 'geosite', 'rule-set', 'rs' ].indexOf(m[1]) < 0;
+			});
+			return bad.length ? _('Unknown prefix: %s').format(bad[0]) : true;
+		};
+
+		o = s.taboption('match', form.TextValue, 'ip_list', _('IP'),
+			_('One entry per line: IP <code>127.0.0.1</code>, CIDR <code>127.0.0.0/8</code>, <code>geoip:private</code> (built in) or <code>geoip:ru</code> (needs easy-vless-geodata). Lines starting with # are comments.'));
+		o.modalonly = true;
+		o.rows = 6;
 
 		return m.render().then(L.bind(function(mapEl) {
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
-			return E('div', {}, [ ev.renderHeader(m, status), toggle, mapEl ]);
+			const shunt = ev.shuntEnabled();
+			return E('div', {}, [
+				E('h2', {}, _('Rule Manage')),
+				ev.renderHeader(m, status, null, true),
+				shunt ? '' : E('div', { 'class': 'alert-message' },
+					E('p', {}, _('The main node is not the Main Router, so rules are currently not used. Select "Main Router (shunt)" as Node on Main to route by rules.'))),
+				mapEl
+			]);
 		}, this));
+	},
+
+	handleSave: function() {
+		return ev.handleSave(this.map);
+	},
+
+	handleSaveApply: function() {
+		return ev.handleApply(this.map);
 	}
 });

@@ -29,7 +29,7 @@ config global_subscribe 'global_subscribe'
 	option allowInsecure '0'
 
 config nodes 'main_router'
-	option remarks 'Routing rules'
+	option remarks 'Main Router'
 	option type 'sing-box'
 	option protocol '_shunt'
 	option default_node '_direct'

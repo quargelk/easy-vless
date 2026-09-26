@@ -1260,6 +1260,8 @@ status_json() {
 	json_add_boolean "singbox_backend" "$([ -f "$UTIL_SINGBOX" ] && echo 1 || echo 0)"
 	json_add_string "singbox_min_version" "$EV_SINGBOX_MIN_VERSION"
 	json_add_string "routing_mode" "$(config_n_get @global[0] routing_mode singbox)"
+	# busy: /etc/init.d/easy_vless holds its lock while starting/stopping.
+	json_add_boolean "busy" "$([ -f /var/lock/${CONFIG}.lock ] && echo 1 || echo 0)"
 	if [ "$running" = 1 ]; then
 		json_add_int "rss_kb" "$(awk '/^VmRSS:/{print $2}' /proc/$pid/status 2>/dev/null)"
 		json_add_int "rss_peak_kb" "$(awk '/^VmHWM:/{print $2}' /proc/$pid/status 2>/dev/null)"
