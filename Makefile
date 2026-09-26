@@ -6,8 +6,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.4.0
-PKG_RELEASE:=1
+PKG_VERSION:=0.5.0
+PKG_RELEASE:=2
 
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=
@@ -237,6 +237,13 @@ define Package/easy-vless/install
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/test.sh $(1)/usr/share/easy_vless/test.sh
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/lease2hosts.sh $(1)/usr/share/easy_vless/lease2hosts.sh
 	$(INSTALL_DATA) ./root/usr/share/easy_vless/direct_ip $(1)/usr/share/easy_vless/direct_ip
+
+	# Prepared resources (0.5.0): manifest + domain lists, referenced from
+	# UCI by id (shunt_rules.domain_resource), read by api.lua.
+	$(INSTALL_DIR) $(1)/usr/share/easy_vless/resources/domains
+	$(INSTALL_DATA) ./root/usr/share/easy_vless/resources/manifest.json $(1)/usr/share/easy_vless/resources/manifest.json
+	$(INSTALL_DATA) ./root/usr/share/easy_vless/resources/domains/proxy.txt $(1)/usr/share/easy_vless/resources/domains/proxy.txt
+	$(INSTALL_DATA) ./root/usr/share/easy_vless/resources/domains/russia.txt $(1)/usr/share/easy_vless/resources/domains/russia.txt
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/api.lua $(1)/usr/lib/lua/luci/easy_vless/api.lua

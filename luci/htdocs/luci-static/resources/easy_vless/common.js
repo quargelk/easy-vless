@@ -39,7 +39,8 @@ const callStart = rpc.declare({ object: 'luci.easy_vless', method: 'start', expe
 const callStop = rpc.declare({ object: 'luci.easy_vless', method: 'stop', expect: { '': {} } });
 const callImport = rpc.declare({ object: 'luci.easy_vless', method: 'import', params: [ 'links' ], expect: { '': {} } });
 const callSubscribe = rpc.declare({ object: 'luci.easy_vless', method: 'subscribe', params: [ 'action', 'id' ], expect: { '': {} } });
-const callUrltestNode = rpc.declare({ object: 'luci.easy_vless', method: 'urltest_node', params: [ 'node' ], expect: { '': {} } });
+const callUrltestNode = rpc.declare({ object: 'luci.easy_vless', method: 'urltest_node', params: [ 'node', 'url' ], expect: { '': {} } });
+const callResources = rpc.declare({ object: 'luci.easy_vless', method: 'resources', expect: { '': {} } });
 const callGroups = rpc.declare({ object: 'luci.easy_vless', method: 'groups', expect: { '': {} } });
 const callGroupTest = rpc.declare({ object: 'luci.easy_vless', method: 'group_test', params: [ 'group' ], expect: { '': {} } });
 /* Requires "ubus": { "uci": [ "commit" ] } in the ACL (luci-base does not
@@ -76,7 +77,8 @@ return baseclass.extend({
 	callCheck: function(node) { return safe(callCheck(node || '')); },
 	callImport: function(links) { return safe(callImport(links)); },
 	callSubscribe: function(action, id) { return safe(callSubscribe(action, id || '')); },
-	callUrltestNode: function(sid) { return safe(callUrltestNode(sid)); },
+	callUrltestNode: function(sid, url) { return safe(callUrltestNode(sid, url || '')); },
+	callResources: function() { return safe(callResources()); },
 	callGroups: function() { return safe(callGroups()); },
 	callGroupTest: function(id) { return safe(callGroupTest(id)); },
 
@@ -158,7 +160,7 @@ return baseclass.extend({
 		o.value('_direct', _('Direct'));
 		this.servers().forEach(L.bind(function(s) { o.value(s['.name'], this.label(s['.name'])); }, this));
 		this.groups().forEach(L.bind(function(s) { o.value(s['.name'], this.label(s['.name'])); }, this));
-		o.value('_blackhole', _('Block'));
+		o.value('_blackhole', _('Block (blackhole)'));
 	},
 
 	shuntEnabled: function() {
@@ -248,6 +250,23 @@ return baseclass.extend({
 		]);
 	},
 
+	/* Confirmation before a destructive action; resolves true only on the
+	 * explicit confirm button (Cancel / closing the dialog = false). */
+	confirm: function(title, text, confirmLabel) {
+		return new Promise(function(resolve) {
+			let done = false;
+			const finish = function(v) { if (!done) { done = true; ui.hideModal(); resolve(v); } };
+			ui.showModal(title, [
+				E('p', {}, text),
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'btn', 'click': function() { finish(false); } }, _('Cancel')),
+					' ',
+					E('button', { 'class': 'btn cbi-button-negative', 'click': function() { finish(true); } }, confirmLabel || _('Delete'))
+				])
+			]);
+		});
+	},
+
 	/* verdict: 'ok' | 'bad' | 'warn' */
 	showResult: function(title, verdict, headline, details, extra) {
 		const kind = (verdict === true) ? 'ok' : (verdict === false ? 'bad' : verdict);
@@ -285,66 +304,117 @@ return baseclass.extend({
 				ui.addNotification(null, E('p', _('The form contains invalid values, nothing was saved: %s').format(msg)), 'error');
 			else
 				ui.addNotification(null, E('p', _('Saving failed (%s): %s').format(stage == 'commit' ? 'uci commit' : 'uci save', msg)), 'error');
+			if (e && typeof(e) == 'object')
+				e.ev_notified = true;
 			throw e;
+		}).then(function() {
+			/* uci commit renumbers anonymous sections (cfgXXXXXX, e.g. URL
+			 * subscriptions) after a delete: reload the committed config and
+			 * re-render the (already saved) maps so row actions use valid ids. */
+			uci.unload(CONFIG);
+			return Promise.all(maps.map(function(m) {
+				return m.load().then(function() { return m.renderContents(); });
+			}));
 		}).then(function() {
 			return ui.changes.init();
 		});
 	},
 
+	/* Show an unexpected failure of a UI operation (errors already shown by
+	 * saveAndCommit are not repeated). Never "catch and ignore". */
+	reportError: function(title, e) {
+		if (e && e.ev_notified)
+			return;
+		ui.addNotification(null, E('p', _('%s failed: %s').format(title, (e && e.message) ? e.message : String(e))), 'error');
+	},
+
+	/* One service/config operation at a time (Start, Stop, Check, Apply,
+	 * Save, tests, updates): a second click while one runs is refused. */
+	opRunning: null,
+
+	exclusive: function(title, fn) {
+		if (this.opRunning) {
+			this.notify(_('"%s" is still running; wait until it has finished.').format(this.opRunning), 'warning');
+			return Promise.resolve();
+		}
+		this.opRunning = title;
+		const done = L.bind(function() { this.opRunning = null; }, this);
+		return Promise.resolve().then(fn).then(done, L.bind(function(e) {
+			done();
+			this.reportError(title, e);
+		}, this));
+	},
+
 	handleSave: function(map) {
-		return this.saveAndCommit(map).then(L.bind(function() {
-			this.notify(_('Configuration saved. Running service is not changed; use Save & Apply to apply it.'));
-		}, this)).catch(function() {});
+		return this.exclusive(_('Save'), L.bind(function() {
+			return this.saveAndCommit(map).then(L.bind(function() {
+				this.notify(_('Configuration saved. The running service is not changed; use Save & Apply to apply it.'));
+			}, this));
+		}, this));
 	},
 
 	/* Save & Apply (PassWall2 semantics): main switch on -> check + (re)start,
 	 * main switch off -> stop. */
 	handleApply: function(map) {
-		return this.saveAndCommit(map).then(L.bind(function() {
-			if (uci.get(CONFIG, 'global', 'enabled') == '1')
-				return this.startFlow().then(L.bind(this.reloadMaps, this, map));
-			return this.callStatus().then(L.bind(function(st) {
-				if (st.running || st.nft_table)
-					return this.stopFlow();
-				this.notify(_('Saved. The main switch is off, Easy VLESS stays stopped.'));
+		return this.exclusive(_('Save & Apply'), L.bind(function() {
+			return this.saveAndCommit(map).then(L.bind(function() {
+				if (uci.get(CONFIG, 'global', 'enabled') == '1')
+					return this.startFlow().then(L.bind(this.syncSwitch, this, map));
+				return this.callStatus().then(L.bind(function(st) {
+					if (st.rpc_error)
+						return this.showResult(_('Save & Apply'), 'bad', _('Saved, but the service state is unknown'), st.error);
+					if (st.running || st.nft_table)
+						return this.stopFlow().then(L.bind(this.syncSwitch, this, map));
+					this.notify(_('Saved. The main switch is off, Easy VLESS stays stopped.'));
+				}, this));
 			}, this));
-		}, this)).catch(function() {});
+		}, this));
 	},
 
 	handleCheck: function(map) {
-		return this.saveAndCommit(map).then(L.bind(function() {
-			this.showBusy(_('Check config'), _('Generating the sing-box configuration and running "sing-box check"…'));
-			return this.callCheck('');
-		}, this)).then(L.bind(function(res) {
-			if (!res)
-				return;
-			if (res.ok || res.code === 0)
-				this.showResult(_('Check config'), 'ok', _('sing-box configuration is valid'), res.output);
-			else
-				this.showResult(_('Check config'), 'bad', res.rpc_error ? _('Check could not run') : _('sing-box rejected the configuration'), res.output || res.error);
-		}, this)).catch(function() {});
+		return this.exclusive(_('Check config'), L.bind(function() {
+			return this.saveAndCommit(map).then(L.bind(function() {
+				this.showBusy(_('Check config'), _('Generating the sing-box configuration and running "sing-box check"…'));
+				return this.callCheck('');
+			}, this)).then(L.bind(function(res) {
+				if (res.ok || res.code === 0)
+					this.showResult(_('Check config'), 'ok', _('sing-box configuration is valid'), res.output);
+				else
+					this.showResult(_('Check config'), 'bad', res.rpc_error ? _('Check could not run') : _('sing-box rejected the configuration'), res.output || res.error);
+			}, this));
+		}, this));
 	},
 
 	handleStart: function(map) {
-		return this.saveAndCommit(map).then(L.bind(this.startFlow, this))
-			.then(L.bind(this.reloadMaps, this, map)).catch(function() {});
+		return this.exclusive(_('Save & Start'), L.bind(function() {
+			return this.saveAndCommit(map).then(L.bind(this.startFlow, this))
+				.then(L.bind(this.syncSwitch, this, map));
+		}, this));
 	},
 
 	/* Stop also turns the main switch off (done by the rpcd "stop" method). */
 	handleStop: function(map) {
-		return this.stopFlow().then(L.bind(this.reloadMaps, this, map)).catch(function() {});
+		return this.exclusive(_('Stop'), L.bind(function() {
+			return this.stopFlow().then(L.bind(this.syncSwitch, this, map));
+		}, this));
 	},
 
-	/* start/stop change global.enabled on the router: reload the forms so the
-	 * Main switch shows the real value. */
-	reloadMaps: function(map) {
+	/* start/stop change global.enabled on the router. Show the real value in
+	 * the Main switch widget without reloading the form, so other unsaved
+	 * edits are kept (the next Save writes the widget value). */
+	syncSwitch: function(map) {
 		const maps = map ? L.toArray(map) : [];
-		if (!maps.length)
-			return;
-		uci.unload(CONFIG);
-		return Promise.all(maps.map(function(m) {
-			return m.load().then(function() { return m.reset(); });
-		}));
+		return this.callStatus().then(function(st) {
+			if (st.rpc_error)
+				return;
+			maps.forEach(function(m) {
+				const res = m.lookupOption ? m.lookupOption('enabled', 'global') : null;
+				const opt = res ? res[0] : null;
+				const el = opt ? opt.getUIElement('global') : null;
+				if (el)
+					el.setValue(st.enabled ? '1' : '0');
+			});
+		});
 	},
 
 	/* check -> enable + detached restart -> poll status (health) -> result. */
@@ -440,7 +510,7 @@ return baseclass.extend({
 			if (st.running)
 				return this.startFlow();
 			this.notify(_('Saved. Easy VLESS is stopped; the change applies on the next start.'));
-		}, this)).catch(function() {});
+		}, this)).catch(L.bind(this.reportError, this, _('Apply')));
 	},
 
 	/* ---------- status ---------- */
@@ -476,6 +546,19 @@ return baseclass.extend({
 			core = this.badge(_('Running'), 'ok');
 		else
 			core = this.badge(_('Stopped'), st.enabled ? 'bad' : 'idle');
+
+		/* Other pages: one compact status line (service lifecycle is on Main). */
+		if (compact) {
+			const item = function(label, value) {
+				return E('span', { 'style': 'margin-right:1.5em;white-space:nowrap' }, [ E('span', { 'style': 'opacity:.7' }, label + ': '), value ]);
+			};
+			return E('div', { 'style': 'display:flex;flex-wrap:wrap;align-items:center;padding:.4em .7em;border:1px solid rgba(128,128,128,.35);border-radius:.4em' }, [
+				item(_('Core'), E('span', {}, [ core, running ? ' ' + _('PID %s').format(st.pid) : '' ])),
+				item(_('Main switch'), st.enabled ? _('Enabled') : _('Disabled')),
+				item(_('Active'), E('strong', {}, this.activeText(node) + (node == ROUTER ? ' → ' + this.label(uci.get(CONFIG, ROUTER, 'default_node') || '_direct') : ''))),
+				st.rpc_error ? E('span', { 'style': 'color:#c62828' }, _('Status unavailable: %s').format(st.error)) : ''
+			]);
+		}
 
 		const cards = [
 			this.card(_('Core'), core, running ? _('PID %s').format(st.pid) : (st.enabled && !st.busy ? _('main switch is on, but not running') : '')),
@@ -516,21 +599,86 @@ return baseclass.extend({
 		}, this));
 	},
 
-	/* Status block + service buttons. */
-	renderHeader: function(map, st, extraButtons, compact) {
+	/* Status block; service controls (Save & Start / Stop / Check config)
+	 * only where controls=true (Main). Other pages show status only. */
+	renderHeader: function(map, st, extraButtons, compact, controls) {
 		this.lastStatus = st || {};
-		const buttons = [
-			E('button', { 'class': 'btn cbi-button cbi-button-apply', 'click': ui.createHandlerFn(this, 'handleStart', map) }, _('Save & Start')),
-			' ',
-			E('button', { 'class': 'btn cbi-button cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleStop', map) }, _('Stop')),
-			' ',
-			E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleCheck', map) }, _('Check config'))
-		].concat(extraButtons || []);
+		let buttons = [];
+		if (controls)
+			buttons = [
+				E('button', { 'class': 'btn cbi-button cbi-button-apply', 'click': ui.createHandlerFn(this, 'handleStart', map) }, _('Save & Start')),
+				' ',
+				E('button', { 'class': 'btn cbi-button cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleStop', map) }, _('Stop')),
+				' ',
+				E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleCheck', map) }, _('Check config'))
+			];
+		buttons = buttons.concat(extraButtons || []);
 
 		return E('div', { 'class': 'cbi-section' }, [
 			E('div', { 'data-ev-status': compact ? 'compact' : 'full' }, this.renderStatus(this.lastStatus, compact)),
-			E('div', { 'style': 'margin:.8em 0 0' }, buttons)
+			buttons.length ? E('div', { 'style': 'margin:.8em 0 0' }, buttons) : ''
 		]);
+	},
+
+	/* Modal "Save" of a GridSection (Add/Edit) commits the configuration
+	 * right away: the node/group/subscription/rule is saved, no second
+	 * footer Save needed. The running service is not restarted. */
+	commitOnModalSave: function(s, what) {
+		const Grid = s.constructor;
+		const self = this;
+		s.handleModalSave = function(modalMap, ev_) {
+			const map = this.map;
+			return Grid.prototype.handleModalSave.apply(this, arguments).then(function() {
+				/* the modal stays open when validation failed */
+				if (document.body.classList.contains('modal-overlay-active'))
+					return;
+				return self.exclusive(_('Save'), function() {
+					return self.saveAndCommit(map).then(function() {
+						self.notify(_('%s saved.').format(what) + ' ' + _('Changes of a running service apply with Save & Apply on Main.'));
+					});
+				});
+			});
+		};
+	},
+
+	/* Shared page CSS (one look on every Easy VLESS page): dense tables and
+	 * natural-width row buttons (the theme stretches them to 4em flex
+	 * cells, which clips labels when there are many actions). */
+	pageStyle: function() {
+		return E('style', {}, [
+			'.ev-page .cbi-section-table .td, .ev-page .cbi-section-table .th { padding: .35em .45em; }',
+			'.ev-page .td.cbi-section-actions { width: 1%; white-space: nowrap; }',
+			'.ev-page .td.cbi-section-actions > * { display: flex; flex-wrap: nowrap; justify-content: flex-end; }',
+			'.ev-page .td.cbi-section-actions > * > * { flex: 0 0 auto !important; }',
+			'.ev-page .td.cbi-section-actions .cbi-button { padding: 0 .45em; margin: .05em; line-height: 1.9em; min-width: 0; }',
+			'.ev-page h2 { margin-bottom: .3em; }',
+			'.ev-page .cbi-section > h3 { margin-top: .8em; }'
+		].join('\n'));
+	},
+
+	/* Small action button used in tables. */
+	smallButton: function(label, title, cls, handler) {
+		return E('button', {
+			'class': 'btn cbi-button ' + (cls || ''),
+			'style': 'padding:0 .45em;margin:.05em;min-width:0;line-height:1.9em',
+			'title': title || '',
+			'click': handler
+		}, label);
+	},
+
+	/* GridSection with no rows: drop the column titles and show a short
+	 * one-line placeholder instead of a large empty table. */
+	compactWhenEmpty: function(s, text) {
+		const Grid = s.constructor;
+		s.renderSectionPlaceholder = function() {
+			return E('em', { 'style': 'opacity:.7' }, text || _('None yet.'));
+		};
+		s.renderContents = function(cfgsections, nodes) {
+			const el = Grid.prototype.renderContents.apply(this, arguments);
+			if (el && el.querySelectorAll && !cfgsections.length)
+				el.querySelectorAll('.cbi-section-table-titles, .cbi-section-table-descr').forEach(function(n) { n.remove(); });
+			return el;
+		};
 	},
 
 	/* ---------- Server Test ---------- */
@@ -559,6 +707,22 @@ return baseclass.extend({
 				res = { ok: false, error: res.error };
 			res.time = Date.now();
 			this.testResults[sid] = res;
+			return res;
+		}, this));
+	},
+
+	/* Per-node URL Test: same temporary-instance mechanism as the Server
+	 * Test, but against the URL Test default https://x.com (any HTTP answer
+	 * counts, like sing-box's urltest). */
+	urlTestResults: {},
+
+	nodeUrlTest: function(sid) {
+		this.urlTestResults[sid] = { pending: true };
+		return this.callUrltestNode(sid, URL_TEST_URL).then(L.bind(function(res) {
+			if (res.rpc_error)
+				res = { ok: false, error: res.error };
+			res.time = Date.now();
+			this.urlTestResults[sid] = res;
 			return res;
 		}, this));
 	},
@@ -687,6 +851,8 @@ return baseclass.extend({
 	/* URL modal: URL + Copy + QR code (QR needs the optional luci-lib-uqr). */
 	showVlessUrl: function(sid) {
 		const r = this.buildVlessUrl(sid);
+		const pending = (ui.changes && ui.changes.changes) ? L.toArray(ui.changes.changes[CONFIG]) : [];
+		const staged = pending.some(function(c) { return c[1] == sid; });
 		const field = E('textarea', { 'class': 'cbi-input-textarea', 'style': 'width:100%', 'rows': 4, 'readonly': 'readonly' }, r.url || '');
 		const note = E('span', { 'style': 'margin-right:1em' });
 		const qrBox = E('div', { 'style': 'text-align:center;margin:.5em 0' });
@@ -698,7 +864,8 @@ return baseclass.extend({
 				E('ul', {}, r.warnings.map(function(w) { return E('li', {}, w); }))
 			]) : '',
 			qrBox,
-			E('p', { 'class': 'cbi-value-description' }, _('Generated from the saved settings; unsaved edits are not included.')),
+			E('p', { 'class': 'cbi-value-description' }, _('Built from the settings saved in this browser session (UCI); edits still open in a form are not included.')),
+			staged ? E('div', { 'class': 'alert-message warning' }, _('This server has saved changes that are not committed yet (press Save): the running service still uses the previous values.')) : '',
 			E('div', { 'class': 'right' }, [
 				note,
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close')),
@@ -723,7 +890,7 @@ return baseclass.extend({
 				if (svg)
 					svg.setAttribute('style', 'max-width:260px;height:auto;background:#fff;padding:6px');
 			}).catch(function() {
-				qrBox.appendChild(E('small', { 'style': 'opacity:.7' }, _('QR code: install the optional package luci-lib-uqr.')));
+				qrBox.appendChild(E('small', { 'style': 'opacity:.7' }, _('QR support unavailable. Install luci-lib-uqr to enable QR.')));
 			});
 		}
 	}

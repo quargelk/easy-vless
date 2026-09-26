@@ -1650,3 +1650,97 @@ end
 function set_socks_port_to_cache(node_id, v)
 	set_cache_var("node_%s_socks_port" % { node_id }, v)
 end
+
+-- Easy VLESS 0.5.0: prepared resources.
+-- A resource is a physical file listed in RESOURCE_DIR/manifest.json
+-- ({ "resources": [ { "id", "name", "type", "path", "description" } ],
+--    "rule_templates": [ ... ] }). "path" is relative to RESOURCE_DIR.
+-- UCI stores only the id (shunt_rules list domain_resource), never the
+-- content; the config generators merge the file content into the rule's
+-- domain list at generation time (same line syntax as domain_list).
+RESOURCE_DIR = "/usr/share/easy_vless/resources"
+
+function get_resource_manifest()
+	local f = io.open(RESOURCE_DIR .. "/manifest.json", "r")
+	if not f then return { resources = {}, rule_templates = {} } end
+	local data = jsonc.parse(f:read("*a") or "")
+	f:close()
+	if type(data) ~= "table" then return { resources = {}, rule_templates = {} } end
+	data.resources = type(data.resources) == "table" and data.resources or {}
+	data.rule_templates = type(data.rule_templates) == "table" and data.rule_templates or {}
+	return data
+end
+
+function get_resource(id)
+	if type(id) ~= "string" or not id:match("^[%w_%-]+$") then return nil end
+	for _, r in ipairs(get_resource_manifest().resources) do
+		if r.id == id and type(r.path) == "string" and not r.path:find("%.%.") then
+			local e = {}
+			for k, v in pairs(r) do e[k] = v end
+			e.file = RESOURCE_DIR .. "/" .. r.path
+			return e
+		end
+	end
+	return nil
+end
+
+-- Resource ids of a shunt rule (UCI list or single option).
+function rule_resource_ids(e)
+	local v = e and e.domain_resource
+	if type(v) == "string" then
+		local t = {}
+		string.gsub(v, "[^%s]+", function(w) t[#t + 1] = w end)
+		return t
+	end
+	return type(v) == "table" and v or {}
+end
+
+-- Effective domain list of a rule: manual domain_list + the content of its
+-- domain resources. Returns text (or nil when empty) and a list of missing
+-- resource ids.
+function rule_domain_list(e)
+	local parts, missing = {}, {}
+	if e.domain_list and e.domain_list ~= "" then parts[#parts + 1] = e.domain_list end
+	for _, id in ipairs(rule_resource_ids(e)) do
+		local r = get_resource(id)
+		local content = (r and r.type == "domain") and fs.readfile(r.file) or nil
+		if content then
+			parts[#parts + 1] = content
+		else
+			missing[#missing + 1] = id
+		end
+	end
+	if #parts == 0 then return nil, missing end
+	return table.concat(parts, "\n"), missing
+end
+
+-- JSON for LuCI (rpcd "resources"): manifest + real file state and entry
+-- count (non-empty, non-comment lines).
+function resources_json()
+	local m = get_resource_manifest()
+	local list = {}
+	for _, r in ipairs(m.resources) do
+		local e = get_resource(r.id) or {}
+		local content = e.file and fs.readfile(e.file) or nil
+		local entries = nil
+		if content then
+			entries = 0
+			string.gsub(content, "[^\r\n]+", function(l)
+				l = l:match("^%s*(.-)%s*$")
+				if l ~= "" and l:sub(1, 1) ~= "#" then entries = entries + 1 end
+			end)
+		end
+		list[#list + 1] = {
+			id = r.id, name = r.name, type = r.type, description = r.description,
+			path = e.file, exists = content ~= nil, entries = entries,
+			size = content and #content or nil
+		}
+	end
+	return jsonc.stringify({ ok = true, dir = RESOURCE_DIR, resources = list, rule_templates = m.rule_templates })
+end
+
+-- Absolute file of a resource id ("" when unknown), for shell callers.
+function resource_file(id)
+	local r = get_resource(id)
+	return r and r.file or ""
+end

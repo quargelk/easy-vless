@@ -1,0 +1,53 @@
+{
+	"version": 1,
+	"resources": [
+		{
+			"id": "russia",
+			"name": "RUSSIA",
+			"type": "domain",
+			"path": "domains/russia.txt",
+			"description": "Russian domains (reference/domains/russia.txt)"
+		},
+		{
+			"id": "proxy",
+			"name": "PROXY",
+			"type": "domain",
+			"path": "domains/proxy.txt",
+			"description": "Domains to proxy (reference/domains/proxy.txt)"
+		}
+	],
+	"rule_templates": [
+		{
+			"id": "RUSSIA",
+			"remarks": "RUSSIA",
+			"network": "tcp,udp",
+			"domain_resource": [
+				"russia"
+			],
+			"target": "_direct"
+		},
+		{
+			"id": "PROXY",
+			"remarks": "PROXY",
+			"network": "tcp,udp",
+			"domain_resource": [
+				"proxy"
+			],
+			"target": "@active"
+		},
+		{
+			"id": "QUIC",
+			"remarks": "QUIC",
+			"network": "udp",
+			"port": "443",
+			"target": "@active"
+		},
+		{
+			"id": "UDP",
+			"remarks": "UDP",
+			"network": "udp",
+			"target": "@active"
+		}
+	],
+	"_comment": "rule_templates.target: \"_direct\" etc. or \"@active\" = the currently selected main node / Main Router Default (resolved by LuCI when the user adds the prepared rule)."
+}

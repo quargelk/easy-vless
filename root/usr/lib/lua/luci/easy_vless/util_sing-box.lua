@@ -902,6 +902,9 @@ function gen_config(var)
 
 			--shunt rule
 			api.uci_foreach_c("shunt_rules", function(e)
+				-- Easy VLESS 0.5.0: merge prepared domain resources
+				-- (shunt_rules.domain_resource) into the rule's domain list.
+				e.domain_list = api.rule_domain_list(e)
 				if node["shunt_group"] ~= e.group then
 					return
 				end

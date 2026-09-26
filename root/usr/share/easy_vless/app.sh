@@ -1169,7 +1169,22 @@ check_routing_config() {
 	for rule in $(uci -q show ${CONFIG} | grep "=shunt_rules$" | cut -d '.' -f 2 | cut -d '=' -f 1); do
 		[ -n "$(config_n_get $node $rule)" ] || continue
 		[ "$shunt_group" = "$(config_n_get $rule group)" ] || continue
-		codes=$( { config_n_get $rule domain_list; echo; config_n_get $rule ip_list; } | tr -d '\r' | grep -E '^(geosite|geoip):' | grep -v '^geoip:private$')
+		# Prepared domain resources (0.5.0): every referenced id must resolve
+		# to an installed file (api.lua resource manifest).
+		local rid rfile res_files=""
+		for rid in $(config_n_get $rule domain_resource); do
+			rfile=""
+			case "$rid" in
+				*[!A-Za-z0-9_-]*) ;;
+				*) rfile=$(lua_api "resource_file(\"${rid}\")") ;;
+			esac
+			if [ -z "$rfile" ] || [ ! -s "$rfile" ]; then
+				EV_ROUTING_ERROR="Rule [$(config_n_get $rule remarks $rule)] uses the domain resource '${rid}', which is not installed (${rfile:-unknown resource id}). Reinstall easy-vless or remove the resource from the rule."
+				return 1
+			fi
+			res_files="${res_files} ${rfile}"
+		done
+		codes=$( { config_n_get $rule domain_list; echo; [ -n "$res_files" ] && cat $res_files; echo; config_n_get $rule ip_list; } | tr -d '\r' | grep -E '^(geosite|geoip):' | grep -v '^geoip:private$')
 		[ -n "$codes" ] || continue
 		missing=""
 		[ -n "$geoview_bin" ] || missing="geoview"

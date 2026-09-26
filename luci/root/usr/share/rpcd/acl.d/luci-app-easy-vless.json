@@ -6,7 +6,8 @@
 				"luci.easy_vless": [
 					"status",
 					"check",
-					"groups"
+					"groups",
+					"resources"
 				]
 			},
 			"uci": [

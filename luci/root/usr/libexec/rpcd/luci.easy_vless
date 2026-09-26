@@ -117,7 +117,7 @@ method_stop() {
 # for the node (its real VLESS outbound) and fetches
 # https://www.gstatic.com/generate_204 through it with curl.
 method_urltest_node() {
-	local node="$1" raw code t rest exitcode errmsg ms
+	local node="$1" url="$2" raw code t rest exitcode errmsg ms code_ok
 	json_init
 	if [ -z "$node" ] || [ "$(uci -q get ${CONFIG}.${node})" != "nodes" ]; then
 		json_add_boolean "ok" 0
@@ -131,17 +131,30 @@ method_urltest_node() {
 		json_dump
 		return
 	fi
-	raw=$(/usr/share/easy_vless/test.sh url_test_node "$node" 2>/dev/null | tail -n 1)
+	# Optional url (0.5.0, per-node URL Test): only plain http(s) URLs.
+	if [ -n "$url" ] && ! printf '%s' "$url" | grep -Eq '^https?://[A-Za-z0-9._~:/?#@!$&()*+,;=%-]+$'; then
+		json_add_boolean "ok" 0
+		json_add_string "error" "Invalid test URL."
+		json_dump
+		return
+	fi
+	raw=$(/usr/share/easy_vless/test.sh url_test_node "$node" "$url" 2>/dev/null | tail -n 1)
 	# raw = <http code>:<seconds>:<curl exit code>:<curl error message>
 	code=${raw%%:*}; rest=${raw#*:}
 	t=${rest%%:*}; rest=${rest#*:}
 	exitcode=${rest%%:*}; errmsg=${rest#*:}
 	[ "$errmsg" = "$rest" ] && errmsg=""
 	json_add_string "raw" "$raw"
-	json_add_string "url" "$(uci -q get ${CONFIG}.@global_other[0].url_test_url || echo https://www.gstatic.com/generate_204)"
+	json_add_string "url" "${url:-$(uci -q get ${CONFIG}.@global_other[0].url_test_url || echo https://www.gstatic.com/generate_204)}"
 	json_add_string "http_code" "$code"
+	# Server Test (default URL) needs 200/204; a per-node URL Test counts any
+	# HTTP answer as reachable, like sing-box's own URL test.
+	[ -n "$url" ] && [ -n "$code" ] && [ "$code" != "000" ] && code_ok=1 || code_ok=0
 	case "$code" in
-		200|204)
+		200|204) code_ok=1 ;;
+	esac
+	case "$code_ok" in
+		1)
 			ms=$(awk -v t="$t" 'BEGIN { printf "%d", t * 1000 }')
 			json_add_boolean "ok" 1
 			json_add_int "delay" "$ms"
@@ -151,6 +164,7 @@ method_urltest_node() {
 			case "$exitcode" in
 				7|97) errmsg="The temporary sing-box instance for this server did not start (${errmsg:-no SOCKS listener}). Run Check config for details." ;;
 				28) errmsg="Connection timeout (${errmsg:-no response within 5 s})." ;;
+				35) errmsg="TLS handshake through the VLESS connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it (${errmsg})." ;;
 				52|56) errmsg="No answer through the VLESS connection: the server is unreachable or rejected the connection (${errmsg})." ;;
 			esac
 			[ -n "$errmsg" ] || errmsg="Probe failed (HTTP ${code:-none})."
@@ -178,6 +192,21 @@ method_group_test() {
 	lua "$CLASH_API" test "$group" "$url"
 }
 
+# Prepared resources (0.5.0): manifest + installed file state + entry
+# counts, computed by api.lua (easy-vless core).
+method_resources() {
+	local out
+	out=$(lua -e "local api = require 'luci.easy_vless.api' io.write(api.resources_json())" 2>&1)
+	case "$out" in
+		"{"*) echo "$out" ;;
+		*) json_init; json_add_boolean "ok" 0; json_add_string "error" "Cannot read resources: $out"; json_dump ;;
+	esac
+}
+
+node_ids() {
+	uci -q show ${CONFIG} | sed -n "s/^${CONFIG}\.\([^.=]*\)=nodes$/\1/p"
+}
+
 # Import one or more vless:// links through the existing subscribe.lua parser.
 method_import() {
 	local links="$1" before after out code mark found newlog skipped
@@ -195,6 +224,7 @@ method_import() {
 	esac
 	found=$(printf '%s\n' "$links" | grep -c '://')
 	before=$(count_nodes)
+	local ids_before=$(node_ids)
 	mark=$(log_lines)
 	printf '%s\n' "$links" > "$LINKS_FILE"
 	# subscribe.lua reads $LINKS_FILE and deletes it; an empty group name keeps
@@ -212,6 +242,24 @@ method_import() {
 	json_add_int "skipped" "$skipped"
 	json_add_string "output" "$out"
 	json_add_string "log" "$newlog"
+	# Parsed result of every new node, so LuCI can show what was imported.
+	local id
+	json_add_array "nodes"
+	for id in $(node_ids); do
+		case " $(echo $ids_before) " in *" $id "*) continue ;; esac
+		json_add_object ""
+		json_add_string "id" "$id"
+		json_add_string "remarks" "$(uci -q get ${CONFIG}.${id}.remarks)"
+		json_add_string "address" "$(uci -q get ${CONFIG}.${id}.address)"
+		json_add_string "port" "$(uci -q get ${CONFIG}.${id}.port)"
+		json_add_string "transport" "$(uci -q get ${CONFIG}.${id}.transport)"
+		json_add_string "tls" "$(uci -q get ${CONFIG}.${id}.tls)"
+		json_add_string "reality" "$(uci -q get ${CONFIG}.${id}.reality)"
+		json_add_string "flow" "$(uci -q get ${CONFIG}.${id}.flow)"
+		json_add_string "sni" "$(uci -q get ${CONFIG}.${id}.tls_serverName)"
+		json_close_object
+	done
+	json_close_array
 	json_dump
 }
 
@@ -249,6 +297,13 @@ method_subscribe() {
 				json_dump
 				return
 			fi
+			# never race a running (detached) update: both rewrite the node list
+			if [ -f /var/lock/${CONFIG}_subscribe.lock ]; then
+				json_add_int "code" 1
+				json_add_string "output" "A subscription update is running; try again when it has finished."
+				json_dump
+				return
+			fi
 			local before=$(count_nodes)
 			lua $SUBSCRIBE truncate "$remark" >/dev/null 2>&1
 			json_add_int "code" 0
@@ -271,7 +326,8 @@ case "$1" in
 		json_add_object "stop"; json_close_object
 		json_add_object "import"; json_add_string "links" "string"; json_close_object
 		json_add_object "subscribe"; json_add_string "action" "string"; json_add_string "id" "string"; json_close_object
-		json_add_object "urltest_node"; json_add_string "node" "string"; json_close_object
+		json_add_object "urltest_node"; json_add_string "node" "string"; json_add_string "url" "string"; json_close_object
+		json_add_object "resources"; json_close_object
 		json_add_object "groups"; json_close_object
 		json_add_object "group_test"; json_add_string "group" "string"; json_close_object
 		json_dump
@@ -299,9 +355,10 @@ case "$1" in
 				method_subscribe "$action" "$id"
 			;;
 			urltest_node)
-				json_load "$input"; json_get_var node node
-				method_urltest_node "$node"
+				json_load "$input"; json_get_var node node; json_get_var url url
+				method_urltest_node "$node" "$url"
 			;;
+			resources) method_resources ;;
 			groups) method_groups ;;
 			group_test)
 				json_load "$input"; json_get_var group group

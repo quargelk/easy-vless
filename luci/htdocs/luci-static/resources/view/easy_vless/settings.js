@@ -149,7 +149,7 @@ return view.extend({
 		o.rmempty = false;
 
 		/* ===== Other ===== */
-		s = m.section(form.NamedSection, 'global', 'global', _('Other'));
+		s = m.section(form.NamedSection, 'global', 'global', _('Advanced'));
 		s.addremove = false;
 
 		o = s.option(form.ListValue, 'routing_mode', _('Routing mode'),
@@ -189,7 +189,8 @@ return view.extend({
 
 		return m.render().then(L.bind(function(mapEl) {
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
-			return E('div', {}, [
+			return E('div', { 'class': 'ev-page' }, [
+				ev.pageStyle(),
 				E('h2', {}, _('Settings')),
 				ev.renderHeader(m, status, null, true),
 				mapEl

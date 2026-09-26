@@ -54,27 +54,40 @@ return view.extend({
 		const byTarget = {};
 		rows.forEach(function(r) { (byTarget[r.target] = byTarget[r.target] || []).push(r.entry); });
 
+		const th = function(t) { return E('th', { 'class': 'th' }, t); };
 		return E('table', { 'class': 'table' }, [
 			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Target')),
-				E('th', { 'class': 'th' }, _('Used by')),
-				E('th', { 'class': 'th' }, _('Server Test')),
-				E('th', { 'class': 'th' }, '')
+				th(_('Target')), th(_('Used by')), th(_('Result')), th(_('Latency')), th(_('Response / error')), th('')
 			])
 		].concat(Object.keys(byTarget).map(L.bind(function(t) {
-			let result, btn = '';
+			const r = ev.testResults[t];
+			let result = '-', latency = '-', detail = '', btn = '';
 			if (ev.isServer(t)) {
-				result = ev.testText(ev.testResults[t]);
-				btn = E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleTest', [ t ]) }, _('Test'));
+				btn = ev.smallButton(_('Test'), _('Server Test of this server'), '', ui.createHandlerFn(this, 'handleTest', [ t ]));
+				if (r && r.pending)
+					result = E('em', {}, _('testing…'));
+				else if (r && r.ok) {
+					result = ev.badge(_('PASS'), 'ok');
+					latency = _('%d ms').format(r.delay);
+					detail = 'HTTP ' + (r.http_code || '');
+				}
+				else if (r) {
+					result = ev.badge(_('FAIL'), 'bad');
+					detail = r.error || '';
+				}
+				else
+					detail = E('em', {}, _('not tested'));
 			}
 			else if (ev.isGroup(t))
-				result = E('em', {}, _('URL Test group: tested by sing-box, see Node List'));
+				detail = E('em', {}, _('URL Test group: sing-box tests its servers itself (Node List → URL Test)'));
 			else
-				result = E('em', {}, _('not applicable'));
+				detail = E('em', {}, _('not applicable'));
 			return E('tr', { 'class': 'tr' }, [
 				E('td', { 'class': 'td' }, ev.label(t)),
 				E('td', { 'class': 'td' }, byTarget[t].join(', ')),
 				E('td', { 'class': 'td' }, result),
+				E('td', { 'class': 'td' }, latency),
+				E('td', { 'class': 'td' }, detail),
 				E('td', { 'class': 'td right' }, btn)
 			]);
 		}, this))));
@@ -87,15 +100,17 @@ return view.extend({
 	},
 
 	handleTest: function(targets) {
-		targets = targets || this.targetRows().map(function(r) { return r.target; }).filter(function(t, i, a) { return ev.isServer(t) && a.indexOf(t) == i; });
-		targets.forEach(function(t) { ev.testResults[t] = { pending: true }; });
-		this.refreshTests();
-		/* one after another: each test starts its own temporary sing-box */
-		return targets.reduce(L.bind(function(p, t) {
-			return p.then(L.bind(function() {
-				return ev.serverTest(t).then(L.bind(this.refreshTests, this));
-			}, this));
-		}, this), Promise.resolve());
+		return ev.exclusive(_('Server Test'), L.bind(function() {
+			targets = targets || this.targetRows().map(function(r) { return r.target; }).filter(function(t, i, a) { return ev.isServer(t) && a.indexOf(t) == i; });
+			targets.forEach(function(t) { ev.testResults[t] = { pending: true }; });
+			this.refreshTests();
+			/* one after another: each test starts its own temporary sing-box */
+			return targets.reduce(L.bind(function(p, t) {
+				return p.then(L.bind(function() {
+					return ev.serverTest(t).then(L.bind(this.refreshTests, this));
+				}, this));
+			}, this), Promise.resolve());
+		}, this));
 	},
 
 	/* ---------- form ---------- */
@@ -116,7 +131,7 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'node', _('Node'),
-			_('<b>Main Router</b> routes by the rules below (shunt). A server or URL Test group sends all traffic there.'));
+			_('<b>Main Router</b>: traffic is routed by the rules of Rule Manage; each rule gets a target below, unmatched traffic goes to Default. A server or URL Test group here sends all traffic to it.'));
 		o.value('', _('-- select --'));
 		o.value(ROUTER, _('Main Router (shunt)'));
 		ev.servers().forEach(function(srv) { o.value(srv['.name'], ev.label(srv['.name'])); });
@@ -155,26 +170,27 @@ return view.extend({
 			o.depends('node', ROUTER);
 			o.rawhtml = true;
 			o.cfgvalue = function() {
-				return '<em>' + _('No rules yet. Create rules (conditions) in <a href="%s">Rule Manage</a>; their entries then appear here.').format(L.url('admin/services/easy_vless/rules')) + '</em>';
+				return '<em>' + _('No rules yet. Create rules in <a href="%s">Rule Manage</a> (prepared RUSSIA / PROXY / QUIC / UDP rules are available there); their entries then appear here.').format(L.url('admin/services/easy_vless/rules')) + '</em>';
 			};
 		}
 
 		o = s.option(form.Flag, 'localhost_proxy', _('Localhost Proxy'),
-			_('When selected, the router itself is transparently proxied.'));
+			_('Traffic of the router itself (opkg, curl, ...) also goes through Easy VLESS routing.'));
 		o.default = '1';
 		o.rmempty = false;
 
 		o = s.option(form.Flag, 'client_proxy', _('Client Proxy'),
-			_('When selected, LAN devices are transparently proxied.'));
+			_('Traffic of LAN devices is transparently redirected (TPROXY) into Easy VLESS routing. Off: LAN devices bypass Easy VLESS.'));
 		o.default = '1';
 		o.rmempty = false;
 
 		return m.render().then(L.bind(function(mapEl) {
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
-			return E('div', {}, [
+			return E('div', { 'class': 'ev-page' }, [
+				ev.pageStyle(),
 				E('h2', {}, _('Easy VLESS')),
 				E('div', { 'class': 'cbi-map-descr' }, _('VLESS client based on sing-box. Main switch, main node and shunt targets here; servers and URL Test groups in Node List; rule conditions in Rule Manage; DNS and forwarding in Settings.')),
-				ev.renderHeader(m, status),
+				ev.renderHeader(m, status, null, false, true),
 				mapEl,
 				E('div', { 'class': 'cbi-section' }, [
 					E('h3', {}, _('Connection test')),

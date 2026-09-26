@@ -48,6 +48,9 @@ url_test_node() {
 		# Connectivity / HTTP test of one server: a real HTTPS request through
 		# the node's VLESS outbound (temporary sing-box SOCKS instance + curl).
 		local probeUrl=$(config_n_get @global_other[0] url_test_url https://www.gstatic.com/generate_204)
+		# Optional 2nd argument (0.5.0): per-node URL Test URL (LuCI passes
+		# the URL Test default https://x.com); validated by the rpcd plugin.
+		[ -n "$2" ] && probeUrl="$2"
 		# Easy VLESS: time_starttransfer (first response byte through the
 		# tunnel) instead of PassWall2's time_pretransfer, which for plain
 		# http probe URLs only measures the local SOCKS handshake. This is
@@ -72,6 +75,6 @@ test_url)
 	test_url $@
 	;;
 url_test_node)
-	url_test_node $@
+	url_test_node "$@"
 	;;
 esac
