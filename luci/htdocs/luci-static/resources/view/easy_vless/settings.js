@@ -153,7 +153,7 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.ListValue, 'routing_mode', _('Routing mode'),
-			_('<b>singbox</b>: all redirected traffic enters sing-box, which applies the rules. The dnsmasq → nftset mode is planned, not implemented yet.'));
+			_('<b>singbox</b>: all redirected traffic enters sing-box, which applies the rules.'));
 		o.value('singbox', 'singbox');
 		o.default = 'singbox';
 

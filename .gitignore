@@ -1,2 +1,5 @@
-# Build artifacts are not source code (see decisions.md).
+# Build artifacts are not source code: packages are built by CI from this tree.
 *.ipk
+/dist/
+# Local-only material, never part of the public tree.
+/prototype/

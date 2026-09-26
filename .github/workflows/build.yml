@@ -1,7 +1,18 @@
 name: Build easy-vless packages
 
-# Reproducible package build for the Easy VLESS runtime, split into three
-# OpenWrt packages (backend-dependency split, decisions.md #49-52):
+# Jobs:
+#   checks         static checks (tests/static-checks.sh): shell/Lua/JS/JSON
+#                  syntax, git whitespace, resources, screenshots, package
+#                  metadata, local-path/credential scan
+#   build          real OpenWrt 24.10.3 mediatek/filogic SDK build of all
+#                  packages, per-package content checks, dist/ + SHA256SUMS
+#   runtime-tests  OpenWrt 24.10.3 x86-64 rootfs container: scripts/install.sh
+#                  with the built packages, then tests/subscription-formats-test.sh
+#   release        only for tags v*: tag/version check, draft GitHub Release
+#                  with the dist/ files (the only job with contents: write)
+#
+# Reproducible package build for the Easy VLESS runtime, split into OpenWrt
+# packages (backend-dependency split):
 #   - easy-vless             (core runtime, no VLESS engine)
 #   - easy-vless-sing-box    (sing-box backend, DEPENDS:=+easy-vless sing-box)
 #   - easy-vless-xray        (Xray backend, DEPENDS:=+easy-vless xray-core)
@@ -50,17 +61,23 @@ name: Build easy-vless packages
 # Builds against the OFFICIAL OpenWrt 24.10.3 SDK for mediatek/filogic
 # (aarch64_cortex-a53). Does not clone the full OpenWrt source tree and
 # does not use any third-party/self-built toolchain for the SDK itself -
-# see decisions.md item 48 for why this had to move to GitHub Actions (the
-# previous dev sandbox has no route to downloads.openwrt.org).
+# GitHub Actions is the canonical build environment for the release packages.
 
 on:
   push:
     branches: [main]
+    # Path filters are not applied to tag pushes: every v* tag builds.
+    tags: ['v*']
     paths:
       - 'Makefile'
       - 'files/**'
       - 'root/**'
       - 'luci/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'docs/images/**'
+      - '.gitignore'
+      - '.gitattributes'
       - '.github/workflows/build.yml'
   pull_request:
     paths:
@@ -68,8 +85,16 @@ on:
       - 'files/**'
       - 'root/**'
       - 'luci/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'docs/images/**'
+      - '.gitignore'
+      - '.gitattributes'
       - '.github/workflows/build.yml'
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 env:
   OPENWRT_VERSION: "24.10.3"
@@ -87,12 +112,60 @@ env:
   PASSWALL_PACKAGES_FEED_COMMIT: 8809eaf16367a7315620f1373aed3403bbc52eb0
 
 jobs:
+  checks:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install check tools
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends lua5.1
+
+      - name: Static checks
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # Whitespace is checked on the lines this push / pull request changes.
+          base=""
+          if [ -n "${PR_BASE}" ]; then base="${PR_BASE}"
+          elif [ -n "${EVENT_BEFORE}" ] && ! echo "${EVENT_BEFORE}" | grep -qE '^0+$' \
+               && git cat-file -e "${EVENT_BEFORE}^{commit}" 2>/dev/null; then base="${EVENT_BEFORE}"
+          elif git rev-parse -q --verify HEAD~1 >/dev/null; then base="HEAD~1"
+          fi
+          echo "whitespace base: ${base:-none}"
+          STATIC_BASE="${base:-HEAD}" bash tests/static-checks.sh
+
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - name: Checkout easy-vless
         uses: actions/checkout@v4
+
+      - name: Check tag against package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          v="$(sed -n 's/^PKG_VERSION:=//p' Makefile)"
+          r="$(sed -n 's/^PKG_RELEASE:=//p' Makefile)"
+          it="$(sed -n 's/^EV_TAG="\(.*\)"$/\1/p' scripts/install.sh)"
+          iv="$(sed -n 's/^EV_VERSION="\(.*\)"$/\1/p' scripts/install.sh)"
+          case "${tag}" in
+            "v${v}"|"v${v}-r${r}") ;;
+            *) echo "::error::tag ${tag} does not match the package version ${v}-r${r} (expected v${v} or v${v}-r${r})"; exit 1 ;;
+          esac
+          [ "${it}" = "${tag}" ] || { echo "::error::scripts/install.sh EV_TAG=${it} does not match tag ${tag}"; exit 1; }
+          [ "${iv}" = "${v}-r${r}" ] || { echo "::error::scripts/install.sh EV_VERSION=${iv} does not match ${v}-r${r}"; exit 1; }
+          echo "tag ${tag} matches ${v}-r${r}"
 
       - name: Install host build dependencies
         run: |
@@ -375,6 +448,18 @@ jobs:
             fi
           done
 
+          # 5. Prepared resources: the source lists match the reference hashes
+          #    (tests/resources.sha256 = reference/domains/{proxy,russia}.txt),
+          #    and the packaged manifest/lists are byte-identical to the source.
+          (cd "${GITHUB_WORKSPACE}" && sha256sum -c tests/resources.sha256) \
+            || { echo "::error::source resource lists differ from tests/resources.sha256"; exit 1; }
+          sed 's#  root/#  ./#' "${GITHUB_WORKSPACE}/tests/resources.sha256" | sha256sum -c - \
+            || { echo "::error::packaged resource lists differ from the reference hashes"; exit 1; }
+          for f in manifest.json domains/proxy.txt domains/russia.txt; do
+            cmp "./usr/share/easy_vless/resources/${f}" "${GITHUB_WORKSPACE}/root/usr/share/easy_vless/resources/${f}" \
+              || { echo "::error::packaged resources/${f} differs from the source file"; exit 1; }
+          done
+
           echo "All easy-vless (core) .ipk checks passed."
 
       - name: Locate and verify the easy-vless-sing-box .ipk
@@ -488,8 +573,8 @@ jobs:
 
           echo "${DEPENDS_LINE}" | grep -qw "easy-vless" \
             || { echo "::error::easy-vless-xray Depends: does not contain 'easy-vless'"; exit 1; }
-          # The real package name is "xray-core" (see decisions.md / Makefile
-          # comment) - not "xray". Check for the exact real name here.
+          # The real package name is "xray-core" (see the Makefile comment) -
+          # not "xray". Check for the exact real name here.
           echo "${DEPENDS_LINE}" | grep -qw "xray-core" \
             || { echo "::error::easy-vless-xray Depends: does not contain 'xray-core'"; exit 1; }
 
@@ -605,6 +690,44 @@ jobs:
             rm -rf "$d"
           done
 
+      - name: Assemble dist/ (release packages + install.sh + SHA256SUMS)
+        run: |
+          set -euo pipefail
+          rm -rf dist dist-optional
+          mkdir -p dist dist-optional
+          # Required release assets: the three standard packages and the
+          # installer. sing-box-tiny is not bundled: install.sh installs it
+          # from the router's own official OpenWrt feed.
+          cp "${IPK_PATH_CORE}" "${IPK_PATH_SINGBOX}" "${IPK_PATH_LUCI}" dist/
+          cp scripts/install.sh dist/install.sh
+          # Optional packages (not part of the release assets / installer).
+          cp "${IPK_PATH_XRAY}" "${IPK_PATH_GEODATA}" dist-optional/
+          v="$(sed -n 's/^PKG_VERSION:=//p' Makefile)-r$(sed -n 's/^PKG_RELEASE:=//p' Makefile)"
+          for p in easy-vless easy-vless-sing-box luci-app-easy-vless; do
+            test -f "dist/${p}_${v}_all.ipk" || { echo "::error::dist/${p}_${v}_all.ipk missing (name/version mismatch)"; exit 1; }
+          done
+          (cd dist && sha256sum *.ipk install.sh > SHA256SUMS && sha256sum -c SHA256SUMS)
+          (cd dist-optional && sha256sum *.ipk > SHA256SUMS)
+          echo "EV_PKG_VERSION=${v}" >> "$GITHUB_ENV"
+          ls -l dist dist-optional
+          cat dist/SHA256SUMS
+
+      - name: Upload dist artifact (release packages)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload optional packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-optional
+          path: dist-optional/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload easy-vless (core) .ipk artifact
         uses: actions/upload-artifact@v4
         with:
@@ -644,3 +767,75 @@ jobs:
           path: ${{ env.IPK_PATH_GEODATA }}
           if-no-files-found: error
           retention-days: 14
+
+  runtime-tests:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      OPENWRT_ROOTFS_IMAGE: openwrt/rootfs:x86-64-24.10.3
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: easy-vless-dist
+          path: dist
+
+      - name: Installer + subscription tests on OpenWrt 24.10.3 (x86-64 rootfs container)
+        run: |
+          set -euo pipefail
+          # The packages are architecture "all"; the container uses the
+          # official x86-64 feeds of the same OpenWrt release, so install.sh
+          # exercises the real opkg flow (sing-box-tiny from the feed,
+          # dnsmasq -> dnsmasq-full replacement, SHA256SUMS verification).
+          # There is no procd in the container: service restarts only warn.
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" /bin/ash -c '
+            set -e
+            mkdir -p /var/lock /var/run /tmp/log
+            opkg update >/dev/null
+            command -v fw4 >/dev/null 2>&1 || opkg install firewall4
+            sh /w/scripts/install.sh --check || true
+            sh /w/scripts/install.sh --local /w/dist --replace-dnsmasq --yes --no-start
+            cd /w/tests && sh subscription-formats-test.sh
+          '
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [checks, build, runtime-tests]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: easy-vless-dist
+          path: dist
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          v="$(sed -n 's/^PKG_VERSION:=//p' Makefile)-r$(sed -n 's/^PKG_RELEASE:=//p' Makefile)"
+          (cd dist && sha256sum -c SHA256SUMS)
+          cat > release-notes.md <<EOF
+          Easy VLESS ${v} for OpenWrt 24.10 (opkg, fw4/nftables).
+
+          Assets:
+          - easy-vless_${v}_all.ipk, easy-vless-sing-box_${v}_all.ipk, luci-app-easy-vless_${v}_all.ipk
+          - install.sh: installer (checks the router, installs sing-box-tiny from the official OpenWrt feed, optionally replaces dnsmasq with dnsmasq-full, verifies SHA256SUMS)
+          - SHA256SUMS
+
+          sing-box-tiny is not bundled; it comes from the router's official OpenWrt package feed.
+          EOF
+          gh release create "${tag}" dist/* --draft --verify-tag \
+            --title "Easy VLESS ${v}" --notes-file release-notes.md

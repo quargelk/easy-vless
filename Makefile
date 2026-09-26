@@ -1,7 +1,8 @@
 #
-# Easy VLESS — backend/runtime package (client-only VLESS transparent proxy)
-# Derived from PassWall2 25.5.15-1 (commit 394f3842969161ddd888187e72db4b493b3310b4)
-# See decisions.md for the full rationale behind every rename/removal below.
+# Easy VLESS - lightweight VLESS client for OpenWrt (client-only, transparent proxy)
+# https://github.com/quargelk/easy-vless
+# Derived from PassWall2 25.5.15-1 (commit 394f3842969161ddd888187e72db4b493b3310b4),
+# https://github.com/Openwrt-Passwall/openwrt-passwall2 (GPL-3.0).
 #
 include $(TOPDIR)/rules.mk
 
@@ -10,7 +11,7 @@ PKG_VERSION:=0.5.1
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
-PKG_MAINTAINER:=
+PKG_MAINTAINER:=quargelk <332162732+quargelk@users.noreply.github.com>
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -32,7 +33,7 @@ define Package/easy-vless
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Easy VLESS - lightweight VLESS transparent proxy runtime (core)
-  URL:=
+  URL:=https://github.com/quargelk/easy-vless
   PKGARCH:=all
   DEPENDS:= \
 	+coreutils \
@@ -54,13 +55,12 @@ define Package/easy-vless
 	+lyaml
   # Backend engines (sing-box/xray) are NOT core DEPENDS - see the
   # easy-vless-sing-box / easy-vless-xray sub-packages below. This split
-  # exists because sing-box alone (~40MB) does not fit the overlay on some
-  # supported devices (e.g. Cudy WR3000E, ~37MB free); a user who only needs
-  # one backend must be able to install core + exactly one engine package.
-  # See decisions.md for the full dependency-split rationale.
+  # exists because the full sing-box (~40MB) does not fit the overlay on
+  # small-flash devices; core + exactly one engine package must be
+  # installable on its own.
   #
-  # geoview/v2ray-geoip/v2ray-geosite moved to the optional sub-package
-  # easy-vless-geodata (vertical-slice stage, 2026-09-25): geoview exists only
+  # geoview/v2ray-geoip/v2ray-geosite live in the optional sub-package
+  # easy-vless-geodata: geoview exists only
   # in the third-party PassWall feed, so a hard core dependency made
   # easy-vless uninstallable on a router with official feeds only. Every
   # runtime caller already degrades gracefully without them: utils.sh
@@ -68,41 +68,45 @@ define Package/easy-vless
   # nftables.sh gen_shunt_list() disables geoview preloading, and
   # util_sing-box.lua check_geoview() skips .srs conversion. Rules that
   # reference geoip:/geosite: need easy-vless-geodata installed.
-  # openssl-util added in Phase 3: api.lua's fetch_cert_sha256() (Reality/TLS
+  # openssl-util: api.lua's fetch_cert_sha256() (Reality/TLS
   # cert pinning) shells out to `openssl s_client`/`openssl x509`. Verified
   # against the real openwrt/openwrt package/libs/openssl/Makefile: the CLI
   # binary is installed by the "openssl-util" sub-package specifically
   # (DEPENDS:=+libopenssl +libopenssl-conf, pulled in transitively) - "openssl"
   # itself is not an installable package name in OpenWrt.
-  # lyaml added in Phase 3: subscribe.lua requires "lyaml" unconditionally to
-  # parse Clash-YAML subscriptions (decision: Clash-YAML subscriptions are
-  # kept for VLESS nodes).
-  # tcping/unzip confirmed NOT needed anywhere in the Lua layer either
-  # (test.sh uses plain curl; subscribe.lua has no archive-format subscription
-  # support) - intentionally left out of DEPENDS.
+  # lyaml: subscribe.lua requires "lyaml" unconditionally to parse
+  # Clash-YAML subscriptions (VLESS nodes only).
+  # tcping/unzip are not needed (test.sh uses plain curl; subscribe.lua has
+  # no archive-format subscription support).
+  # Runtime requirement that cannot be expressed as a DEPENDS: dnsmasq-full
+  # (dnsmasq with nftset support) replaces the default dnsmasq package, and
+  # opkg has no Provides/Conflicts relation between the two. app.sh checks
+  # for nftset support at start and refuses to start with a clear error;
+  # install.sh offers the replacement explicitly.
 endef
 
 define Package/easy-vless/description
-  Easy VLESS is a reduced, VLESS-focused fork of the PassWall2 runtime:
-  Node List, HTTP URL Test, AUTO group (sing-box urltest only), Shunt Rules,
-  DNS/FakeDNS/DNS Redirect and nftables/TPROXY transparent proxying. This is
-  the backend-independent core (runtime shell/Lua layer, no VLESS engine);
-  install easy-vless-sing-box and/or easy-vless-xray for an actual backend.
-  The LuCI UI ships separately as luci-app-easy-vless.
+  Easy VLESS is a lightweight VLESS client for OpenWrt, derived from
+  PassWall2: transparent proxying with nftables/fw4 TPROXY, routing rules
+  with prepared domain resources, DNS (direct/remote DNS, FakeDNS, DNS
+  redirect), VLESS URL import and URL subscriptions. This is the
+  engine-independent core; install easy-vless-sing-box for the VLESS engine
+  and luci-app-easy-vless for the web interface. Needs dnsmasq-full (nftset
+  support) at runtime.
 endef
 
 # --- Backend sub-packages ---
 # Each engine is its own installable unit so a device that cannot fit both
-# backends (e.g. sing-box's ~40MB on a ~37MB-free overlay) can install core +
-# exactly one engine. Both are optional; at least one must be installed for
-# any node to actually run (app.sh's acl_node() guard reports a clear error
-# per-node otherwise - see decisions.md).
+# backends can install core + exactly one engine. easy-vless-sing-box is the
+# supported engine (the web interface and URL Test groups are sing-box based);
+# easy-vless-xray is optional. app.sh's acl_node() reports a clear error per
+# node when no usable engine is installed.
 
 define Package/easy-vless-geodata
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Easy VLESS - GeoIP/GeoSite data for Shunt Rules
-  URL:=
+  URL:=https://github.com/quargelk/easy-vless
   PKGARCH:=all
   DEPENDS:=+easy-vless +geoview +v2ray-geoip +v2ray-geosite
 endef
@@ -124,7 +128,7 @@ define Package/easy-vless-sing-box
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Easy VLESS - sing-box backend
-  URL:=
+  URL:=https://github.com/quargelk/easy-vless
   PKGARCH:=all
   # NOTE: "sing-box" is intentionally NOT "+"-prefixed. The official
   # net/sing-box/Makefile ships a second variant, sing-box-tiny, which
@@ -160,7 +164,7 @@ define Package/easy-vless-xray
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Easy VLESS - Xray backend
-  URL:=
+  URL:=https://github.com/quargelk/easy-vless
   PKGARCH:=all
   # The real opkg package name in the official openwrt/packages feed is
   # "xray-core", not "xray" (net/xray-core/Makefile:
@@ -177,9 +181,11 @@ define Package/easy-vless-xray
 endef
 
 define Package/easy-vless-xray/description
-  Xray backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS, gRPC,
-  HTTPUpgrade, XHTTP and mKCP. Required for XHTTP/mKCP transport nodes -
-  sing-box does not support them in this project.
+  Optional Xray backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS,
+  gRPC, HTTPUpgrade, XHTTP and mKCP (XHTTP/mKCP nodes need Xray). Not part of
+  the standard installation: the web interface has no Xray-specific
+  settings, and URL Test groups require sing-box. With xray-core installed,
+  newly imported VLESS links may be created as Xray nodes.
 endef
 
 # --- LuCI UI sub-package ---
@@ -192,15 +198,17 @@ define Package/luci-app-easy-vless
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
   TITLE:=LuCI interface for Easy VLESS
-  URL:=
+  URL:=https://github.com/quargelk/easy-vless
   PKGARCH:=all
   DEPENDS:=+easy-vless +luci-base +rpcd
 endef
 
 define Package/luci-app-easy-vless/description
-  Web interface for Easy VLESS: server list (add/edit/delete, VLESS URL
-  import/export, per-server test), URL Test groups with live results,
-  routing rules, configuration check, start/stop and runtime status. Talks to the runtime through the rpcd plugin
+  Web interface for Easy VLESS: Main (service control and status, rule
+  targets, connection test), Node List (VLESS servers, VLESS URL
+  import/export, URL subscriptions with HAPP User-Agent and HWID, URL Test
+  groups), Rule Manage (routing rules, prepared domain resources) and
+  Settings (DNS, forwarding). Talks to the runtime through the rpcd plugin
   luci.easy_vless.
 endef
 
@@ -209,21 +217,14 @@ define Package/easy-vless/conffiles
 /usr/share/easy_vless/direct_ip
 endef
 
-# --- Phase 2: runtime shell layer + init/hotplug. ---
-# --- Phase 3: Lua layer under /usr/lib/lua/luci/easy_vless/ (api.lua,
-# com.lua) and the remaining shell-adjacent Lua/shell helpers under
-# /usr/share/easy_vless/ (i18n.lua, app_acl.lua, helper_dnsmasq.lua,
-# subscribe.lua, test.sh), all of which app.sh/nftables.sh already
-# reference by path.
-# NOTE: rule_update.lua (GeoIP/GeoSite dataset updater, referenced by
-# app.sh's cron-registration code) is NOT YET PORTED - see Phase 3 report /
-# decisions.md for the open question about whether it's still needed given
-# the v2ray-geoip/v2ray-geosite DEPENDS added in Phase 2.
-# --- Backend split (this commit): util_sing-box.lua and util_xray.lua moved
-# out of this package into easy-vless-sing-box / easy-vless-xray below -
-# see decisions.md for the dependency-split rationale (sing-box overlay
-# footprint vs. limited-flash devices). app.sh's acl_node() detects at
-# runtime which of $UTIL_SINGBOX/$UTIL_XRAY actually exist on disk.
+# Core package contents: runtime shell layer, init/hotplug scripts, the Lua
+# layer under /usr/lib/lua/luci/easy_vless/ (api.lua, com.lua) and the
+# helpers under /usr/share/easy_vless/. The engine-specific config
+# generators (util_sing-box.lua / util_xray.lua) ship in the backend
+# sub-packages; app.sh's acl_node() detects at runtime which exist.
+# The PassWall2 GeoIP/GeoSite downloader (rule_update.lua) is not ported:
+# the datasets come from the v2ray-geoip/v2ray-geosite packages
+# (easy-vless-geodata).
 define Package/easy-vless/install
 	$(INSTALL_DIR) $(1)/usr/share/easy_vless
 	$(INSTALL_DATA) ./files/0_default_config $(1)/usr/share/easy_vless/0_default_config
