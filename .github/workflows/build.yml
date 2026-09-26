@@ -363,7 +363,8 @@ jobs:
           # 4. Content: the core package must ship neither engine's util_*.lua.
           tar -xzf data.tar.gz
           for f in usr/share/easy_vless/app.sh usr/share/easy_vless/direct_ip usr/share/easy_vless/lease2hosts.sh \
-                   usr/share/easy_vless/resources/manifest.json usr/share/easy_vless/resources/domains/proxy.txt usr/share/easy_vless/resources/domains/russia.txt; do
+                   usr/share/easy_vless/resources/manifest.json usr/share/easy_vless/resources/domains/proxy.txt usr/share/easy_vless/resources/domains/russia.txt \
+                   usr/share/easy_vless/subscribe.lua lib/upgrade/keep.d/easy-vless; do
             test -f "./$f" || { echo "::error::easy-vless (core) does not ship $f"; exit 1; }
           done
           for forbidden_file in usr/lib/lua/luci/easy_vless/util_sing-box.lua \

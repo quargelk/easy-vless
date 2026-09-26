@@ -1,0 +1,95 @@
+{
+  "outbounds": [
+    {
+      "flow": "xtls-rprx-vision",
+      "multiplex": {},
+      "server": "198.51.100.11",
+      "server_port": 443,
+      "tag": "NL Reality",
+      "tls": {
+        "enabled": true,
+        "reality": {
+          "enabled": true,
+          "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "short_id": "0123456789abcdef"
+        },
+        "server_name": "www.example.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      },
+      "transport": {},
+      "type": "vless",
+      "uuid": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "type": "vless",
+      "tag": "DE WS TLS",
+      "server": "de.example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "tls": {
+        "enabled": true,
+        "server_name": "de.example.com",
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ],
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/ws",
+        "headers": {
+          "Host": "de.example.com"
+        },
+        "max_early_data": 2048,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    },
+    {
+      "type": "vless",
+      "server": "198.51.100.13",
+      "server_port": 8443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "tls": {
+        "enabled": true,
+        "server_name": "grpc.example.com"
+      },
+      "transport": {
+        "type": "grpc",
+        "service_name": "gsvc"
+      }
+    },
+    {
+      "type": "vless",
+      "server": "198.51.100.14",
+      "server_port": 8080,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "transport": {
+        "type": "httpupgrade",
+        "host": "hu.example.com",
+        "path": "/up"
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    },
+    {
+      "type": "selector",
+      "tag": "select",
+      "outbounds": [
+        "NL Reality"
+      ]
+    }
+  ]
+}

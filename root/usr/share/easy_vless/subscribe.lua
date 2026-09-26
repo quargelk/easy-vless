@@ -592,6 +592,199 @@ local function processClashData(content, add_mode, group, sub_cfg)
 	return results
 end
 
+-- sing-box JSON subscriptions (Easy VLESS): the subscription is used only as a
+-- source of proxy server definitions. Only outbounds[] (and endpoints[] for the
+-- skip report) are read; inbounds, dns, route (final/rules/rule_set and their
+-- foreign file paths), log, experimental (Clash API) are never used.
+local SINGBOX_NON_PROXY = { direct = true, block = true, dns = true, selector = true, urltest = true }
+
+local function singbox_str(v)
+	if v == nil then return nil end
+	if type(v) == "table" then
+		local t = {}
+		for _, x in ipairs(v) do t[#t + 1] = tostring(x) end
+		return (#t > 0) and table.concat(t, ",") or nil
+	end
+	v = tostring(v)
+	return (v ~= "") and v or nil
+end
+
+local function parseSingBoxOutbound(ob, index, add_mode, group, sub_cfg)
+	local result = {
+		timeout = 60,
+		add_mode = add_mode, -- `0` for manual configuration, `1` for import, `2` for subscription
+		group = group
+	}
+	local vless_type = sub_cfg and sub_cfg.vless_type or "global"
+	if vless_type == "xray" and has_xray then
+		result.type = "Xray"
+	elseif has_singbox then
+		result.type = "sing-box"
+	elseif has_xray then
+		result.type = "Xray"
+	else
+		log(2, i18n.translatef("Skipping the %s node is due to incompatibility with the %s core program or incorrect node usage type settings.", "VLESS", "VLESS"))
+		return nil
+	end
+	result.protocol = "vless"
+	result.remarks = singbox_str(ob.tag) or ("VLESS " .. index)
+	result.address = singbox_str(ob.server)
+	result.port = singbox_str(ob.server_port)
+	result.uuid = singbox_str(ob.uuid)
+	result.encryption = "none"
+	result.flow = singbox_str(ob.flow)
+
+	local tls = type(ob.tls) == "table" and ob.tls or {}
+	result.tls = "0"
+	if tls.enabled == true then
+		result.tls = "1"
+		result.tls_serverName = singbox_str(tls.server_name)
+		result.alpn = singbox_str(tls.alpn)
+		if tls.insecure == true then
+			result.tls_allowInsecure = "1"
+		else
+			result.tls_allowInsecure = (sub_cfg and sub_cfg.allowInsecure == "1") and "1" or "0"
+		end
+		local utls = type(tls.utls) == "table" and tls.utls or {}
+		if utls.enabled == true then
+			result.utls = "1"
+			result.fingerprint = singbox_str(utls.fingerprint) or "chrome"
+		end
+		local reality = type(tls.reality) == "table" and tls.reality or {}
+		if reality.enabled == true then
+			result.reality = "1"
+			result.reality_publicKey = singbox_str(reality.public_key)
+			result.reality_shortId = singbox_str(reality.short_id)
+		end
+		local ech = type(tls.ech) == "table" and tls.ech or {}
+		if ech.enabled == true and type(ech.config) == "table" and #ech.config > 0 then
+			result.ech = "1"
+			result.ech_config = table.concat(ech.config, "\\n")
+		end
+	end
+
+	local tr = type(ob.transport) == "table" and ob.transport or {}
+	local ttype = singbox_str(tr.type) or "tcp"
+	if ttype == "ws" then
+		result.transport = "ws"
+		result.ws_path = singbox_str(tr.path)
+		local h = type(tr.headers) == "table" and tr.headers or {}
+		result.ws_host = singbox_str(h.Host or h.host)
+		if tonumber(tr.max_early_data) and tonumber(tr.max_early_data) > 0 then
+			if result.type == "sing-box" then
+				result.ws_enableEarlyData = "1"
+				result.ws_maxEarlyData = tonumber(tr.max_early_data)
+				result.ws_earlyDataHeaderName = singbox_str(tr.early_data_header_name) or "Sec-WebSocket-Protocol"
+			else
+				result.ws_path = (result.ws_path or "/") .. "?ed=" .. tonumber(tr.max_early_data)
+			end
+		end
+	elseif ttype == "grpc" then
+		result.transport = "grpc"
+		result.grpc_serviceName = singbox_str(tr.service_name)
+		result.grpc_mode = "gun"
+	elseif ttype == "httpupgrade" then
+		result.transport = "httpupgrade"
+		result.httpupgrade_host = singbox_str(tr.host)
+		result.httpupgrade_path = singbox_str(tr.path)
+	elseif ttype == "http" then
+		if result.type == "sing-box" then
+			result.transport = "http"
+			local host = tr.host
+			if type(host) == "string" then host = { host } end
+			result.http_host = (type(host) == "table" and #host > 0) and host or nil
+			result.http_path = singbox_str(tr.path)
+		else
+			result.transport = "xhttp"
+			result.xhttp_mode = "stream-one"
+			result.xhttp_host = type(tr.host) == "table" and singbox_str(tr.host[1]) or singbox_str(tr.host)
+			result.xhttp_path = singbox_str(tr.path)
+		end
+	elseif ttype == "tcp" then
+		result.transport = (result.type == "Xray") and "raw" or "tcp"
+		result.tcp_guise = "none"
+	else
+		log(2, i18n.translatef("Skip node: %s. Because Sing-Box does not support the %s protocol's %s transmission method, Xray needs to be used instead.", result.remarks, "vless", ttype))
+		return nil
+	end
+	if not (result.address and result.port and result.uuid) then
+		result.error_msg = "server / server_port / uuid missing"
+	end
+	return result
+end
+
+-- Returns nodes (parsed VLESS outbounds) and a report table.
+local function processSingBoxData(conf, add_mode, group, sub_cfg)
+	local results = {}
+	local report = { found = 0, skipped = 0, skipped_types = {}, ignored = 0 }
+	local function skip(t)
+		report.skipped = report.skipped + 1
+		report.skipped_types[t] = (report.skipped_types[t] or 0) + 1
+	end
+	local vless_index = 0
+	for _, ob in ipairs(conf.outbounds or {}) do
+		local t = type(ob) == "table" and singbox_str(ob.type) or nil
+		if t == "vless" then
+			vless_index = vless_index + 1
+			report.found = report.found + 1
+			local ok, r = pcall(parseSingBoxOutbound, ob, vless_index, add_mode, group, sub_cfg)
+			if ok and r then
+				results[#results + 1] = r
+			else
+				skip("vless (invalid)")
+			end
+		elseif t and SINGBOX_NON_PROXY[t] then
+			report.ignored = report.ignored + 1
+		else
+			skip(t or "unknown")
+		end
+	end
+	for _, ep in ipairs(type(conf.endpoints) == "table" and conf.endpoints or {}) do
+		skip(((type(ep) == "table" and singbox_str(ep.type)) or "unknown") .. " (endpoint)")
+	end
+	return results, report
+end
+
+-- Detect the subscription body format. Returns "singbox", <table> for a
+-- sing-box JSON config (object with an outbounds array, an array of such
+-- objects, or an array of outbound objects); "json_invalid" for text that
+-- looks like JSON but does not parse / has no outbounds; nil otherwise.
+local function detect_json(raw)
+	local text = raw
+	if not text:match("^%s*[%{%[]") then
+		-- base64-wrapped JSON (only for bodies that are pure base64 text)
+		if not raw:match("^[%w%+/=_%-%s]+$") then return nil end
+		local ok, dec = pcall(base64Decode, raw)
+		if ok and type(dec) == "string" and dec ~= raw and dec:match("^%s*[%{%[]") then
+			text = dec
+		else
+			return nil
+		end
+	end
+	local ok, data = pcall(jsonParse, text)
+	if not ok or type(data) ~= "table" then
+		return "json_invalid", "the JSON document does not parse"
+	end
+	if type(data.outbounds) == "table" then
+		return "singbox", { outbounds = data.outbounds, endpoints = data.endpoints }
+	end
+	if #data > 0 then
+		local merged = { outbounds = {}, endpoints = {} }
+		for _, item in ipairs(data) do
+			if type(item) == "table" and type(item.outbounds) == "table" then
+				for _, o in ipairs(item.outbounds) do merged.outbounds[#merged.outbounds + 1] = o end
+				for _, e in ipairs(type(item.endpoints) == "table" and item.endpoints or {}) do merged.endpoints[#merged.endpoints + 1] = e end
+			elseif type(item) == "table" and item.type then
+				merged.outbounds[#merged.outbounds + 1] = item
+			end
+		end
+		if #merged.outbounds > 0 or #merged.endpoints > 0 then
+			return "singbox", merged
+		end
+	end
+	return "json_invalid", "JSON without an \"outbounds\" array (not a sing-box configuration)"
+end
+
 -- Processing data
 local function processData(szType, content, add_mode, group, sub_cfg)
 	--log(2, content, add_mode, group)
@@ -844,55 +1037,80 @@ local function curl(url, file, ua, mode, hwid)
 	return return_code, tonumber(result)
 end
 
-function get_headers()
-	local cache_file = api.CACHE_PATH .. "/sub_curl_headers"
-	if fs.access(cache_file) then
-		return luci.sys.exec("cat " .. cache_file)
-	end
-	local headers = {}
+-- HWID (Easy VLESS): one stable identifier per router, generated once and
+-- persisted in /etc/easy_vless/hwid (flash; listed in the package conffiles),
+-- reused across reboots, restarts and updates. Provider-agnostic: sent as
+-- the X-HWID request header (plus the usual X-Device-* headers) only for
+-- subscriptions with "HWID Support" (subscribe_list.hwid = 1).
+local HWID_FILE = "/etc/easy_vless/hwid"
 
-	local function readfile(path)
-		local f = io.open(path, "r")
-		if not f then return nil end
-		local c = f:read("*a")
+local function readfile(path)
+	local f = io.open(path, "r")
+	if not f then return nil end
+	local c = f:read("*a")
+	f:close()
+	return api.trim(c)
+end
+
+local function sha256(text)
+	local p = io.popen("printf '%s' '" .. text:gsub("'", "'\\''") .. "' | sha256sum")
+	if not p then return nil end
+	local hash = p:read("*l")
+	p:close()
+	return hash and hash:match("^(%x+)")
+end
+
+function get_hwid()
+	local hwid = readfile(HWID_FILE)
+	if hwid and hwid:match("^[%w%-]+$") and #hwid >= 16 and #hwid <= 128 then
+		return hwid
+	end
+	-- first use: derive from the router identity when available (the same
+	-- value survives a factory reset), otherwise from a random UUID
+	local model = readfile("/tmp/sysinfo/model")
+	local mac = readfile("/sys/class/net/eth0/address")
+	local seed
+	if mac and mac:match("^%x%x:") and mac ~= "00:00:00:00:00:00" and model and model ~= "" then
+		seed = mac .. "-" .. model
+	else
+		seed = readfile("/proc/sys/kernel/random/uuid") or tostring(os.time()) .. tostring(math.random())
+	end
+	hwid = sha256(seed)
+	if not hwid then return nil end
+	luci.sys.call("mkdir -p /etc/easy_vless")
+	local tmp = HWID_FILE .. ".tmp"
+	local f = io.open(tmp, "w")
+	if f then
+		f:write(hwid .. "\n")
 		f:close()
-		return api.trim(c)
+		os.rename(tmp, HWID_FILE)
 	end
+	return hwid
+end
 
-	headers[#headers + 1] = "x-device-os: OpenWrt"
-
+function get_headers()
+	local headers = {}
+	headers[#headers + 1] = "X-Device-OS: OpenWrt"
 	local rel = readfile("/etc/openwrt_release")
 	local os_ver = rel and rel:match("DISTRIB_RELEASE='([^']+)'")
 	if os_ver then
-		headers[#headers + 1] = "x-ver-os: " .. os_ver
+		headers[#headers + 1] = "X-Ver-OS: " .. os_ver
 	end
-
 	local model = readfile("/tmp/sysinfo/model")
 	if model then
-		headers[#headers + 1] = "x-device-model: " .. model
+		headers[#headers + 1] = "X-Device-Model: " .. model
 	end
-
-	local mac = readfile("/sys/class/net/eth0/address")
-	if mac and model then
-		local raw = mac .. "-" .. model
-		local p = io.popen("printf '%s' '" .. raw:gsub("'", "'\\''") .. "' | sha256sum")
-		if p then
-			local hash = p:read("*l")
-			p:close()
-			hash = hash and hash:match("^%w+")
-			if hash then
-				headers[#headers + 1] = "x-hwid: " .. hash
-			end
-		end
+	local hwid = get_hwid()
+	if hwid then
+		headers[#headers + 1] = "X-HWID: " .. hwid
+	else
+		log(1, i18n.translatef("HWID could not be generated; the subscription is requested without X-HWID."))
 	end
-
 	local out = {}
 	for i = 1, #headers do
 		out[i] = "-H '" .. headers[i]:gsub("'", "'\\''") .. "'"
 	end
-	local headers_str = table.concat(out, " ")
-	local f = io.open(cache_file, "w"); if f then f:write(headers_str); f:close() end
-	return headers_str
+	return table.concat(out, " ")
 end
 
 local function truncate_nodes(group)
@@ -1214,19 +1432,32 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 		if sub_cfg then
 			cfgid = sub_cfg[".name"]
 		end
-		local nodes, szType, clashTable
+		local nodes, szType, clashTable, singboxConf, singboxReport
 		local node_list = {}
-		-- Try parseYAML, if success, is clash.
-		local yamlTable = lyaml.load(raw)
-		if yamlTable and type(yamlTable) == "table" then
+		-- Easy VLESS: JSON first (JSON is also valid YAML and would otherwise
+		-- be taken for a Clash document): sing-box JSON -> outbounds.
+		local json_kind, json_data = detect_json(raw)
+		local yamlTable = (json_kind == nil) and lyaml.load(raw) or nil
+		if json_kind == "singbox" then
+			szType = "singbox"
+			singboxConf = json_data
+			nodes = {}
+			log(2, i18n.translatef("Subscription format: %s", "sing-box JSON"))
+		elseif json_kind == "json_invalid" then
+			szType = "json_invalid"
+			nodes = {}
+			log(1, i18n.translatef("Subscription [%s]: invalid sing-box JSON (%s); existing nodes are kept.", group, json_data))
+		elseif yamlTable and type(yamlTable) == "table" then
 			-- clash
 			szType = "clash"
 			clashTable = yamlTable
+			log(2, i18n.translatef("Subscription format: %s", "Clash YAML"))
 		else
 			-- Base64 or plain-text URI list
 			if add_mode == "1" then
 				nodes = split(raw, "\n")
 			else
+				log(2, i18n.translatef("Subscription format: %s", raw:find("://", 1, true) and "URL list" or "base64 URL list"))
 				nodes = split(base64Decode(raw):gsub("\r\n", "\n"), "\n")
 			end
 		end
@@ -1246,6 +1477,14 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 				if add_mode == "2" then
 					get_subscribe_info(cfgid, node.remarks)
 				end
+			end
+		end
+
+		if szType == "singbox" and singboxConf then
+			local sbNodes
+			sbNodes, singboxReport = processSingBoxData(singboxConf, add_mode, group, sub_cfg)
+			for _, v in ipairs(sbNodes) do
+				nodeFilter(v)
 			end
 		end
 
@@ -1287,6 +1526,17 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 				sub_cfg = sub_cfg
 			}
 		end
+		if singboxReport then
+			local types = {}
+			for t, n in pairs(singboxReport.skipped_types) do types[#types + 1] = (n > 1) and (t .. " x" .. n) or t end
+			table.sort(types)
+			local skipped = singboxReport.skipped + (singboxReport.found - #node_list - (singboxReport.skipped_types["vless (invalid)"] or 0))
+			log(1, i18n.translatef("[%s] sing-box JSON: imported %s, skipped %s%s", group, #node_list, skipped,
+				(#types > 0) and ("; skipped types: " .. table.concat(types, ", ")) or ""))
+			if #node_list == 0 then
+				log(1, i18n.translatef("[%s] No supported VLESS outbound was found in the sing-box JSON; existing nodes are kept.", group))
+			end
+		end
 		log(2, i18n.translatef("Successfully resolved the [%s] node, number: %s", group, #node_list))
 	else
 		if add_mode == "2" then
@@ -1310,11 +1560,23 @@ local execute = function()
 		end
 
 		local manual_sub = arg[3] == "manual"
+		local cron_sub = arg[3] == "cron"
+		local function service_running()
+			local pid = readfile("/var/run/" .. c_config .. ".pid")
+			return pid and pid:match("^%d+$") and fs.access("/proc/" .. pid) and true or false
+		end
 
 		for index, value in ipairs(subscribe_list) do
 			local cfgid = value[".name"]
 			local remark = value.remark or ""
 			local url = value.url or ""
+			-- "Update only when connected": automatic updates are skipped while
+			-- Easy VLESS is not running (the Update button always runs).
+			if cron_sub and value.update_connected == "1" and not service_running() then
+				log(1, i18n.translatef("[%s] Automatic update skipped: Easy VLESS is not connected (not running).", remark))
+				url = nil
+			end
+			if url then
 
 			local url_is_local
 			if fs.access(url) then
@@ -1357,6 +1619,7 @@ local execute = function()
 				else
 					luci.sys.call("rm -f " .. tmp_file)
 				end
+			end
 			end
 		end
 

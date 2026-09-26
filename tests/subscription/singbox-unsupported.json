@@ -1,0 +1,59 @@
+{
+  "outbounds": [
+    {
+      "flow": "xtls-rprx-vision",
+      "multiplex": {},
+      "server": "198.51.100.20",
+      "server_port": 443,
+      "tag": "Only VLESS",
+      "tls": {
+        "enabled": true,
+        "reality": {
+          "enabled": true,
+          "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "short_id": "0123456789abcdef"
+        },
+        "server_name": "www.example.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      },
+      "transport": {},
+      "type": "vless",
+      "uuid": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "type": "trojan",
+      "tag": "tr",
+      "server": "198.51.100.21",
+      "server_port": 443,
+      "password": "x"
+    },
+    {
+      "type": "shadowsocks",
+      "tag": "ss",
+      "server": "198.51.100.22",
+      "server_port": 8388,
+      "method": "aes-128-gcm",
+      "password": "x"
+    },
+    {
+      "type": "hysteria2",
+      "tag": "hy2",
+      "server": "198.51.100.23",
+      "server_port": 443,
+      "password": "x"
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "endpoints": [
+    {
+      "type": "wireguard",
+      "tag": "wg"
+    }
+  ]
+}

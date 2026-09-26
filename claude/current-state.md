@@ -6,7 +6,7 @@ Status legend: **LOCAL** = verified in the Claude sandbox harness (x86_64 contai
 
 ## Version
 
-- Packages: **0.5.0-r2** (release candidate; 0.5.0-r1 = GUI + prepared resources + bugfixes, r2 = RC fixes below). Previous: 0.4.0-r1 (committed `b1480ca` "feat: consolidate Easy VLESS MVP"), 0.3.0-r2.
+- Packages: **0.5.1-r1**. This release adds the subscription engine: sing-box JSON and HWID. Earlier 0.5.0 releases: r1 added the GUI, prepared resources and bugfixes; r2 added the RC fixes below. Previous: 0.4.0-r1 (committed `b1480ca` "feat: consolidate Easy VLESS MVP"), 0.3.0-r2.
 - Repository: https://github.com/quargelk/easy-vless, branch `main`
 - Upstream/reference: PassWall2 25.5.15-1, commit 394f3842969161ddd888187e72db4b493b3310b4
 
@@ -30,6 +30,85 @@ Same version 0.5.0-r1 (not released yet), GUI/UX only, runtime unchanged.
 - URL Test Groups: Name, Servers, Test URL, Status (Active / Selected (stopped) / Used by N / Inactive), Use · Edit · Delete; live results only when groups exist, compact notice when not running.
 - Rule editor: one form Name → Conditions → Target; condition rows "type | value | ×"; Domain Resource is a dropdown (RUSSIA / PROXY, "+ resource" for more); prepared rules: RUSSIA → Direct, PROXY/QUIC/UDP → the currently selected VLESS/group (`"target": "@active"` in the manifest, resolved when the user clicks Add prepared rule).
 - Settings sections: DNS / Forwarding / Advanced.
+
+## 0.5.1 subscription engine: sing-box JSON and HAPP HWID
+
+The existing pipeline is extended; there is no second node or config architecture. Everything goes through `subscribe.lua` `parse_link()` → `update_node()`, the same UCI `nodes` sections (`add_mode=2`, `group=<subscription name>`) and the existing sing-box generator.
+
+**Supported formats.** The format is detected automatically, in this order:
+1. JSON: the body starts with `{` or `[`, or it is pure base64 text that decodes to such JSON.
+   - An object with an `outbounds` array is sing-box JSON.
+   - An array of such objects, or an array of outbound objects, is also accepted.
+   - JSON that does not parse, or has no outbounds, is reported as "invalid sing-box JSON", and the subscription's existing nodes are kept.
+2. Clash YAML (as before).
+3. A plain `vless://` list, or a base64 URL list (as before).
+
+The log records the detected format ("Subscription format: …"). The Update result dialog shows the format and the imported/skipped counts.
+
+**What is imported from sing-box JSON.** Only `outbounds[]` of `type: vless`, mapped to the same fields the `vless://` parser fills:
+
+| sing-box field | Easy VLESS node field |
+|---|---|
+| `tag` | name; `VLESS n` when the tag is missing |
+| `server`, `server_port` | `address`, `port` |
+| `uuid`, `flow` | `uuid`, `flow` |
+| `tls.enabled` | `tls` |
+| `tls.server_name` | `tls_serverName` |
+| `tls.insecure` | `tls_allowInsecure` |
+| `tls.alpn` | `alpn` |
+| `tls.utls.enabled`, `tls.utls.fingerprint` | `utls`, `fingerprint` |
+| `tls.reality.enabled`, `.public_key`, `.short_id` | `reality`, `reality_publicKey`, `reality_shortId` |
+| `tls.ech.config` | `ech_config` |
+| `transport`: empty/tcp, `ws` (path, Host header, early data), `grpc` (`service_name`), `httpupgrade` (host, path), `http` | the matching transport fields |
+
+The engine is sing-box when it is installed, otherwise Xray.
+
+**Ignored on purpose.** Easy VLESS owns these, so they are never read:
+- `inbounds` (TUN), `dns`, `route` (`final`, `rules`, `rule_set` and its foreign paths such as `C:\Users\…\geoip.srs`), `log`, `experimental`/Clash API, `endpoints`.
+- Non-proxy outbounds (`direct`, `block`, `dns`, `selector`, `urltest`) are ignored silently.
+- Other proxy types (trojan, shadowsocks, hysteria2, …) and endpoints (wireguard) are skipped and reported, for example "imported 1, skipped 4; skipped types: hysteria2, shadowsocks, trojan, wireguard (endpoint)".
+
+Zero supported outbounds is reported as FAILED ("No supported VLESS outbound …"), and the existing nodes are kept.
+
+Duplicates and updates follow the existing ownership model: the subscription's nodes are replaced as a set, so there are no duplicates, and manual nodes are never touched.
+
+**HWID ("HWID Support", option `hwid`).**
+- One ID per router, generated on first use:
+  - sha256(eth0 MAC + board model) when both are available, so the same value comes back after a reset;
+  - otherwise sha256 of a random UUID.
+- Stored in `/etc/easy_vless/hwid` (on flash; kept by sysupgrade via `/lib/upgrade/keep.d/easy-vless`). It is reused and never regenerated per request.
+- Sent only when enabled, as `X-HWID: <id>` together with `X-Device-OS: OpenWrt`, `X-Ver-OS` and `X-Device-Model`.
+- The earlier `/tmp` header cache was removed.
+- It is not a node parameter, and it works with any provider.
+- HAPP = `User-Agent: HAPP` plus, with HWID Support on, `X-HWID`. Default and Custom User-Agent are unchanged.
+
+**New options in the URL Subscription modal:**
+- **Update only when connected** (`update_connected`): automatic (cron) updates are skipped while Easy VLESS is not running. The Update button always runs.
+- **HWID Support** (`hwid`).
+- **Spoof App**: the former "User-Agent" select (Default / HAPP / Custom).
+- **UserAgent**: the custom string.
+- **Auto Update** (`auto_update`) and **Auto Update Delay** (`auto_update_interval`: 1, 2, 3, 4, 6, 8, 12 or 24 h). `app.sh start_crontab` writes one cron line per subscription with a minute offset derived from the section id. Cron exists only while the service is started (existing lifecycle).
+
+**Tests.**
+- New `tests/subscription-formats-test.sh` with fixtures in `tests/subscription/`: dummy credentials in the real provider's structure (TUN, DNS, Windows rule_set paths), multi-VLESS, direct/block/selector, unsupported types, malformed, zero, a JSON array, base64-wrapped JSON, and plain/base64 URL lists.
+  - LOCAL: 52/52 PASS.
+  - The same script against the 0.5.0 `subscribe.lua` FAILS the JSON cases, so the test does discriminate.
+- LOCAL, over HTTP with a header-logging server:
+
+  | Setting | Request headers seen |
+  |---|---|
+  | Default | UA `curl/8.5.0`, no X-HWID |
+  | HAPP | UA `HAPP`, no X-HWID |
+  | HAPP + HWID | UA `HAPP`, `X-HWID` (64 hex) |
+  | Custom + HWID | UA `MyApp/1.0`, same `X-HWID` |
+  | Custom, HWID off | no X-HWID |
+
+  The HWID stayed the same across repeated updates, after wiping `/tmp` state and after a service restart.
+- LOCAL: the exact provider JSON from the task produced 1 node with every expected value (185.98.61.134:443, the uuid, xtls-rprx-vision, TLS + Reality, public key, short id `6ba85179e30d4fc2`, SNI differencescope.com, uTLS chrome, transport tcp), and nothing foreign was copied into UCI.
+- LOCAL runtime: the same JSON structure pointed at the local Reality+Vision test server was imported, selected as the main node and started. The generated outbound kept all the values, and TPROXY traffic reached the server through Reality.
+  - The provider's real server was not reachable from the sandbox, so a real-provider connection is UNVERIFIED (TR3000).
+- LOCAL GUI: the modal fields and their dependencies work; Update shows "1 nodes imported, 0 skipped. Format: sing-box JSON"; a zero-VLESS JSON shows FAILED and keeps the node; the full earlier GUI regression suite passes with no JS errors.
+- LOCAL cron: `36 */6 * * * … subscribe.lua start @subscribe_list[N] cron` is written on start and removed on stop. The "only when connected" skip works while stopped.
 
 ## 0.5.0-r2 release-candidate pass
 
@@ -71,7 +150,7 @@ TODO: full `opkg list-installed` of TR3000 not captured yet.
 ## Storage Baseline
 
 - Overlay ≈ 44.6 MiB total, ≈ 25 MiB free with Easy VLESS 0.4.x installed (TR3000, user measurement).
-- IPK sizes 0.5.0-r2 (offline build, LOCAL): easy-vless 69 292 B (includes resources 15.1 KB), easy-vless-sing-box 16 091 B, luci-app-easy-vless 34 317 B, easy-vless-xray 12 608 B, easy-vless-geodata 953 B. The resources inside the IPK are byte-identical to `reference/domains`.
+- IPK sizes 0.5.1-r1 (offline build, LOCAL): easy-vless 72 405 B (includes resources 15.1 KB), easy-vless-sing-box 16 093 B, luci-app-easy-vless 34 988 B, easy-vless-xray 12 611 B, easy-vless-geodata 951 B. The resources inside the IPK are byte-identical to `reference/domains`.
 
 ## RAM Baseline
 
@@ -299,7 +378,7 @@ FILES: servers.js, rules.js, main.js
 
 ## Future Tasks
 
-- SDK/CI build of 0.5.0-r2 and TR3000 regression (upgrade 0.4→0.5 with config backup, resources installed/visible, rules with resources, Main/Node List/Rule Manage/Settings, Add VLESS, subscriptions with HAPP, Start/Stop/Restart/boot, Server Test, URL Test, groups)
+- SDK/CI build of 0.5.1-r1 and TR3000 (plus a real provider sing-box JSON subscription with HAPP + HWID) regression (upgrade 0.4→0.5 with config backup, resources installed/visible, rules with resources, Main/Node List/Rule Manage/Settings, Add VLESS, subscriptions with HAPP, Start/Stop/Restart/boot, Server Test, URL Test, groups)
 - record full `opkg list-installed` of TR3000
 - small bugs / polish after TR3000 feedback
 - Wizard, installer/updater, nftset, resource updater (separate stages)
@@ -307,4 +386,4 @@ FILES: servers.js, rules.js, main.js
 ## Last Verified Commit
 
 - Last commit on `main` (user): `b1480ca83dcb1a171dfe8e7a29821425e5444be8` "feat: consolidate Easy VLESS MVP" (0.4.0-r1, TR3000-verified by the user).
-- 0.5.0-r1 + r2 changes are delivered to the working folder, not committed. Replace this line with the new hash after commit + CI + TR3000 check.
+- 0.5.0-r1, 0.5.0-r2 and 0.5.1-r1 changes are delivered to the working folder, not committed. Replace this line with the new hash after commit + CI + TR3000 check.

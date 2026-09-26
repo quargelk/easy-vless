@@ -1,0 +1,29 @@
+[
+  {
+    "flow": "xtls-rprx-vision",
+    "multiplex": {},
+    "server": "198.51.100.50",
+    "server_port": 443,
+    "tag": "Array 1",
+    "tls": {
+      "enabled": true,
+      "reality": {
+        "enabled": true,
+        "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "short_id": "0123456789abcdef"
+      },
+      "server_name": "www.example.com",
+      "utls": {
+        "enabled": true,
+        "fingerprint": "chrome"
+      }
+    },
+    "transport": {},
+    "type": "vless",
+    "uuid": "00000000-0000-4000-8000-000000000001"
+  },
+  {
+    "type": "direct",
+    "tag": "direct"
+  }
+]

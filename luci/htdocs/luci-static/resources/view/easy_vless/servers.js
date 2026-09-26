@@ -256,9 +256,22 @@ return view.extend({
 				uci.unload(CONFIG);
 				return uci.load(CONFIG).then(function() {
 					const now = uci.sections(CONFIG, 'nodes').length;
-					ev.showResult(_('Subscription'), r.done ? 'ok' : 'warn',
-						r.done ? _('Subscription update finished: %d nodes before, %d now.').format(before, now) : _('Still running, check the log later.'),
-						log);
+					/* summary from subscribe.lua's log lines (format, imported/skipped) */
+					const fmts = [], parts = [];
+					let verdict = r.done ? 'ok' : 'warn', m, re = /Subscription format: ([^\n]+)/g;
+					while ((m = re.exec(log)) != null)
+						if (fmts.indexOf(m[1].trim()) < 0) fmts.push(m[1].trim());
+					re = /sing-box JSON: imported (\d+), skipped (\d+)(?:; skipped types: ([^\n]+))?/g;
+					while ((m = re.exec(log)) != null) {
+						parts.push(_('%s nodes imported, %s skipped').format(m[1], m[2]) + (m[3] ? ' (' + m[3].trim() + ')' : ''));
+						if (m[1] == '0') verdict = 'bad';
+					}
+					if (/No supported VLESS outbound|invalid sing-box JSON|Subscription failed|content for \[[^\]]*\] is empty/.test(log))
+						verdict = (verdict == 'ok' && parts.length && !/imported 0,/.test(log)) ? 'warn' : 'bad';
+					let head = r.done ? _('Subscription update finished: %d nodes before, %d now.').format(before, now) : _('Still running, check the log later.');
+					if (parts.length) head += ' ' + parts.join('; ') + '.';
+					if (fmts.length) head += ' ' + _('Format: %s').format(fmts.join(', '));
+					ev.showResult(_('Subscription'), verdict, head, log);
 					const btn = document.querySelector('.modal .btn');
 					if (btn)
 						btn.addEventListener('click', function() { window.location.reload(); });
@@ -636,10 +649,18 @@ return view.extend({
 				: ev.badge(_('Not updated yet'), 'idle');
 		};
 
+		o = s.option(form.Flag, 'update_connected', _('Update only when connected'),
+			_('Automatic updates run only while Easy VLESS is running. The Update button always runs.'));
+		o.modalonly = true;
+
+		o = s.option(form.Flag, 'hwid', _('HWID Support'),
+			_('Send this router\'s stable hardware ID as the <code>X-HWID</code> header (with X-Device-OS / X-Ver-OS / X-Device-Model), for providers that limit devices. The ID is generated once and kept in /etc/easy_vless/hwid.'));
+		o.modalonly = true;
+
 		/* User-Agent: subscribe.lua sends option user_agent as the HTTP
 		 * User-Agent header (unset/"curl" = curl's default, as before). */
-		o = s.option(form.ListValue, '_ua_mode', _('User-Agent'),
-			_('HAPP sends "User-Agent: HAPP" (for providers that serve the node list only to the HAPP app).'));
+		o = s.option(form.ListValue, '_ua_mode', _('Spoof App'),
+			_('HAPP sends "User-Agent: HAPP" (for providers that serve the node list only to the HAPP app); enable HWID Support as well if the provider requires it.'));
 		o.modalonly = true;
 		o.value('', _('Default (curl)'));
 		o.value('HAPP', 'HAPP');
@@ -658,7 +679,7 @@ return view.extend({
 				uci.unset(CONFIG, section_id, 'user_agent');
 		};
 
-		o = s.option(form.Value, 'user_agent', _('Custom User-Agent'));
+		o = s.option(form.Value, 'user_agent', _('UserAgent'));
 		o.modalonly = true;
 		o.depends('_ua_mode', 'custom');
 		o.rmempty = false;
@@ -666,6 +687,17 @@ return view.extend({
 		o.validate = function(section_id, value) {
 			return /^[A-Za-z0-9 ._\/()+;:,=-]+$/.test(value || '') ? true : _('Letters, digits, spaces and . _ / ( ) + ; : , = - only');
 		};
+
+		o = s.option(form.Flag, 'auto_update', _('Auto Update'),
+			_('Update this subscription periodically while Easy VLESS is started (cron).'));
+		o.modalonly = true;
+
+		o = s.option(form.ListValue, 'auto_update_interval', _('Auto Update Delay'),
+			_('Time between automatic updates.'));
+		o.modalonly = true;
+		o.depends('auto_update', '1');
+		[ 1, 2, 3, 4, 6, 8, 12, 24 ].forEach(function(h) { o.value(String(h), _('%d h').format(h)); });
+		o.default = '24';
 
 		o = s.option(form.ListValue, 'access_mode', _('Access method'),
 			_('How the subscription is downloaded: directly, through the running proxy, or automatically.'));

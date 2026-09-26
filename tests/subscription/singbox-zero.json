@@ -1,0 +1,15 @@
+{
+  "outbounds": [
+    {
+      "type": "trojan",
+      "tag": "tr",
+      "server": "198.51.100.30",
+      "server_port": 443,
+      "password": "x"
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

@@ -6,8 +6,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.5.0
-PKG_RELEASE:=2
+PKG_VERSION:=0.5.1
+PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=
@@ -263,6 +263,10 @@ define Package/easy-vless/install
 
 	$(INSTALL_DIR) $(1)/usr/share/ucitrack
 	$(INSTALL_DATA) ./root/usr/share/ucitrack/easy-vless.json $(1)/usr/share/ucitrack/easy-vless.json
+
+	# sysupgrade keeps the persisted subscription HWID (/etc/easy_vless/hwid)
+	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
+	$(INSTALL_DATA) ./root/lib/upgrade/keep.d/easy-vless $(1)/lib/upgrade/keep.d/easy-vless
 endef
 
 define Package/easy-vless/postinst

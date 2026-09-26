@@ -788,6 +788,23 @@ start_crontab() {
 		fi
 	done
 
+	# Easy VLESS: per-subscription "Auto Update" every N hours (N divides 24,
+	# so the cron expression is exact); the minute/hour offset is derived from
+	# the section id to spread the requests. Runs as "subscribe.lua ... cron"
+	# (honours "Update only when connected").
+	for item in $(uci show ${CONFIG} | grep "=subscribe_list" | cut -d '.' -sf 2 | cut -d '=' -sf 1); do
+		[ "$(config_n_get $item auto_update 0)" = "1" ] || continue
+		local h=$(config_n_get $item auto_update_interval 24)
+		case "$h" in 1|2|3|4|6|8|12|24) ;; *) h=24 ;; esac
+		local sum=$(printf '%s' "$item" | md5sum)
+		local mm=$(( 0x$(echo "$sum" | cut -c1-2) % 60 ))
+		local t="$mm */$h * * *"
+		[ "$h" = "24" ] && t="$mm $(( 0x$(echo "$sum" | cut -c3-4) % 24 )) * * *"
+		[ "$h" = "1" ] && t="$mm * * * *"
+		echo "$t lua $APP_PATH/subscribe.lua start $item cron > /dev/null 2>&1 &" >>/etc/crontabs/root
+		log_i18n 0 "Scheduled tasks: Auto update [%s] subscription." "$(config_n_get $item remark)"
+	done
+
 	[ -d "${TMP_SUB_PATH}" ] && {
 		for name in $(ls ${TMP_SUB_PATH}); do
 			cfgids=$(echo -n $(cat ${TMP_SUB_PATH}/${name}) | sed 's# #,#g')
