@@ -801,16 +801,11 @@ jobs:
           # official x86-64 feeds of the same OpenWrt release, so install.sh
           # exercises the real opkg flow (sing-box-tiny from the feed,
           # dnsmasq -> dnsmasq-full replacement, SHA256SUMS verification).
-          # There is no procd in the container: service restarts only warn.
-          docker run --rm -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" /bin/ash -c '
-            set -e
-            mkdir -p /var/lock /var/run /tmp/log
-            opkg update >/dev/null
-            command -v fw4 >/dev/null 2>&1 || opkg install firewall4
-            sh /w/scripts/install.sh --check || true
-            sh /w/scripts/install.sh --local /w/dist --replace-dnsmasq --yes --no-start
-            cd /w/tests && sh subscription-formats-test.sh
-          '
+          # There is no procd in the container (service restarts only warn):
+          # the script starts ubusd and rpcd itself, verifies ubus/uci/rpcd
+          # before and after the installation, then runs the tests unchanged.
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" \
+            /bin/ash /w/tests/ci/openwrt-runtime-tests.sh
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
