@@ -76,6 +76,9 @@ on:
       - 'scripts/**'
       - 'tests/**'
       - 'docs/images/**'
+      - 'reference/**'
+      - 'README.md'
+      - 'LICENSE'
       - '.gitignore'
       - '.gitattributes'
       - '.github/workflows/build.yml'
@@ -88,6 +91,9 @@ on:
       - 'scripts/**'
       - 'tests/**'
       - 'docs/images/**'
+      - 'reference/**'
+      - 'README.md'
+      - 'LICENSE'
       - '.gitignore'
       - '.gitattributes'
       - '.github/workflows/build.yml'
@@ -448,16 +454,20 @@ jobs:
             fi
           done
 
-          # 5. Prepared resources: the source lists match the reference hashes
-          #    (tests/resources.sha256 = reference/domains/{proxy,russia}.txt),
-          #    and the packaged manifest/lists are byte-identical to the source.
+          # 5. Prepared resources: reference/domains and the package source
+          #    lists match tests/resources.sha256, and the packaged
+          #    manifest/lists are byte-identical to the source and reference.
           (cd "${GITHUB_WORKSPACE}" && sha256sum -c tests/resources.sha256) \
             || { echo "::error::source resource lists differ from tests/resources.sha256"; exit 1; }
-          sed 's#  root/#  ./#' "${GITHUB_WORKSPACE}/tests/resources.sha256" | sha256sum -c - \
+          grep '  root/' "${GITHUB_WORKSPACE}/tests/resources.sha256" | sed 's#  root/#  ./#' | sha256sum -c - \
             || { echo "::error::packaged resource lists differ from the reference hashes"; exit 1; }
           for f in manifest.json domains/proxy.txt domains/russia.txt; do
             cmp "./usr/share/easy_vless/resources/${f}" "${GITHUB_WORKSPACE}/root/usr/share/easy_vless/resources/${f}" \
               || { echo "::error::packaged resources/${f} differs from the source file"; exit 1; }
+          done
+          for f in proxy.txt russia.txt; do
+            cmp "./usr/share/easy_vless/resources/domains/${f}" "${GITHUB_WORKSPACE}/reference/domains/${f}" \
+              || { echo "::error::packaged resources/domains/${f} differs from reference/domains/${f}"; exit 1; }
           done
 
           echo "All easy-vless (core) .ipk checks passed."

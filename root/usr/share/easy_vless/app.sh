@@ -15,6 +15,14 @@ UTIL_XRAY=$LUA_UTIL_PATH/util_xray.lua
 SINGBOX_BIN=$(first_type $(config_n_get @global_app[0] sing_box_file) sing-box)
 XRAY_BIN=$(first_type $(config_n_get @global_app[0] xray_file) xray)
 
+# dnsmasq_nftset_supported "<output of dnsmasq --version>": true only when the
+# compile time options list "nftset". A dnsmasq built without it lists
+# "no-nftset" (and "dnsmasq --help" still mentions --nftset), so the option is
+# matched as a whole word of the options list, never as a substring.
+dnsmasq_nftset_supported() {
+	echo "$1" | sed -n 's/^Compile time options://p' | tr ' \t' '\n\n' | grep -qx "nftset"
+}
+
 # Easy VLESS is fw4/nftables-only (decision: no legacy iptables/ipset backend,
 # no fw3 support). This replaces PassWall2's iptables/nftables auto-selection
 # in check_run_environment() with a single hard requirement check.
@@ -22,7 +30,7 @@ check_run_environment() {
 	unset EV_ENV_ERROR
 	local dnsmasq_info=$(dnsmasq -v 2>/dev/null)
 	local dnsmasq_ver=$(echo "$dnsmasq_info" | sed -n '1s/.*version \([0-9.]*\).*/\1/p')
-	local dnsmasq_nftset=0; echo "$dnsmasq_info" | grep -qw "nftset" && dnsmasq_nftset=1
+	local dnsmasq_nftset=0; dnsmasq_nftset_supported "$dnsmasq_info" && dnsmasq_nftset=1
 	local has_fw4=0; command -v fw4 >/dev/null 2>&1 && has_fw4=1
 	local has_nft=0; command -v nft >/dev/null 2>&1 && has_nft=1
 
@@ -32,10 +40,14 @@ check_run_environment() {
 		return 1
 	fi
 
-	# Decision #12/#16: never install/remove dnsmasq(-full) automatically.
-	# Just verify the running dnsmasq already supports --nftset.
+	# Never install/remove dnsmasq(-full) automatically: only verify that the
+	# installed dnsmasq was built with nftset support.
 	if [ "$dnsmasq_nftset" -ne 1 ]; then
-		EV_ENV_ERROR="dnsmasq is missing --nftset support (dnsmasq_info: ${dnsmasq_info:-empty}). Install dnsmasq-full manually, Easy VLESS will not modify dnsmasq packages by itself."
+		if [ -z "$dnsmasq_info" ]; then
+			EV_ENV_ERROR="dnsmasq not found. Easy VLESS needs dnsmasq-full (dnsmasq with nftset support)."
+		else
+			EV_ENV_ERROR="dnsmasq ${dnsmasq_ver:-(unknown version)} was built without nftset support (compile time option no-nftset). Easy VLESS needs dnsmasq-full: run install.sh --replace-dnsmasq or replace dnsmasq manually; Easy VLESS does not change dnsmasq packages by itself."
+		fi
 		log 0 "$(i18n "Error: %s" "${EV_ENV_ERROR}")"
 		return 1
 	fi

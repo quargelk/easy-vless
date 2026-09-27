@@ -85,10 +85,15 @@ for t in m.get("rule_templates", []):
 EOF
 then ok "manifest references existing resources"; else bad "manifest consistency"; fi
 if sha256sum -c tests/resources.sha256 >/dev/null 2>&1; then
-	ok "proxy.txt / russia.txt byte-identical to the reference lists (tests/resources.sha256)"
+	ok "reference/domains and packaged lists match tests/resources.sha256"
 else
 	bad "resource lists differ from tests/resources.sha256"; sha256sum -c tests/resources.sha256
 fi
+for f in proxy.txt russia.txt; do
+	cmp -s "reference/domains/$f" "$RES/domains/$f" \
+		&& ok "$RES/domains/$f byte-identical to reference/domains/$f" \
+		|| bad "$RES/domains/$f differs from reference/domains/$f"
+done
 
 echo "== screenshots"
 for img in rule-manage node-list add-subscription main connection-test settings-dns settings-forwarding; do
@@ -99,6 +104,29 @@ for img in rule-manage node-list add-subscription main connection-test settings-
 		bad "screenshot missing or not a PNG: $f"
 	fi
 done
+
+echo "== README and LICENSE"
+if [ -s README.md ]; then
+	ok "README.md present"
+	# relative links and images: [text](path) / ![alt](path), ignoring URLs and #anchors
+	for link in $(grep -oE '\]\([^)#[:space:]]+\)' README.md | sed 's/^](//; s/)$//' | grep -vE '^[a-z]+://' | sort -u); do
+		[ -e "$link" ] && ok "README link $link" || bad "README link target missing: $link"
+	done
+	for anchor in $(grep -oE '\]\(#[^)]+\)' README.md | sed 's/^](#//; s/)$//' | sort -u); do
+		grep -qiE "^#+ ${anchor}\$" README.md && ok "README anchor #$anchor" || bad "README anchor without heading: #$anchor"
+	done
+	[ "$(grep -c '^```' README.md)" -ne 0 ] && [ $(( $(grep -c '^```' README.md) % 2 )) -eq 0 ] \
+		&& ok "README code fences balanced" || bad "README code fences unbalanced"
+else
+	bad "README.md missing"
+fi
+grep -q 'GNU GENERAL PUBLIC LICENSE' LICENSE 2>/dev/null && grep -q 'Version 3, 29 June 2007' LICENSE && [ "$(wc -l < LICENSE)" -gt 600 ] \
+	&& ok "LICENSE: full GPL-3.0 text" || bad "LICENSE missing or not the full GPL-3.0 text"
+
+echo "== tests"
+[ -s tests/subscription-formats-test.sh ] && [ -d tests/subscription ] && ok "subscription format test and fixtures present" || bad "subscription format test/fixtures missing"
+# (needs an OpenWrt runtime; CI runs it in the runtime-tests job)
+if sh tests/dnsmasq-nftset-test.sh >/dev/null 2>&1; then ok "dnsmasq nftset regression test"; else bad "dnsmasq nftset regression test"; sh tests/dnsmasq-nftset-test.sh; fi
 
 echo "== package metadata"
 PV=$(sed -n 's/^PKG_VERSION:=//p' Makefile); PR=$(sed -n 's/^PKG_RELEASE:=//p' Makefile)
@@ -128,12 +156,13 @@ scan() { # scan DESCRIPTION ERE EXCLUDE_ERE [grep options]
 scan "Windows user/project paths" '[A-Za-z]:(\\){1,2}(Users|Projects)(\\|/)' '^tests/subscription/'
 scan "home directory paths" '(/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z][A-Za-z0-9_-]*/)' '^$'
 scan "private keys" '-----BEGIN [A-Z ]*PRIVATE KEY-----' '^$'
+scan "hard-coded passwords/secrets" '(password|passwd|secret|token)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'[:space:]]{6,}["'"'"']' '^$' -i
 scan "access tokens" '(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})' '^$'
 # UUIDs: only the documentation/test UUIDs 00000000-0000-4000-8000-00000000000x are allowed
 UUIDS=$(grep -ohE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' $SCAN_FILES 2>/dev/null | grep -vE '^00000000-0000-4000-8000-00000000000[0-9a-f]$' | sort -u)
 if [ -n "$UUIDS" ]; then bad "non-test UUIDs: $UUIDS"; else ok "no real-looking UUIDs"; fi
 scan "subscription-like URLs" 'https?://[^[:space:]"]+/(sub|subscribe|api/v1/client/subscribe)([/?][^[:space:]"]*)?\b' '^$' -i
-scan "AI / assistant references" '\b(claude|chatgpt|openai|anthropic|gemini|copilot|llm|ai-generated|ai-assisted|assistant|prompt)\b' '^root/usr/share/easy_vless/resources/domains/' -i
+scan "AI / assistant references" '\b(claude|chatgpt|openai|anthropic|gemini|copilot|llm|ai-generated|ai-assisted|assistant|prompt)\b' '^(root/usr/share/easy_vless/resources/domains/|reference/domains/|LICENSE$)' -i
 
 echo
 if [ "$FAIL" -eq 0 ]; then echo "===== static checks: all passed ====="; else echo "===== static checks: $FAIL FAILED ====="; fi

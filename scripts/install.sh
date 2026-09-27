@@ -8,8 +8,12 @@
 #   sh /tmp/install.sh                  # install
 #
 # What it does, in order (stops at the first error):
-#   1. checks the router: root, OpenWrt release, opkg, fw4/nftables, PassWall2
-#      not running, free space;
+#   1. checks the router: root, OpenWrt release and architecture, required
+#      tools, opkg, fw4/nftables, PassWall2 not running, free space;
+#      when opkg itself is missing on an OpenWrt 24.10.x router, it can
+#      bootstrap opkg from the official package archive of this release and
+#      architecture (--bootstrap-opkg or an interactive "y"; the package is
+#      checked against the feed index, see bootstrap_opkg below);
 #   2. opkg update;
 #   3. sing-box: keeps an installed sing-box/sing-box-tiny >= 1.12.0, otherwise
 #      installs sing-box-tiny from the official OpenWrt package feed of this
@@ -37,6 +41,7 @@
 #   --yes              answer "yes" to the dnsmasq question (implies
 #                      --replace-dnsmasq)
 #   --no-start         do not restart the service at the end
+#   --bootstrap-opkg   allow installing opkg itself when it is missing
 #   --force            continue on an OpenWrt release other than 24.10.x
 #   -h, --help         show this help
 #
@@ -53,6 +58,7 @@ EV_PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
 SINGBOX_MIN="1.12.0"
 SUPPORTED_RELEASE="24.10"
 WORKDIR="/tmp/easy-vless-install"
+OPKG_ARCHIVE="https://archive.openwrt.org/releases"
 
 OPT_CHECK=0
 OPT_LOCAL=""
@@ -60,6 +66,7 @@ OPT_REPLACE_DNSMASQ=0
 OPT_YES=0
 OPT_NO_START=0
 OPT_FORCE=0
+OPT_BOOTSTRAP_OPKG=0
 
 say()  { echo "[easy-vless] $*"; }
 warn() { echo "[easy-vless] WARNING: $*" >&2; }
@@ -75,6 +82,7 @@ while [ $# -gt 0 ]; do
 		--yes|-y) OPT_YES=1; OPT_REPLACE_DNSMASQ=1 ;;
 		--no-start) OPT_NO_START=1 ;;
 		--force) OPT_FORCE=1 ;;
+		--bootstrap-opkg) OPT_BOOTSTRAP_OPKG=1 ;;
 		-h|--help) usage; exit 0 ;;
 		*) die "unknown option: $1 (see --help)" ;;
 	esac
@@ -127,7 +135,54 @@ singbox_version() {
 
 # "dnsmasq -v" lists compile options separated by spaces, e.g. "nftset" or
 # "no-nftset"; match the whole option (grep -w would also match "no-nftset").
-dnsmasq_has_nftset() { dnsmasq -v 2>/dev/null | tr ' \t' '\n\n' | grep -qx nftset; }
+# dnsmasq_nftset_supported "<output of dnsmasq --version>": true only when the
+# compile time options list "nftset" (a dnsmasq without it lists "no-nftset",
+# and its --help still mentions --nftset). Same logic as app.sh.
+dnsmasq_nftset_supported() {
+	echo "$1" | sed -n 's/^Compile time options://p' | tr ' \t' '\n\n' | grep -qx "nftset"
+}
+dnsmasq_has_nftset() { dnsmasq_nftset_supported "$(dnsmasq --version 2>/dev/null)"; }
+
+# ask QUESTION: true on an interactive "y" (false without a terminal)
+ask() {
+	[ -t 0 ] || return 1
+	printf '[easy-vless] %s [y/N] ' "$1"
+	read -r answer
+	case "$answer" in y|Y|yes|YES) return 0 ;; esac
+	return 1
+}
+
+# bootstrap_opkg: install the opkg package of this OpenWrt release and
+# architecture from the official package archive. The package file name and
+# SHA256 come from the "base" feed index of exactly this release/architecture;
+# the index signature is verified with usign when usign and the OpenWrt keys
+# are present. Nothing is guessed for other releases or architectures.
+bootstrap_opkg() {
+	local base="${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base"
+	local dir="$WORKDIR/opkg-bootstrap" file sum
+	mkdir -p "$dir" && cd "$dir" || die "cannot create $dir"
+	say "bootstrapping opkg from ${base}"
+	wget -q -O Packages "${base}/Packages" || die "download failed: ${base}/Packages (no opkg for ${DISTRIB_RELEASE}/${DISTRIB_ARCH} in the archive?)"
+	if command -v usign >/dev/null 2>&1 && ls /etc/opkg/keys/* >/dev/null 2>&1; then
+		wget -q -O Packages.sig "${base}/Packages.sig" || die "download failed: ${base}/Packages.sig"
+		usign -V -q -P /etc/opkg/keys -m Packages -x Packages.sig || die "signature check of the feed index failed - opkg not installed"
+		say "feed index signature verified"
+	else
+		warn "usign or /etc/opkg/keys missing: the feed index signature cannot be verified (HTTPS download only)"
+	fi
+	file="$(awk '/^Package: /{p=$2} /^Filename: /{if(p=="opkg")print $2}' Packages | head -n1)"
+	sum="$(awk '/^Package: /{p=$2} /^SHA256sum: /{if(p=="opkg")print $2}' Packages | head -n1)"
+	[ -n "$file" ] && [ -n "$sum" ] || die "opkg is not listed in ${base}/Packages"
+	wget -q -O "$file" "${base}/${file}" || die "download failed: ${base}/${file}"
+	[ "$(sha256sum "$file" | awk '{ print $1 }')" = "$sum" ] || die "checksum mismatch for $file - opkg not installed"
+	tar -xzf "$file" || die "cannot unpack $file"
+	[ -f data.tar.gz ] || die "$file has no data.tar.gz"
+	tar -xzf data.tar.gz -C / || die "cannot extract opkg to /"
+	cd "$WORKDIR" || die "cannot enter $WORKDIR"
+	command -v opkg >/dev/null 2>&1 || die "opkg bootstrap finished but opkg is still not found"
+	[ -s /etc/opkg/distfeeds.conf ] || die "opkg installed, but /etc/opkg/distfeeds.conf is missing - configure the package feeds first"
+	say "opkg installed: $(opkg --version 2>/dev/null | head -n1)"
+}
 
 # ---------------------------------------------------------------- 1. checks
 say "Easy VLESS ${EV_VERSION} installer"
@@ -137,7 +192,6 @@ say "Easy VLESS ${EV_VERSION} installer"
 . /etc/openwrt_release
 say "OpenWrt: ${DISTRIB_RELEASE:-?} (${DISTRIB_REVISION:-?}), target ${DISTRIB_TARGET:-?}, architecture ${DISTRIB_ARCH:-?}"
 
-command -v opkg >/dev/null 2>&1 || die "opkg not found. This release of Easy VLESS supports opkg-based OpenWrt ${SUPPORTED_RELEASE}.x only (OpenWrt with apk is not supported yet)."
 case "${DISTRIB_RELEASE:-}" in
 	${SUPPORTED_RELEASE}.*) ;;
 	*)
@@ -147,16 +201,37 @@ case "${DISTRIB_RELEASE:-}" in
 esac
 [ -n "${DISTRIB_ARCH:-}" ] || die "DISTRIB_ARCH is empty in /etc/openwrt_release"
 
+MISSING=""
+for t in wget tar gzip sha256sum awk sed grep df pgrep uci; do
+	command -v "$t" >/dev/null 2>&1 || MISSING="$MISSING $t"
+done
+[ -z "$MISSING" ] || die "required tools missing:${MISSING}"
+
+if [ "$OPT_CHECK" = "0" ]; then
+	rm -rf "$WORKDIR"
+	mkdir -p "$WORKDIR" || die "cannot create $WORKDIR"
+fi
+
+if ! command -v opkg >/dev/null 2>&1; then
+	command -v apk >/dev/null 2>&1 && die "this OpenWrt uses apk instead of opkg - not supported by Easy VLESS ${EV_VERSION} (OpenWrt ${SUPPORTED_RELEASE}.x with opkg is required)"
+	case "${DISTRIB_RELEASE:-}" in
+		${SUPPORTED_RELEASE}.*) ;;
+		*) die "opkg not found, and bootstrapping it is only supported on OpenWrt ${SUPPORTED_RELEASE}.x" ;;
+	esac
+	say "opkg is not installed. It can be installed from ${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base (package 'opkg' of this release and architecture)."
+	[ "$OPT_CHECK" = "1" ] && die "--check: opkg is missing - the installer can bootstrap it (run without --check and confirm, or add --bootstrap-opkg); the remaining checks need opkg"
+	if [ "$OPT_BOOTSTRAP_OPKG" = "1" ] || ask "Install opkg now?"; then
+		bootstrap_opkg
+	else
+		die "opkg is required. Run again with --bootstrap-opkg."
+	fi
+fi
+
 command -v fw4 >/dev/null 2>&1 || die "fw4 (firewall4) not found - Easy VLESS needs OpenWrt's nftables firewall (fw4)"
 command -v nft >/dev/null 2>&1 || die "nft not found - Easy VLESS needs nftables"
 
 if pgrep -f /usr/share/passwall2/ >/dev/null 2>&1 || nft list table inet passwall2 >/dev/null 2>&1; then
 	die "PassWall2 is running. Stop and disable it first: /etc/init.d/passwall2 stop; /etc/init.d/passwall2 disable"
-fi
-
-if [ "$OPT_CHECK" = "0" ]; then
-	rm -rf "$WORKDIR"
-	mkdir -p "$WORKDIR" || die "cannot create $WORKDIR"
 fi
 
 # ---------------------------------------------------------------- 2. feeds
@@ -220,13 +295,9 @@ else
 		say "(--check: nothing is changed; run without --check to be asked, or with --replace-dnsmasq)"
 	elif [ "$OPT_REPLACE_DNSMASQ" = "1" ] && [ "$OPT_YES" = "1" ]; then
 		DNSMASQ_ACTION="replace"
-	elif [ -t 0 ]; then
-		printf '[easy-vless] Replace %s with dnsmasq-full now? [y/N] ' "${DNSMASQ_PKG:-dnsmasq}"
-		read -r answer
-		case "$answer" in
-			y|Y|yes|YES) DNSMASQ_ACTION="replace" ;;
-		esac
-	elif [ "$OPT_REPLACE_DNSMASQ" = "1" ]; then
+	elif ask "Replace ${DNSMASQ_PKG:-dnsmasq} with dnsmasq-full now?"; then
+		DNSMASQ_ACTION="replace"
+	elif [ "$OPT_REPLACE_DNSMASQ" = "1" ] && [ ! -t 0 ]; then
 		DNSMASQ_ACTION="replace"
 	fi
 	if [ "$OPT_CHECK" = "0" ] && [ "$DNSMASQ_ACTION" != "replace" ]; then

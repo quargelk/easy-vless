@@ -1,4 +1,5 @@
-# Prepared resources are copied byte-for-byte from reference/domains
-# (source of truth, CRLF line endings kept): no EOL conversion, no
+# Prepared resources: reference/domains holds the source lists, the package
+# ships byte-for-byte copies (CRLF line endings kept): no EOL conversion, no
 # whitespace checks.
+reference/domains/*.txt -text -whitespace
 root/usr/share/easy_vless/resources/domains/*.txt -text -whitespace
