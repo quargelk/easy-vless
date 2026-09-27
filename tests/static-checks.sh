@@ -157,6 +157,22 @@ IV=$(sed -n 's/^EV_VERSION="\(.*\)"$/\1/p' scripts/install.sh)
 IT=$(sed -n 's/^EV_TAG="\(.*\)"$/\1/p' scripts/install.sh)
 [ "$IV" = "${PV}-r${PR}" ] && ok "install.sh EV_VERSION = ${IV}" || bad "install.sh EV_VERSION '${IV}' != ${PV}-r${PR}"
 case "$IT" in "v${PV}"|"v${PV}-r${PR}") ok "install.sh EV_TAG = ${IT}" ;; *) bad "install.sh EV_TAG '${IT}' does not match ${PV}" ;; esac
+# EV_MIN_DATE: the installer refuses a clock before this date, so it must be
+# a valid date that is not in the future
+MD=$(sed -n 's/^EV_MIN_DATE="\(.*\)"$/\1/p' scripts/install.sh)
+if echo "$MD" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' && MDE=$(date -u -d "$MD" +%s 2>/dev/null) && [ "$MDE" -le "$(date -u +%s)" ]; then
+	ok "install.sh EV_MIN_DATE = ${MD}"
+else
+	bad "install.sh EV_MIN_DATE '${MD}' is not a valid past date"
+fi
+grep -qF "releases/download/${IT}/install.sh" scripts/install.sh && ok "install.sh header URL uses ${IT}" || bad "install.sh header URL does not use ${IT}"
+# README: release URLs and package file names of this version only
+grep -qF "releases/download/${IT}/install.sh" README.md && ok "README installer URL uses ${IT}" || bad "README installer URL does not use ${IT}"
+grep -qF "easy-vless_${IV}_all.ipk" README.md && ok "README package names use ${IV}" || bad "README package names do not use ${IV}"
+stale=$(grep -oE 'releases/download/v[0-9][^/ )]*|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)_[0-9][^_ ]*_all\.ipk' README.md \
+	| grep -vF -e "releases/download/${IT}" -e "_${IV}_all.ipk" | sort -u)
+[ -z "$stale" ] && ok "README has no other release versions" || bad "README mentions other release versions: $(echo "$stale" | tr '\n' ' ')"
+grep -qF "**Текущая версия: ${IV}**" README.md && ok "README current version ${IV}" || bad "README current version is not ${IV}"
 
 echo "== local paths, credentials, development leftovers"
 # Text files only; this script is excluded because it contains the patterns.

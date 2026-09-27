@@ -6,8 +6,9 @@ name: Build easy-vless packages
 #                  metadata, local-path/credential scan
 #   build          real OpenWrt 24.10.3 mediatek/filogic SDK build of all
 #                  packages, per-package content checks, dist/ + SHA256SUMS
-#   runtime-tests  OpenWrt 24.10.3 x86-64 rootfs container: scripts/install.sh
-#                  with the built packages, then tests/subscription-formats-test.sh
+#   runtime-tests  OpenWrt 24.10.3 x86-64 rootfs containers: scripts/install.sh
+#                  with the built packages, tests/subscription-formats-test.sh,
+#                  installer/bootstrap scenarios (tests/ci/installer-tests.sh)
 #   release        only for tags v*: tag/version check, draft GitHub Release
 #                  with the dist/ files (the only job with contents: write)
 #
@@ -781,7 +782,7 @@ jobs:
   runtime-tests:
     needs: build
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       OPENWRT_ROOTFS_IMAGE: openwrt/rootfs:x86-64-24.10.3
     steps:
@@ -806,6 +807,17 @@ jobs:
           # before and after the installation, then runs the tests unchanged.
           docker run --rm -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" \
             /bin/ash /w/tests/ci/openwrt-runtime-tests.sh
+
+      - name: Installer / bootstrap tests (fresh OpenWrt 24.10.3 rootfs container per scenario)
+        run: |
+          set -euo pipefail
+          # preflight: checks, clock, CA/TLS, feeds, download and checksum errors
+          # online:    HTTPS release download, repeated run, preserved config
+          # rollback:  dnsmasq-full failure and interruption -> old dnsmasq back
+          # bootstrap: README manual opkg bootstrap and install.sh --bootstrap-opkg
+          # upgrade:   published v0.5.1 (0.5.1-r1, from GitHub) -> this build,
+          #            uninstall, reinstall
+          bash tests/ci/installer-tests.sh dist
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -841,6 +853,8 @@ jobs:
           - SHA256SUMS
 
           sing-box-tiny is not bundled; it comes from the router's official OpenWrt package feed.
+
+          Before downloading on a router, the system time must be correct (HTTPS certificates cannot be verified with a clock that is behind): see "HTTPS on a new router" in the README.
           EOF
           gh release create "${tag}" dist/* --draft --verify-tag \
             --title "Easy VLESS ${v}" --notes-file release-notes.md

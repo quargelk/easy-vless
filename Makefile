@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
 PKG_VERSION:=0.5.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=quargelk <332162732+quargelk@users.noreply.github.com>
@@ -293,6 +293,24 @@ define Package/easy-vless/prerm
 [ -n "$${IPKG_INSTROOT}" ] || {
 	[ -x /etc/init.d/easy_vless ] && /etc/init.d/easy_vless stop >/dev/null 2>&1
 	exit 0
+}
+exit 0
+endef
+
+define Package/easy-vless/postrm
+#!/bin/sh
+# After a real removal only (on an upgrade the new app.sh is already in
+# place): drop the fw4 include and the ucitrack entry added by
+# /etc/uci-defaults/easy-vless, so no stale reference is left behind.
+[ -n "$${IPKG_INSTROOT}" ] || [ -e /usr/share/easy_vless/app.sh ] || {
+	uci -q delete firewall.easy_vless && uci -q commit firewall
+	if [ -e /etc/config/ucitrack ]; then
+		while uci -q get ucitrack.@easy_vless[-1] >/dev/null; do
+			uci -q delete ucitrack.@easy_vless[-1]
+		done
+		uci -q commit ucitrack
+	fi
+	rm -f /var/etc/easy_vless.include
 }
 exit 0
 endef

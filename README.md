@@ -6,7 +6,7 @@
 
 Easy VLESS прозрачно проксирует трафик роутера и LAN-устройств через VLESS-серверы. Он использует sing-box и поддерживает Reality, раздельное туннелирование с готовыми списками доменов, подписки (включая HAPP/HWID) и URL Test. Проект основан на PassWall2 и оставляет из него только то, что нужно для VLESS-клиента.
 
-**Текущая версия: 0.5.1-r1** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only**
+**Текущая версия: 0.5.1-r2** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only**
 
 Проект тестировался на **Cudy TR3000 v1** с **OpenWrt 24.10.3** (см. [Tested Hardware](#tested-hardware)).
 
@@ -18,6 +18,7 @@ Easy VLESS прозрачно проксирует трафик роутера �
 - [Требования](#требования)
 - [Установка](#установка)
   - [Файлы релиза и SHA256SUMS](#файлы-релиза-и-sha256sums)
+  - [HTTPS на новом роутере](#https-на-новом-роутере)
   - [Установка через installer](#установка-через-installer)
   - [Ручная установка](#ручная-установка)
   - [dnsmasq](#dnsmasq)
@@ -62,6 +63,7 @@ Easy VLESS прозрачно проксирует трафик роутера �
 | VLESS engine | `sing-box-tiny` **>= 1.12.0** из официального репозитория пакетов OpenWrt (или полный `sing-box`) |
 | dnsmasq | `dnsmasq-full` (dnsmasq с поддержкой nftset), см. [dnsmasq](#dnsmasq) |
 | Место | около 3 МБ для пакетов Easy VLESS, плюс размер `sing-box-tiny` и зависимостей |
+| Сеть | интернет, рабочий DNS, **правильное системное время** (NTP), CA-сертификаты (`ca-bundle`) и TLS для `wget` (`libustream-mbedtls`); в стандартных образах OpenWrt 24.10 они есть, см. [HTTPS на новом роутере](#https-на-новом-роутере) |
 | Конфликты | PassWall2 должен быть остановлен |
 
 Пакеты Easy VLESS имеют архитектуру `all` (shell/Lua/JS, без бинарных файлов). Архитектурное ограничение одно: для архитектуры роутера в официальном репозитории OpenWrt должен быть `sing-box-tiny` версии 1.12.0 или новее. `install.sh --check` проверяет это до установки.
@@ -72,13 +74,13 @@ Easy VLESS прозрачно проксирует трафик роутера �
 
 ### Файлы релиза и SHA256SUMS
 
-Готовые пакеты публикуются на странице [Releases](https://github.com/quargelk/easy-vless/releases). Релиз `v0.5.1` содержит:
+Готовые пакеты публикуются на странице [Releases](https://github.com/quargelk/easy-vless/releases). Релиз `v0.5.1-r2` содержит:
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.5.1-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.5.1-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.5.1-r1_all.ipk` | LuCI-интерфейс |
+| `easy-vless_0.5.1-r2_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.5.1-r2_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.5.1-r2_all.ipk` | LuCI-интерфейс |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 всех файлов выше |
 
@@ -90,77 +92,140 @@ Easy VLESS прозрачно проксирует трафик роутера �
 sha256sum -c SHA256SUMS
 ```
 
-Все строки должны закончиться на `OK`. `install.sh` сам проверяет `.ipk` по `SHA256SUMS` релиза, при онлайн-установке и с `--local`.
+Все строки должны закончиться на `OK`. `install.sh` сам проверяет каждый `.ipk` по `SHA256SUMS` того же релиза — и при загрузке с GitHub, и с `--local`. Файл, которого нет в `SHA256SUMS`, пустой, неполный или изменённый, не устанавливается.
+
+### HTTPS на новом роутере
+
+Все загрузки (installer, пакеты Easy VLESS, `opkg update`, bootstrap `opkg`) идут только по HTTPS с проверкой сертификата. Отключать проверку (`--no-check-certificate`) или переходить на HTTP не нужно и нельзя. На только что прошитом роутере HTTPS обычно не работает по одной из следующих причин (проверено на OpenWrt 24.10.3, `uclient-fetch` + `libustream-mbedtls`):
+
+| Сообщение `wget` | Причина | Что сделать |
+|---|---|---|
+| `SSL verify error: unknown error`<br>`Connection error: Invalid SSL certificate` | **Неверное системное время.** У роутеров без батарейки часов (например, Cudy TR3000) после загрузки стоит дата сборки прошивки (для 24.10.3 — 19.09.2025), пока NTP не синхронизирует время. Сертификаты GitHub и OpenWrt выпущены позже этой даты, поэтому для роутера они «ещё не действительны» | проверить `date`; синхронизировать время: `ntpd -n -q -p 0.openwrt.pool.ntp.org` (или `date -s "YYYY-MM-DD hh:mm:ss"`) |
+| `SSL verify error: certificate is self-signed or not signed by a trusted CA` | нет CA-сертификатов (`/etc/ssl/certs`, пакет `ca-bundle`) | установить `ca-bundle` (см. ниже, копия с ПК) |
+| `SSL support not available` | нет TLS-библиотеки для `uclient-fetch` | установить `libustream-mbedtls` и `ca-bundle` |
+| `Failed to send request: Operation not permitted` | **не работает DNS** (так `uclient-fetch` сообщает об ошибке разрешения имени) или исходящий трафик роутера блокирует правило nftables (например, от оставшегося PassWall/PassWall2) | проверить `nslookup github.com`, подключение к интернету и `nft list ruleset` |
+
+Проверка перед загрузкой:
+
+```sh
+date                                   # текущая дата и время (UTC)
+nslookup github.com                    # DNS работает
+ls /etc/ssl/certs/*.crt                # CA-сертификаты есть (ca-bundle)
+ls /lib/libustream-ssl.so*             # TLS-библиотека для wget есть
+```
+
+Если время неверное:
+
+```sh
+ntpd -n -q -p 0.openwrt.pool.ntp.org
+date
+```
+
+`install.sh` выполняет эти же проверки сам. Если время раньше даты выпуска installer'а, он один раз пробует синхронизировать его по NTP (серверы из `system.ntp`) и только затем что-либо скачивает. Каждую ошибку загрузки он сопровождает URL, выводом `wget` и причиной.
+
+**Если на роутере нет `ca-bundle`** (или HTTPS на роутере не удаётся исправить), файлы можно передать с ПК, где HTTPS работает. Контрольная сумма проверяется на ПК, поэтому доверие не зависит от канала передачи:
+
+1. На ПК скачайте индекс пакетов своей версии и архитектуры и нужный пакет. Например, для OpenWrt 24.10.3 / aarch64_cortex-a53 это `https://downloads.openwrt.org/releases/24.10.3/packages/aarch64_cortex-a53/base/Packages` и файл, указанный в нём в поле `Filename:` для `Package: ca-bundle`.
+2. Сверьте `sha256sum ca-bundle_*.ipk` на ПК со значением `SHA256sum:` из `Packages`.
+3. Скопируйте файл на роутер. Dropbear на OpenWrt не поддерживает SFTP, поэтому современному `scp` нужен ключ `-O`:
+
+   ```sh
+   scp -O ca-bundle_*.ipk root@192.168.1.1:/tmp/
+   ```
+
+4. На роутере выполните `opkg install /tmp/ca-bundle_*.ipk`.
+
+Так же с ПК переносятся файлы релиза Easy VLESS (после `sha256sum -c SHA256SUMS` на ПК) для установки с `--local`. `--local` не обращается к GitHub, но `opkg update` (sing-box-tiny, dnsmasq-full, зависимости) всё равно требует рабочего HTTPS к `downloads.openwrt.org`.
 
 ### Установка через installer
 
 `install.sh` — обычный shell-скрипт, который можно прочитать перед запуском:
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.1/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.1-r2/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
 
-`--check` только проверяет роутер (и обновляет списки пакетов `opkg`), ничего не устанавливает и не меняет.
+`--check` только проверяет роутер (и обновляет списки пакетов `opkg`), ничего не устанавливает и не меняет. `sh install.sh --help` показывает все параметры.
 
-Установщик по шагам:
+Установщик по шагам. При любой ошибке он останавливается; до шага 6 на роутере ничего не меняется, кроме списков пакетов и, если нужно, времени по NTP:
 
-1. проверяет root, версию OpenWrt (24.10.x), архитектуру, наличие нужных утилит, `opkg`, fw4/nftables, что PassWall2 не запущен, свободное место;
-2. выполняет `opkg update`;
-3. оставляет установленный `sing-box`/`sing-box-tiny` >= 1.12.0 или устанавливает `sing-box-tiny` из официального репозитория OpenWrt (подпись репозитория и checksum пакета проверяет `opkg`);
-4. если `dnsmasq` без nftset — предлагает замену на `dnsmasq-full` и выполняет её только после подтверждения, см. [dnsmasq](#dnsmasq);
-5. скачивает пакеты Easy VLESS релиза (или берёт их из `--local`) и проверяет их по `SHA256SUMS`;
-6. устанавливает `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless`;
+1. проверяет root, версию OpenWrt (24.10.x), соответствие архитектуры из `/etc/openwrt_release` ядру, нужные утилиты, системное время, HTTPS (TLS-библиотека, CA-сертификаты), DNS, `opkg`, fw4/nftables, что PassWall2 не запущен, свободное место;
+2. выполняет `opkg update`. Feeds, нужные Easy VLESS (core, kmods, base, packages, luci), обязаны работать; сбой остальных (routing, telephony, собственные) даёт только предупреждение;
+3. оставляет установленный `sing-box`/`sing-box-tiny` >= 1.12.0 или готовит установку `sing-box-tiny` из официального репозитория OpenWrt (подпись репозитория и checksum пакета проверяет `opkg`);
+4. если `dnsmasq` без nftset, предлагает замену на `dnsmasq-full` и выполняет её только после подтверждения, см. [dnsmasq](#dnsmasq);
+5. скачивает `SHA256SUMS` и пакеты Easy VLESS по прямым URL тега `v0.5.1-r2` (или берёт их из `--local`) и проверяет каждый пакет по `SHA256SUMS`;
+6. устанавливает `sing-box-tiny`, при необходимости заменяет `dnsmasq`, затем устанавливает `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless`;
 7. включает автозапуск; перезапускает сервис, только если Main switch уже включён (новую установку запускают из LuCI после добавления сервера);
 8. показывает итоговое состояние.
 
-При любой ошибке установщик останавливается. Существующая конфигурация `/etc/config/easy_vless` сохраняется.
+Существующая конфигурация `/etc/config/easy_vless` и HWID (`/etc/easy_vless/hwid`) сохраняются, в том числе при обновлении с 0.5.1-r1 и при повторном запуске installer'а.
 
 | Параметр | Назначение |
 |---|---|
 | `--check` | только проверки, ничего не устанавливать |
-| `--local <dir>` | взять `.ipk` и `SHA256SUMS` из директории с загруженными файлами релиза |
+| `--local <dir>` | взять `.ipk` и `SHA256SUMS` из директории с загруженными файлами релиза (без обращения к GitHub) |
+| `--base-url <url>` | скачивать файлы релиза с HTTPS-зеркала вместо GitHub (только `https://`) |
 | `--replace-dnsmasq` | разрешить замену `dnsmasq` на `dnsmasq-full` |
-| `--yes` | ответить «да» на вопрос о замене `dnsmasq` (включает `--replace-dnsmasq`) |
+| `--yes`, `-y` | ответить «да» на вопрос о замене `dnsmasq` (включает `--replace-dnsmasq`) |
 | `--no-start` | не перезапускать сервис в конце |
 | `--bootstrap-opkg` | разрешить установку `opkg`, если он отсутствует (только OpenWrt 24.10.x) |
-| `--force` | продолжить на версии OpenWrt, отличной от 24.10.x (не тестируется) |
+| `--force` | продолжить на версии OpenWrt, отличной от 24.10.x, при несоответствии архитектуры или без базы пакетов `opkg` (не тестируется) |
+| `-h`, `--help` | справка |
 
 ### Ручная установка
 
-Файлы релиза должны находиться в одной директории на роутере, и их контрольные суммы должны быть проверены (см. [выше](#файлы-релиза-и-sha256sums)):
+Файлы релиза должны находиться в одной директории на роутере, и их контрольные суммы должны быть проверены (см. [выше](#файлы-релиза-и-sha256sums)). Перед загрузкой проверьте время и HTTPS (см. [HTTPS на новом роутере](#https-на-новом-роутере)).
 
 ```sh
-cd /tmp
-for f in SHA256SUMS easy-vless_0.5.1-r1_all.ipk easy-vless-sing-box_0.5.1-r1_all.ipk luci-app-easy-vless_0.5.1-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.5.1/$f"
+mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
+for f in SHA256SUMS easy-vless_0.5.1-r2_all.ipk easy-vless-sing-box_0.5.1-r2_all.ipk luci-app-easy-vless_0.5.1-r2_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.5.1-r2/$f"
 done
 sha256sum -c SHA256SUMS
 ```
 
-Если `opkg` на роутере отсутствует, сначала выполните bootstrap `opkg`. Пример для **OpenWrt 24.10.3 / aarch64_cortex-a53**:
+#### Bootstrap opkg
+
+Если `opkg` на роутере отсутствует, сначала выполните bootstrap `opkg`. Пример для **OpenWrt 24.10.3 / aarch64_cortex-a53**. Команды выполняются в отдельной пустой директории, чтобы `opkg_*.ipk` совпал ровно с одним файлом и не мешали посторонние `data.tar.gz`:
 
 ```sh
+mkdir -p /tmp/opkg-bootstrap && cd /tmp/opkg-bootstrap
 wget https://archive.openwrt.org/releases/24.10.3/packages/aarch64_cortex-a53/base/opkg_2024.10.16~38eccbb1-r1_aarch64_cortex-a53.ipk
+sha256sum opkg_*.ipk     # должно быть 26cc7fd1d8457c616ac81133e7950b96f36740edd7a3be7c95f0164681197240
 tar -xvzf opkg_*.ipk
 tar -xzf data.tar.gz -C /
+cd / && rm -rf /tmp/opkg-bootstrap
 ```
 
-> Эта ссылка относится только к OpenWrt 24.10.3 и архитектуре `aarch64_cortex-a53`. Не используйте её для других версий и архитектур. `install.sh --bootstrap-opkg` берёт пакет `opkg` для версии и архитектуры самого роутера и проверяет его контрольную сумму по индексу репозитория.
+Контрольная сумма взята из индекса `Packages` этого же каталога (поле `SHA256sum:` для `Package: opkg`); при расхождении ничего не распаковывайте. Пакет содержит `/bin/opkg`, `/usr/sbin/opkg-key`, `/etc/opkg.conf` и `/etc/opkg/customfeeds.conf`; существующие файлы перезаписываются.
 
-Затем установите sing-box и Easy VLESS:
+В пакет не входят `/etc/opkg/distfeeds.conf`, ключи подписи (`/etc/opkg/keys`, пакет `openwrt-keyring`) и `usign`. Если их нет, `opkg update` не сможет проверить подпись списков пакетов.
+
+`install.sh --bootstrap-opkg` делает то же самое автоматически и с дополнительными проверками:
+
+- берёт пакет для версии и архитектуры самого роутера;
+- проверяет SHA256 пакета и подпись индекса;
+- проверяет пути внутри пакета;
+- сохраняет изменённый `/etc/opkg.conf`;
+- при необходимости доустанавливает `usign` и `openwrt-keyring`;
+- регистрирует всё в базе `opkg`.
+
+> Ссылка и контрольная сумма выше относятся только к OpenWrt 24.10.3 и архитектуре `aarch64_cortex-a53`. Для других версий и архитектур возьмите имя файла и SHA256 из `https://archive.openwrt.org/releases/<версия>/packages/<архитектура>/base/Packages`.
+
+#### Установка пакетов
 
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.5.1-r1_all.ipk
-opkg install ./easy-vless-sing-box_0.5.1-r1_all.ipk
-opkg install ./luci-app-easy-vless_0.5.1-r1_all.ipk
+opkg install ./easy-vless_0.5.1-r2_all.ipk
+opkg install ./easy-vless-sing-box_0.5.1-r2_all.ipk
+opkg install ./luci-app-easy-vless_0.5.1-r2_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
-Если `dnsmasq` без nftset, замените его на `dnsmasq-full` (см. [dnsmasq](#dnsmasq)).
+Если `dnsmasq` без nftset, замените его на `dnsmasq-full` (см. [dnsmasq](#dnsmasq)). Проще и безопаснее продолжить installer'ом из этой же директории: `sh install.sh --local /tmp/easy-vless`.
 
 После установки откройте **LuCI → Services → Easy VLESS**.
 
@@ -179,10 +244,9 @@ dnsmasq --version | grep 'Compile time options'
 
 Easy VLESS не заменяет системный `dnsmasq` самостоятельно. `install.sh` сначала показывает, что будет сделано, и выполняет замену только после подтверждения (или с `--replace-dnsmasq`):
 
-- `dnsmasq-full` и его зависимости скачиваются заранее; `dnsmasq-full` проверяется по SHA256 из индекса репозитория;
-- сохраняется копия текущего пакета `dnsmasq` для отката;
+- `dnsmasq-full` и его зависимости скачиваются заранее. `dnsmasq-full` и копия текущего `dnsmasq` для отката проверяются по SHA256 из индекса репозитория, и до этого ничего не удаляется;
 - `/etc/config/dhcp` сохраняется в `/etc/config/dhcp.easy-vless.bak` и восстанавливается после замены;
-- если установить `dnsmasq-full` не удалось, возвращается прежний `dnsmasq` и его конфигурация;
+- если установить `dnsmasq-full` не удалось **или installer прерван** (Ctrl-C, обрыв SSH-сессии) после удаления старого `dnsmasq`, прежний `dnsmasq` и его конфигурация возвращаются автоматически;
 - на время перезапуска `dnsmasq` DHCP/DNS на роутере кратко недоступны.
 
 Ручная замена (то же, что делает installer; зависимости ставятся до удаления `dnsmasq`, пока DNS ещё работает):
@@ -292,6 +356,8 @@ Easy VLESS определяет формат подписки автоматич
 | **Auto Update** / **Auto Update Delay** | периодическое обновление (cron) каждые 1–24 ч, пока Easy VLESS запущен |
 | **Access method** | загрузка напрямую, через запущенный прокси или автоматически |
 | **allowInsecure** | сохранять флаг allowInsecure импортированных узлов (по умолчанию выключено) |
+
+Подписка скачивается по HTTPS с проверкой сертификата сервера: она определяет, через какие серверы идёт трафик, и может содержать HWID. Если сертификат не удаётся проверить (обычно из-за неверного времени роутера или отсутствия `ca-bundle`), обновление не выполняется, а в логе появляется соответствующее сообщение. Флаг **allowInsecure** относится только к импортированным узлам, а не к загрузке подписки.
 
 ---
 
@@ -468,7 +534,7 @@ Storage: ~20 MB
 - Поддерживается только протокол VLESS; узлы других типов в подписках пропускаются.
 - Поддерживается только OpenWrt 24.10.x с `opkg`; OpenWrt с `apk` не поддерживается.
 - Нужен `dnsmasq-full` (nftset); без него сервис не запускается.
-- JSON-подписки (sing-box JSON) в 0.5.1 — **experimental**. Их покрывают автоматические тесты на подготовленных примерах, но с реальными провайдерами они проверены мало.
+- JSON-подписки (sing-box JSON) — **experimental**. Их покрывают автоматические тесты на подготовленных примерах, но с реальными провайдерами они проверены мало.
 - Clash YAML подписки не покрыты автоматическими тестами репозитория.
 - Routing mode — только `singbox`; режим dnsmasq → nftset не реализован.
 - Xray не имеет отдельного интерфейса. Если установлен `xray-core`, новые импортированные VLESS-ссылки могут создаваться как Xray-узлы.
@@ -487,6 +553,7 @@ Storage: ~20 MB
 | [`tests/dnsmasq-nftset-test.sh`](tests/dnsmasq-nftset-test.sh) | static checks | определение nftset по `dnsmasq --version` |
 | [`tests/subscription-formats-test.sh`](tests/subscription-formats-test.sh) | CI job `runtime-tests`, роутер | 52 проверки форматов подписок: VLESS URL, списки plain/base64, sing-box JSON, JSON-массив, base64 JSON, неподдерживаемые outbounds, некорректный JSON, ноль VLESS-узлов, отсутствие дубликатов, сохранность ручных узлов, фильтрация чужой конфигурации |
 | [`tests/ci/openwrt-runtime-tests.sh`](tests/ci/openwrt-runtime-tests.sh) | CI job `runtime-tests` | в контейнере `openwrt/rootfs:x86-64-24.10.3`: ubusd и rpcd (без procd), `install.sh --check`, установка собранных пакетов через `install.sh --local` (sing-box-tiny из feed, замена dnsmasq на dnsmasq-full, проверка SHA256SUMS), затем subscription tests |
+| [`tests/ci/installer-tests.sh`](tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](tests/ci/installer-scenarios.sh) | CI job `runtime-tests` | каждый сценарий в новом контейнере `openwrt/rootfs:x86-64-24.10.3`, с тестовым HTTPS-сервером (настоящие сертификаты, в том числе «ещё не действительный»): `--check`, `--help`, отсутствующая утилита, неверное время, нет CA, нет TLS-библиотеки, неверная архитектура, сбой обязательного и необязательного feed, загрузка по HTTPS, HTTP 404, изменённый пакет, неполный `SHA256SUMS`, пустой ответ, ошибка DNS, ошибки `--local`; откат `dnsmasq` при ошибке и при прерывании; ручной bootstrap `opkg` из README и `--bootstrap-opkg` (без `opkg`, `usign` и ключей); обновление с опубликованного 0.5.1-r1 (скачивается с GitHub) с сохранением конфигурации и HWID, удаление и повторная установка |
 | [`tests/tr3000-slice-smoke.sh`](tests/tr3000-slice-smoke.sh) | вручную на роутере | запуск/остановка сервиса, nftables, ip rule, процессы sing-box; с таймером отката |
 
 Локально:
