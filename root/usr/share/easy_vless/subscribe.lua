@@ -1016,8 +1016,11 @@ end
 
 local function curl(url, file, ua, mode, hwid)
 	if not url or url == "" then return 22, 404 end
+	-- Easy VLESS: the server certificate is always verified (no -k): a
+	-- subscription decides which servers carry all traffic and may include the
+	-- router's HWID, so it must not be accepted from an unauthenticated peer.
 	local curl_args = {
-		"-fskL", "-w %{http_code}", "--retry 3", "--connect-timeout 3", "-H 'Accept: */*'", "-H 'Accept-Encoding: identity'"
+		"-fsL", "-w %{http_code}", "--retry 3", "--connect-timeout 3", "-H 'Accept: */*'", "-H 'Accept-Encoding: identity'"
 	}
 	if ua and ua ~= "" and ua ~= "curl" then
 		ua = (ua == "easy_vless") and ("easy_vless/" .. api.get_version()) or ua
@@ -1595,6 +1598,10 @@ local execute = function()
 				if return_code ~= 0 then
 					fail_list[#fail_list + 1] = value
 					luci.sys.call("rm -f " .. tmp_file)
+					-- curl 35/51/60/77: TLS handshake / certificate / CA store
+					if return_code == 35 or return_code == 51 or return_code == 60 or return_code == 77 then
+						log(1, i18n.translatef("[%s] The TLS certificate of the subscription server could not be verified (curl error %s). Check the router time (date) and the CA certificates (package ca-bundle).", remark, tostring(return_code)))
+					end
 				end
 			end
 			if fs.access(tmp_file) then
