@@ -66,6 +66,10 @@ OPT_BOOTSTRAP_OPKG=0
 
 WORKDIR=""
 DNSMASQ_STAGE=""
+HTTPS_BROKEN=0
+HTTPS_URL=""
+HTTPS_ERR=""
+BOOT_LOCAL=""
 BOOTSTRAPPED=""
 
 say()  { echo "[easy-vless] $*"; }
@@ -248,7 +252,7 @@ explain_download_error() {
 		*"unknown error"*|*"not yet valid"*|*"has expired"*)
 			echo "the TLS certificate of ${host} could not be verified - most likely the system time is wrong (now: $(date -u '+%Y-%m-%d %H:%M UTC')). Set the time, e.g. 'ntpd -n -q -p 0.openwrt.pool.ntp.org', and run the installer again" ;;
 		*"SSL support not available"*)
-			echo "uclient-fetch has no TLS library: install libustream-mbedtls and ca-bundle" ;;
+			echo "wget (uclient-fetch) has no TLS backend: libustream-mbedtls (and ca-bundle) must be installed" ;;
 		*"Operation not permitted"*|*"Failed to send request"*)
 			if ! is_ipv4 "$host" && command -v nslookup >/dev/null 2>&1 && ! nslookup "$host" >/dev/null 2>&1; then
 				echo "the name ${host} cannot be resolved (DNS). Check the internet connection and the DNS server of the router ('nslookup ${host}')"
@@ -358,19 +362,114 @@ check_clock() {
 	die "the system time is still wrong ($(date -u '+%Y-%m-%d %H:%M UTC')). Check the internet connection and DNS, then set the time with 'ntpd -n -q -p 0.openwrt.pool.ntp.org' (or 'date -s \"YYYY-MM-DD hh:mm:ss\"') and run the installer again"
 }
 
-# check_https: a downloader, a TLS library and CA certificates
-check_https() {
-	local w
-	command -v wget >/dev/null 2>&1 || die "wget (uclient-fetch) not found - install uclient-fetch, libustream-mbedtls and ca-bundle"
-	w="$(readlink -f "$(command -v wget)" 2>/dev/null)"
-	case "$w" in
-		*/uclient-fetch)
-			any_exists /lib/libustream-ssl.so* /usr/lib/libustream-ssl.so* \
-				|| die "uclient-fetch has no TLS library (libustream-ssl.so): install libustream-mbedtls and ca-bundle (see the README section \"HTTPS on a new router\")" ;;
+# https_probe URL: one real HTTPS request with wget (uclient-fetch), the
+# certificate verified as for every download. Returns 0 when it works,
+# otherwise HTTPS_ERR holds the error text.
+https_probe() {
+	local out="$WORKDIR/probe.out" err="$WORKDIR/probe.err"
+	rm -f "$out"
+	if wget -O "$out" "$1" >"$err" 2>&1 && [ -s "$out" ]; then
+		HTTPS_ERR=""
+		return 0
+	fi
+	HTTPS_ERR="$(grep -v -e '^Downloading ' -e '^Connecting to ' -e '^Writing to ' -e '^Redirected to ' -e '^$' "$err" | tail -n 3)"
+	[ -n "$HTTPS_ERR" ] || HTTPS_ERR="empty response"
+	return 1
+}
+
+# https_probe_url: the signature file of this router's core package feed
+# (small, always present), or of the official archive when no feed is set up
+https_probe_url() {
+	local u
+	u="$(awk '$1 ~ /^src/ && $2 == "openwrt_core" { print $3; exit }' /etc/opkg/distfeeds.conf 2>/dev/null)"
+	[ -n "$u" ] || u="$(awk '$1 ~ /^src/ && NF >= 3 { print $3; exit }' /etc/opkg/distfeeds.conf 2>/dev/null)"
+	[ -n "$u" ] || u="${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base"
+	echo "${u%/}/Packages.sig"
+}
+
+# tls_packages_missing TEXT: the HTTPS error means a missing TLS backend or
+# missing/outdated CA certificates, i.e. something packages can fix
+tls_packages_missing() {
+	case "$1" in
+		*"SSL support not available"*|*"not signed by a trusted CA"*) return 0 ;;
 	esac
-	any_exists /etc/ssl/certs/*.crt \
-		|| die "no CA certificates in /etc/ssl/certs (package ca-bundle): HTTPS certificates cannot be verified. See the README section \"HTTPS on a new router\" for installing ca-bundle from a copy made on a PC"
-	say "HTTPS: $(basename "${w:-wget}"), TLS library and CA certificates present"
+	return 1
+}
+
+# check_https: does HTTPS with certificate verification work on this router?
+# (a functional test - which TLS library provides it does not matter).
+# A missing TLS backend / CA bundle is remembered for ensure_https, every
+# other failure (time, DNS, firewall, network) stops here with a diagnosis.
+check_https() {
+	command -v wget >/dev/null 2>&1 || die "wget (uclient-fetch) not found - install uclient-fetch, libustream-mbedtls and ca-bundle"
+	HTTPS_URL="$(https_probe_url)"
+	if https_probe "$HTTPS_URL"; then
+		say "HTTPS: ${HTTPS_URL} - ok (certificate verified)"
+		return 0
+	fi
+	if tls_packages_missing "$HTTPS_ERR"; then
+		HTTPS_BROKEN=1
+		warn "HTTPS does not work: $(echo "$HTTPS_ERR" | tr '\n' ' ')"
+		return 0
+	fi
+	echo "[easy-vless] ERROR: HTTPS test failed" >&2
+	echo "[easy-vless]   URL:    ${HTTPS_URL}" >&2
+	echo "[easy-vless]   output: $(echo "$HTTPS_ERR" | tr '\n' ' ')" >&2
+	die "$(explain_download_error "$HTTPS_URL" "$HTTPS_ERR")"
+}
+
+# local_index_ok: --local DIR has the base feed index of this router
+# (Packages + Packages.sig), verified with the router's own OpenWrt keys
+local_index_ok() {
+	[ -n "$OPT_LOCAL" ] && [ -f "$OPT_LOCAL/Packages" ] && [ -f "$OPT_LOCAL/Packages.sig" ] || return 1
+	command -v usign >/dev/null 2>&1 && any_exists /etc/opkg/keys/* \
+		|| die "--local: $OPT_LOCAL/Packages cannot be verified: usign or the OpenWrt keys (/etc/opkg/keys) are missing"
+	usign -V -q -P /etc/opkg/keys -m "$OPT_LOCAL/Packages" -x "$OPT_LOCAL/Packages.sig" \
+		|| die "--local: the signature of $OPT_LOCAL/Packages is not valid for this router's OpenWrt keys - nothing installed"
+	return 0
+}
+
+# local_pkg_verified FILE: true (LOCAL_PKG = package name) when FILE is
+# listed in the verified $OPT_LOCAL/Packages; dies on a wrong architecture or
+# checksum. Not for $(...): die must stop the installer, not a subshell.
+local_pkg_verified() {
+	local b name arch want
+	LOCAL_PKG=""
+	b="$(basename "$1")"
+	name="$(awk -v fn="$b" '/^Package: /{ p = $2 } /^Filename: /{ if ($2 == fn) { print p; exit } }' "$OPT_LOCAL/Packages")"
+	[ -n "$name" ] || return 1
+	arch="$(awk -v p="$name" '/^Package: /{ q = $2 } /^Architecture: /{ if (q == p) { print $2; exit } }' "$OPT_LOCAL/Packages")"
+	case "$arch" in "$DISTRIB_ARCH"|all) ;; *) die "--local: $b is built for '$arch', this router is $DISTRIB_ARCH" ;; esac
+	want="$(awk -v p="$name" '/^Package: /{ q = $2 } /^SHA256sum: /{ if (q == p) { print $2; exit } }' "$OPT_LOCAL/Packages")"
+	[ -n "$want" ] && [ "$(sha256_of "$1")" = "$want" ] || die "--local: checksum mismatch for $b (signed index $OPT_LOCAL/Packages) - nothing installed"
+	LOCAL_PKG="$name"
+}
+
+# ensure_https: install the TLS backend / CA certificates when check_https
+# found them missing. Without HTTPS nothing can be downloaded (there is no
+# HTTP fallback), so they come from --local DIR: the base feed index
+# (Packages, Packages.sig) and the packages, copied from a PC. The index
+# signature is checked with the router's keys and every package against it.
+ensure_https() {
+	local f name list="" names=""
+	[ "${HTTPS_BROKEN:-0}" = "1" ] || return 0
+	local_index_ok || die "HTTPS does not work on this router: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR"). Nothing can be downloaded without it (there is no HTTP fallback). On a PC, download https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base/Packages and Packages.sig plus the files of libustream-mbedtls* and ca-bundle listed in Packages, copy them into one directory on the router (scp -O) and run this installer with --local DIR (README: \"HTTPS on a new router\")"
+	for f in "$OPT_LOCAL"/*.ipk; do
+		[ -f "$f" ] || continue
+		local_pkg_verified "$f" || continue
+		name="$LOCAL_PKG"
+		case "$name" in
+			libustream-*|libmbedtls*|libwolfssl*|libopenssl*|ca-bundle|ca-certificates) list="$list $f"; names="$names $name" ;;
+		esac
+	done
+	[ -n "$list" ] || die "HTTPS does not work ($(echo "$HTTPS_ERR" | tr '\n' ' ')) and $OPT_LOCAL has no TLS/CA package listed in its Packages index (libustream-mbedtls*, ca-bundle)"
+	[ "$OPT_CHECK" = "1" ] && die "--check: HTTPS does not work; the installer would install${names} from $OPT_LOCAL (verified) - run it without --check"
+	say "installing the HTTPS prerequisites from ${OPT_LOCAL} (index signature and SHA256 verified):${names}"
+	# shellcheck disable=SC2086
+	opkg install $list || die "opkg install of${names} from $OPT_LOCAL failed"
+	https_probe "$HTTPS_URL" || die "HTTPS still does not work after installing${names}: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR")"
+	HTTPS_BROKEN=0
+	say "HTTPS: ${HTTPS_URL} - ok (certificate verified) after installing${names}"
 }
 
 # check_dns HOST...: every host resolves (only when nslookup is available)
@@ -415,6 +514,17 @@ index_field() {
 		index($0, f ": ") == 1 && pkg == p { print substr($0, length(f) + 3); exit }' "$BOOT_DIR/Packages"
 }
 
+# boot_get FILE DEST DESCRIPTION: a file of the base feed, from the archive
+# over HTTPS or from --local DIR when HTTPS does not work yet
+boot_get() {
+	if [ -n "$BOOT_LOCAL" ]; then
+		[ -f "$BOOT_LOCAL/$1" ] || die "--local: $1 ($3) not found in $BOOT_LOCAL"
+		cp "$BOOT_LOCAL/$1" "$2" || die "cannot copy $BOOT_LOCAL/$1"
+	else
+		fetch "${BOOT_BASE}/$1" "$2" "$3"
+	fi
+}
+
 # bootstrap_pkg NAME: install package NAME of this release and architecture
 # from the official archive without opkg: exact file name and SHA256 from the
 # base feed index, the package is checked (name, architecture, dependencies,
@@ -430,7 +540,7 @@ bootstrap_pkg() {
 		|| die "unexpected file name '$file' for $name ($DISTRIB_ARCH) in ${BOOT_BASE}/Packages"
 	echo "$sum" | grep -qE '^[0-9a-f]{64}$' || die "invalid SHA256sum for $name in ${BOOT_BASE}/Packages"
 	mkdir -p "$dir" || die "cannot create $dir"
-	fetch "${BOOT_BASE}/${file}" "$dir/$file" "$name package"
+	boot_get "$file" "$dir/$file" "$name package"
 	[ "$(sha256_of "$dir/$file")" = "$sum" ] || die "checksum mismatch for $file - nothing was installed"
 	tar -xzf "$dir/$file" -C "$dir" || die "cannot unpack $file"
 	for f in control.tar.gz data.tar.gz; do [ -f "$dir/$f" ] || die "$file has no $f"; done
@@ -469,6 +579,7 @@ bootstrap_pkg() {
 bootstrap_opkg() {
 	local sig_ok=0
 	BOOT_BASE="${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base"
+	BOOT_LOCAL=""
 	BOOT_DIR="$WORKDIR/opkg-bootstrap"
 	mkdir -p "$BOOT_DIR" || die "cannot create $BOOT_DIR"
 	# refuse before changing anything when opkg could not work afterwards
@@ -477,9 +588,16 @@ bootstrap_opkg() {
 		[ "$OPT_FORCE" = "1" ] || die "the opkg package database ($OPKG_STATUS) is missing: opkg would treat every installed package as missing and reinstall base packages. Use --force only if you know this is intended"
 		warn "$OPKG_STATUS is missing - continuing because of --force"
 	fi
+	if [ "${HTTPS_BROKEN:-0}" = "1" ]; then
+		# no HTTPS: the same files from --local DIR, index verified with the
+		# router's own keys (local_index_ok dies when that is impossible)
+		local_index_ok || die "opkg is missing and HTTPS does not work ($(echo "$HTTPS_ERR" | tr '\n' ' ')). Copy Packages, Packages.sig and the opkg package of ${BOOT_BASE}/ (plus libustream-mbedtls* and ca-bundle) from a PC into one directory and run with --local DIR --bootstrap-opkg"
+		BOOT_LOCAL="$OPT_LOCAL"
+		BOOT_BASE="$OPT_LOCAL"
+	fi
 	say "bootstrapping opkg from ${BOOT_BASE}"
-	fetch "${BOOT_BASE}/Packages" "$BOOT_DIR/Packages" "package index of ${DISTRIB_RELEASE}/${DISTRIB_ARCH}/base"
-	fetch "${BOOT_BASE}/Packages.sig" "$BOOT_DIR/Packages.sig" "package index signature"
+	boot_get Packages "$BOOT_DIR/Packages" "package index of ${DISTRIB_RELEASE}/${DISTRIB_ARCH}/base"
+	boot_get Packages.sig "$BOOT_DIR/Packages.sig" "package index signature"
 	if command -v usign >/dev/null 2>&1 && any_exists /etc/opkg/keys/*; then
 		usign -V -q -P /etc/opkg/keys -m "$BOOT_DIR/Packages" -x "$BOOT_DIR/Packages.sig" \
 			|| die "signature check of ${BOOT_BASE}/Packages failed - nothing was installed"
@@ -581,7 +699,7 @@ WORKDIR="$(mktemp -d /tmp/easy-vless-install.XXXXXX)" || die "cannot create a te
 
 check_clock
 check_https
-if [ -z "$OPT_LOCAL" ]; then
+if [ -z "$OPT_LOCAL" ] && [ "${HTTPS_BROKEN:-0}" = "0" ]; then
 	check_dns "$(url_host "$EV_BASE_URL")"
 fi
 
@@ -594,12 +712,14 @@ if ! command -v opkg >/dev/null 2>&1; then
 	say "opkg is not installed. It can be installed from ${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base (package 'opkg' of this release and architecture)."
 	[ "$OPT_CHECK" = "1" ] && die "--check: opkg is missing - the installer can bootstrap it (run without --check and confirm, or add --bootstrap-opkg); the remaining checks need opkg"
 	if [ "$OPT_BOOTSTRAP_OPKG" = "1" ] || ask "Install opkg now?"; then
-		check_dns "$(url_host "$OPKG_ARCHIVE")"
+		[ "${HTTPS_BROKEN:-0}" = "1" ] || check_dns "$(url_host "$OPKG_ARCHIVE")"
 		bootstrap_opkg
 	else
 		die "opkg is required. Run again with --bootstrap-opkg."
 	fi
 fi
+
+ensure_https
 
 command -v fw4 >/dev/null 2>&1 || die "fw4 (firewall4) not found - Easy VLESS needs OpenWrt's nftables firewall (fw4)"
 command -v nft >/dev/null 2>&1 || die "nft not found - Easy VLESS needs nftables"

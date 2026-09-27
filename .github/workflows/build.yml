@@ -815,6 +815,8 @@ jobs:
           # online:    HTTPS release download, repeated run, preserved config
           # rollback:  dnsmasq-full failure and interruption -> old dnsmasq back
           # bootstrap: README manual opkg bootstrap and install.sh --bootstrap-opkg
+          # tlsboot:   no TLS backend / CA bundle / opkg: offline install from a
+          #            signature-verified local copy of the base feed, then install
           # upgrade:   published v0.5.1 (0.5.1-r1, from GitHub) -> this build,
           #            uninstall, reinstall
           bash tests/ci/installer-tests.sh dist

@@ -121,21 +121,27 @@ ntpd -n -q -p 0.openwrt.pool.ntp.org
 date
 ```
 
-`install.sh` выполняет эти же проверки сам. Если время раньше даты выпуска installer'а, он один раз пробует синхронизировать его по NTP (серверы из `system.ntp`) и только затем что-либо скачивает. Каждую ошибку загрузки он сопровождает URL, выводом `wget` и причиной.
+`install.sh` проверяет то же самое сам. Время сверяется с датой выпуска installer'а; если оно раньше, installer один раз пробует синхронизировать его по NTP (серверы из `system.ntp`). HTTPS проверяется **реальным запросом** к feed роутера (`.../Packages.sig`) с проверкой сертификата, а не по наличию конкретных файлов; какая TLS-библиотека его обеспечивает, неважно. Каждую ошибку загрузки installer сопровождает URL, выводом `wget` и причиной.
 
-**Если на роутере нет `ca-bundle`** (или HTTPS на роутере не удаётся исправить), файлы можно передать с ПК, где HTTPS работает. Контрольная сумма проверяется на ПК, поэтому доверие не зависит от канала передачи:
+**Если на роутере нет TLS-библиотеки или `ca-bundle`** (а без них HTTPS невозможен, и по HTTP installer ничего не скачивает), нужные пакеты переносятся с ПК. Доверие к ним не зависит ни от ПК, ни от канала передачи: installer проверяет подпись индекса `Packages` ключами OpenWrt, уже имеющимися на роутере (`/etc/opkg/keys`, `usign`), а каждый пакет — по SHA256 из этого индекса.
 
-1. На ПК скачайте индекс пакетов своей версии и архитектуры и нужный пакет. Например, для OpenWrt 24.10.3 / aarch64_cortex-a53 это `https://downloads.openwrt.org/releases/24.10.3/packages/aarch64_cortex-a53/base/Packages` и файл, указанный в нём в поле `Filename:` для `Package: ca-bundle`.
-2. Сверьте `sha256sum ca-bundle_*.ipk` на ПК со значением `SHA256sum:` из `Packages`.
-3. Скопируйте файл на роутер. Dropbear на OpenWrt не поддерживает SFTP, поэтому современному `scp` нужен ключ `-O`:
+1. На ПК скачайте из каталога `base` своей версии и архитектуры файлы `Packages` и `Packages.sig`. Например, для OpenWrt 24.10.3 / aarch64_cortex-a53: `https://downloads.openwrt.org/releases/24.10.3/packages/aarch64_cortex-a53/base/Packages` и `.../Packages.sig`.
+2. Там же скачайте пакеты, указанные в `Packages` в поле `Filename:` для `libustream-mbedtls20201210` и `ca-bundle`. Если на роутере нет и `opkg`, добавьте пакет `opkg`.
+3. Положите их в одну директорию вместе с файлами релиза Easy VLESS и скопируйте её на роутер. Dropbear на OpenWrt не поддерживает SFTP, поэтому современному `scp` нужен ключ `-O`:
 
    ```sh
-   scp -O ca-bundle_*.ipk root@192.168.1.1:/tmp/
+   scp -O -r easy-vless root@192.168.1.1:/tmp/
    ```
 
-4. На роутере выполните `opkg install /tmp/ca-bundle_*.ipk`.
+4. На роутере запустите installer с этой директорией (с `--bootstrap-opkg`, если `opkg` нет):
 
-Так же с ПК переносятся файлы релиза Easy VLESS (после `sha256sum -c SHA256SUMS` на ПК) для установки с `--local`. `--local` не обращается к GitHub, но `opkg update` (sing-box-tiny, dnsmasq-full, зависимости) всё равно требует рабочего HTTPS к `downloads.openwrt.org`.
+   ```sh
+   sh /tmp/easy-vless/install.sh --local /tmp/easy-vless
+   ```
+
+   Installer определяет, что HTTPS не работает, проверяет подпись `Packages` и SHA256 пакетов, устанавливает TLS-библиотеку и `ca-bundle` через `opkg`, повторяет проверку HTTPS и продолжает установку. Изменённый пакет или индекс с неверной подписью отвергаются; с `--check` ничего не устанавливается.
+
+`--local` не обращается к GitHub, но `opkg update` (sing-box-tiny, dnsmasq-full, зависимости) требует рабочего HTTPS к `downloads.openwrt.org`, поэтому время и DNS должны быть в порядке.
 
 ### Установка через installer
 
@@ -553,7 +559,7 @@ Storage: ~20 MB
 | [`tests/dnsmasq-nftset-test.sh`](tests/dnsmasq-nftset-test.sh) | static checks | определение nftset по `dnsmasq --version` |
 | [`tests/subscription-formats-test.sh`](tests/subscription-formats-test.sh) | CI job `runtime-tests`, роутер | 52 проверки форматов подписок: VLESS URL, списки plain/base64, sing-box JSON, JSON-массив, base64 JSON, неподдерживаемые outbounds, некорректный JSON, ноль VLESS-узлов, отсутствие дубликатов, сохранность ручных узлов, фильтрация чужой конфигурации |
 | [`tests/ci/openwrt-runtime-tests.sh`](tests/ci/openwrt-runtime-tests.sh) | CI job `runtime-tests` | в контейнере `openwrt/rootfs:x86-64-24.10.3`: ubusd и rpcd (без procd), `install.sh --check`, установка собранных пакетов через `install.sh --local` (sing-box-tiny из feed, замена dnsmasq на dnsmasq-full, проверка SHA256SUMS), затем subscription tests |
-| [`tests/ci/installer-tests.sh`](tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](tests/ci/installer-scenarios.sh) | CI job `runtime-tests` | каждый сценарий в новом контейнере `openwrt/rootfs:x86-64-24.10.3`, с тестовым HTTPS-сервером (настоящие сертификаты, в том числе «ещё не действительный»): `--check`, `--help`, отсутствующая утилита, неверное время, нет CA, нет TLS-библиотеки, неверная архитектура, сбой обязательного и необязательного feed, загрузка по HTTPS, HTTP 404, изменённый пакет, неполный `SHA256SUMS`, пустой ответ, ошибка DNS, ошибки `--local`; откат `dnsmasq` при ошибке и при прерывании; ручной bootstrap `opkg` из README и `--bootstrap-opkg` (без `opkg`, `usign` и ключей); обновление с опубликованного 0.5.1-r1 (скачивается с GitHub) с сохранением конфигурации и HWID, удаление и повторная установка |
+| [`tests/ci/installer-tests.sh`](tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](tests/ci/installer-scenarios.sh) | CI job `runtime-tests` | каждый сценарий в новом контейнере `openwrt/rootfs:x86-64-24.10.3`, с тестовым HTTPS-сервером (настоящие сертификаты, в том числе «ещё не действительный»): `--check`, `--help`, отсутствующая утилита, неверное время, нет CA, нет TLS-библиотеки (реальный HTTPS-запрос, в том числе regression на `/lib` без `/usr/lib/libustream-ssl.so`), неверная архитектура, сбой обязательного и необязательного feed, загрузка по HTTPS, HTTP 404, изменённый пакет, неполный `SHA256SUMS`, пустой ответ, ошибка DNS, ошибки `--local`; образ без TLS-библиотеки, `ca-bundle` и `opkg` (офлайн-установка из проверенной копии feed); откат `dnsmasq` при ошибке и при прерывании; ручной bootstrap `opkg` из README и `--bootstrap-opkg` (без `opkg`, `usign` и ключей); обновление с опубликованного 0.5.1-r1 (скачивается с GitHub) с сохранением конфигурации и HWID, удаление и повторная установка |
 | [`tests/tr3000-slice-smoke.sh`](tests/tr3000-slice-smoke.sh) | вручную на роутере | запуск/остановка сервиса, nftables, ip rule, процессы sing-box; с таймером отката |
 
 Локально:

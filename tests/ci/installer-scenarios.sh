@@ -1,7 +1,7 @@
 #!/bin/sh
 # Easy VLESS - installer / bootstrap scenarios, run inside a fresh
 # openwrt/rootfs:x86-64-24.10.3 container by tests/ci/installer-tests.sh:
-#   sh installer-scenarios.sh preflight|online|rollback|bootstrap|upgrade
+#   sh installer-scenarios.sh preflight|online|rollback|bootstrap|tlsboot|upgrade
 #
 # Real OpenWrt primitives are used everywhere (opkg, official feeds and
 # archive.openwrt.org, uclient-fetch + libustream-mbedtls, the published
@@ -79,7 +79,10 @@ sc_preflight() {
 	note "--check on a clean OpenWrt 24.10.3"
 	expect_ok "--check passes" "check finished: no blocking problem found" --check
 	grep -q "system time: .* - ok" "$LOG" && ok "--check reports the system time" || bad "time line missing"
-	grep -q "HTTPS: uclient-fetch, TLS library and CA certificates present" "$LOG" && ok "--check reports HTTPS readiness" || bad "HTTPS line missing"
+	grep -qE "HTTPS: https://downloads.openwrt.org/.*/Packages.sig - ok \(certificate verified\)" "$LOG" && ok "--check reports a working HTTPS request" || bad "HTTPS line missing"
+	# regression (CI run of e5cd0184): the rootfs has /lib/libustream-ssl.so but
+	# no /usr/lib/libustream-ssl.so*; HTTPS works and must be accepted
+	check "HTTPS accepted although /usr/lib/libustream-ssl.so* does not exist" '! ls /usr/lib/libustream-ssl.so* >/dev/null 2>&1 && [ "$RC" = 0 ]'
 	grep -q "will install sing-box-tiny" "$LOG" && ok "--check announces sing-box-tiny" || bad "sing-box-tiny not announced"
 	grep -q "replace dnsmasq with dnsmasq-full" "$LOG" && ok "--check announces the dnsmasq replacement" || bad "dnsmasq not announced"
 
@@ -94,12 +97,12 @@ sc_preflight() {
 
 	note "missing CA certificates"
 	mkdir -p /tmp/certs.off && mv /etc/ssl/certs/* /tmp/certs.off/
-	expect_fail "missing CA bundle detected before any download" "no CA certificates in /etc/ssl/certs" --check
+	expect_fail "missing CA bundle detected before any download" "HTTPS does not work on this router: the TLS certificate of .* is not trusted" --check
 	mv /tmp/certs.off/* /etc/ssl/certs/
 
 	note "missing TLS library"
 	mkdir -p /tmp/tls.off && mv /lib/libustream-ssl.so* /tmp/tls.off/
-	expect_fail "missing libustream detected" "no TLS library" --check
+	expect_fail "missing TLS backend detected by a real HTTPS request" "HTTPS does not work on this router: wget \(uclient-fetch\) has no TLS backend" --check
 	mv /tmp/tls.off/* /lib/
 
 	note "wrong architecture"
@@ -225,7 +228,7 @@ sc_bootstrap() {
 
 	note "README manual bootstrap (same commands, this architecture)"
 	opkg remove --force-removal-of-essential-packages opkg >/dev/null 2>&1; rm -f /bin/opkg
-	check "opkg removed" '! command -v opkg >/dev/null 2>&1'
+	hash -r 2>/dev/null; check "opkg removed" '[ ! -e /bin/opkg ]'
 	mkdir -p /tmp/opkg-bootstrap && cd /tmp/opkg-bootstrap || exit 1
 	wget -q -O Packages "$base/Packages"
 	file="$(awk '/^Package: /{p=$2} /^Filename: /{if(p=="opkg")print $2}' Packages)"
@@ -261,6 +264,52 @@ sc_bootstrap() {
 	check "customised /etc/opkg.conf kept" 'grep -q "ev-test: customised" /etc/opkg.conf'
 	check "Easy VLESS $V installed after bootstrap" "[ \"\$(installed easy-vless)\" = \"$V\" ]"
 	no_leftovers "bootstrap"
+}
+
+# ====================================================================== tlsboot
+# Image without HTTPS backend and CA bundle (and without opkg): the base
+# feed index, its signature and the packages are copied "from a PC" into
+# one directory; install.sh verifies them with the router's keys, installs
+# the TLS backend and CA bundle, bootstraps opkg and continues.
+sc_tlsboot() {
+	. /etc/openwrt_release
+	base="https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base"
+	pc=/tmp/pc
+	mkdir -p "$pc" && cp "$DIST"/* "$pc/"
+	wget -q -O "$pc/Packages" "$base/Packages" && wget -q -O "$pc/Packages.sig" "$base/Packages.sig"
+	tlspkg="$(opkg list-installed | awk '$1 ~ /^libustream-/ { print $1; exit }')"
+	check "TLS backend package present before the test ($tlspkg)" '[ -n "$tlspkg" ]'
+	for p in "$tlspkg" ca-bundle opkg; do
+		f="$(awk -v p="$p" '/^Package: /{ q = $2 } /^Filename: /{ if (q == p) print $2 }' "$pc/Packages")"
+		wget -q -O "$pc/$f" "$base/$f"
+		check "copied $f (as from a PC)" "[ -s '$pc/$f' ]"
+	done
+	tlsfile="$(ls "$pc"/"$tlspkg"_*.ipk)"
+
+	note "image without TLS backend and CA bundle"
+	opkg remove --force-depends "$tlspkg" ca-bundle >/dev/null 2>&1
+	check "TLS backend and CA bundle removed" '[ -z "$(installed "$tlspkg")" ] && [ -z "$(installed ca-bundle)" ]'
+	check "real wget: SSL support not available" 'wget -O /dev/null https://github.com/ 2>&1 | grep -q "SSL support not available"'
+	expect_fail "no HTTPS and no files: clear instructions" "HTTPS does not work on this router: wget \(uclient-fetch\) has no TLS backend.*--local DIR" --check
+	grep -q "base/Packages and Packages.sig" "$LOG" && ok "instructions name the index files" || bad "instructions incomplete"
+
+	cp -r "$pc" /tmp/pc-bad && printf 'x' >>"/tmp/pc-bad/$(basename "$tlsfile")"
+	expect_fail "modified TLS package refused" "checksum mismatch for $(basename "$tlsfile")" --local /tmp/pc-bad --replace-dnsmasq --yes --no-start
+	cp -r "$pc" /tmp/pc-sig && printf '\nPackage: evtest\n' >>/tmp/pc-sig/Packages
+	expect_fail "index with an invalid signature refused" "signature of /tmp/pc-sig/Packages is not valid" --local /tmp/pc-sig --replace-dnsmasq --yes --no-start
+	expect_fail "--check with the files installs nothing" "--check: HTTPS does not work; the installer would install" --check --local "$pc"
+	check "still no TLS backend after the refused runs" '[ -z "$(installed "$tlspkg")" ] && [ -z "$(installed ca-bundle)" ]'
+
+	note "no opkg either: bootstrap opkg and HTTPS from the verified local files"
+	opkg remove --force-removal-of-essential-packages opkg >/dev/null 2>&1; rm -f /bin/opkg
+	hash -r 2>/dev/null; check "opkg removed" '[ ! -e /bin/opkg ]'
+	expect_ok "opkg, TLS backend and CA bundle installed offline, installation continues" \
+		"HTTPS: .* - ok \(certificate verified\) after installing" --bootstrap-opkg --local "$pc" --replace-dnsmasq --yes --no-start
+	grep -q "opkg .* installed from $pc/" "$LOG" && ok "opkg bootstrapped from the local verified index" || bad "opkg not bootstrapped locally"
+	check "TLS backend and CA bundle installed" '[ -n "$(installed "$tlspkg")" ] && [ -n "$(installed ca-bundle)" ]'
+	check "real wget HTTPS works again" 'wget -q -O /dev/null https://github.com/'
+	check "Easy VLESS $V installed" "[ \"\$(installed easy-vless)\" = \"$V\" ]"
+	no_leftovers "tlsboot"
 }
 
 # ====================================================================== upgrade
@@ -313,8 +362,8 @@ sc_upgrade() {
 }
 
 case "${1:-}" in
-	preflight|online|rollback|bootstrap|upgrade) ;;
-	*) echo "usage: $0 preflight|online|rollback|bootstrap|upgrade"; exit 2 ;;
+	preflight|online|rollback|bootstrap|tlsboot|upgrade) ;;
+	*) echo "usage: $0 preflight|online|rollback|bootstrap|tlsboot|upgrade"; exit 2 ;;
 esac
 echo "===== scenario $1 (Easy VLESS $V) ====="
 prepare

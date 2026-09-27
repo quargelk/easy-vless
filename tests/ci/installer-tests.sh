@@ -13,7 +13,7 @@ W="$(cd "$(dirname "$0")/../.." && pwd)"
 DIST="$(cd "${1:?usage: $0 <dist dir> [scenario...]}" && pwd)"
 shift
 SCENARIOS=("$@")
-[ ${#SCENARIOS[@]} -gt 0 ] || SCENARIOS=(preflight online rollback bootstrap upgrade)
+[ ${#SCENARIOS[@]} -gt 0 ] || SCENARIOS=(preflight online rollback bootstrap tlsboot upgrade)
 IMAGE="${OPENWRT_ROOTFS_IMAGE:-openwrt/rootfs:x86-64-24.10.3}"
 T="$(mktemp -d)"
 GW="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')"
