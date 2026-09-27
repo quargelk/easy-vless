@@ -46,7 +46,9 @@ sock_strings() {
 }
 
 # ---------------------------------------------------------------- 1. tools
-for t in ubusd ubus uci lua; do
+# (lua is not part of the rootfs image: it is installed as a dependency of
+# easy-vless and checked after the installation)
+for t in ubusd ubus uci; do
 	command -v "$t" >/dev/null 2>&1 || die "$t not found in this rootfs"
 done
 if [ "${SKIP_INSTALL:-0}" != "1" ] || ! command -v rpcd >/dev/null 2>&1; then
@@ -139,6 +141,7 @@ ubus -t 5 call uci get '{"config":"easy_vless","section":"global"}'
 cli_type="$(uci -q get easy_vless.global)" || die "section easy_vless.global is missing"
 cli_enabled="$(uci -q get easy_vless.global.enabled)" || die "option easy_vless.global.enabled is missing"
 cli_global="${cli_type}=${cli_enabled}"
+command -v lua >/dev/null 2>&1 || die "lua not found after the installation of easy-vless"
 lua_global="$(lua -e 'local api = require "luci.easy_vless.api"
 	print((api.uci:get("easy_vless", "global") or "") .. "=" .. (api.uci:get("easy_vless", "global", "enabled") or ""))')"
 say "easy_vless.global (type=enabled): uci CLI '${cli_global}', luci.model.uci '${lua_global}'"
