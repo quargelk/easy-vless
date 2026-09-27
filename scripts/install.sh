@@ -187,6 +187,14 @@ ask() {
 
 sha256_of() { sha256sum "$1" 2>/dev/null | awk '{ print $1 }'; }
 
+# any_exists PATH...: at least one of the (globbed) paths exists; "ls A B"
+# fails in BusyBox as soon as one of them is missing
+any_exists() {
+	local f
+	for f in "$@"; do [ -e "$f" ] && return 0; done
+	return 1
+}
+
 is_ipv4() { case "$1" in ""|*[!0-9.]*) return 1 ;; esac; return 0; }
 
 url_host() { echo "$1" | sed 's#^[a-z]*://##; s#[/:?].*##'; }
@@ -357,10 +365,10 @@ check_https() {
 	w="$(readlink -f "$(command -v wget)" 2>/dev/null)"
 	case "$w" in
 		*/uclient-fetch)
-			ls /lib/libustream-ssl.so* /usr/lib/libustream-ssl.so* >/dev/null 2>&1 \
+			any_exists /lib/libustream-ssl.so* /usr/lib/libustream-ssl.so* \
 				|| die "uclient-fetch has no TLS library (libustream-ssl.so): install libustream-mbedtls and ca-bundle (see the README section \"HTTPS on a new router\")" ;;
 	esac
-	ls /etc/ssl/certs/*.crt >/dev/null 2>&1 \
+	any_exists /etc/ssl/certs/*.crt \
 		|| die "no CA certificates in /etc/ssl/certs (package ca-bundle): HTTPS certificates cannot be verified. See the README section \"HTTPS on a new router\" for installing ca-bundle from a copy made on a PC"
 	say "HTTPS: $(basename "${w:-wget}"), TLS library and CA certificates present"
 }
@@ -384,7 +392,7 @@ lib_present() {
 	base="$(echo "$1" | sed -n 's/^\(lib[a-z-]*\)\([0-9]\{8\}\)$/\1/p')"
 	abi="$(echo "$1" | sed -n 's/^lib[a-z-]*\([0-9]\{8\}\)$/\1/p')"
 	[ -n "$base" ] || return 1
-	ls "/lib/${base}.so.${abi}" "/usr/lib/${base}.so.${abi}" >/dev/null 2>&1
+	any_exists "/lib/${base}.so.${abi}" "/usr/lib/${base}.so.${abi}"
 }
 
 # check_depends CONTROL: the runtime dependencies of a bootstrapped package
@@ -472,7 +480,7 @@ bootstrap_opkg() {
 	say "bootstrapping opkg from ${BOOT_BASE}"
 	fetch "${BOOT_BASE}/Packages" "$BOOT_DIR/Packages" "package index of ${DISTRIB_RELEASE}/${DISTRIB_ARCH}/base"
 	fetch "${BOOT_BASE}/Packages.sig" "$BOOT_DIR/Packages.sig" "package index signature"
-	if command -v usign >/dev/null 2>&1 && ls /etc/opkg/keys/* >/dev/null 2>&1; then
+	if command -v usign >/dev/null 2>&1 && any_exists /etc/opkg/keys/*; then
 		usign -V -q -P /etc/opkg/keys -m "$BOOT_DIR/Packages" -x "$BOOT_DIR/Packages.sig" \
 			|| die "signature check of ${BOOT_BASE}/Packages failed - nothing was installed"
 		sig_ok=1
@@ -483,7 +491,7 @@ bootstrap_opkg() {
 	bootstrap_pkg opkg
 	if grep -qs '^option check_signature' /etc/opkg.conf; then
 		command -v usign >/dev/null 2>&1 || bootstrap_pkg usign
-		ls /etc/opkg/keys/* >/dev/null 2>&1 || bootstrap_pkg openwrt-keyring
+		any_exists /etc/opkg/keys/* || bootstrap_pkg openwrt-keyring
 		if [ "$sig_ok" = "0" ]; then
 			usign -V -q -P /etc/opkg/keys -m "$BOOT_DIR/Packages" -x "$BOOT_DIR/Packages.sig" \
 				|| die "the installed OpenWrt keys do not verify ${BOOT_BASE}/Packages.sig - do not use this opkg"
