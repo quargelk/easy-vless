@@ -27,14 +27,15 @@ LIBUBUS_DIRS="${LIBUBUS_DIRS:-/lib /usr/lib}"
 say() { echo "[runtime-tests] $*"; }
 die() { echo "[runtime-tests] ERROR: $*" >&2; exit 1; }
 
-# wait_for DESCRIPTION COMMAND...: retry for up to 10 s
+# wait_for DESCRIPTION COMMAND...: retry for up to 15 s (whole seconds:
+# BusyBox sleep in the rootfs image rejects fractions)
 wait_for() {
 	desc="$1"; shift
 	i=0
 	until "$@" >/dev/null 2>&1; do
 		i=$((i + 1))
-		[ "$i" -lt 50 ] || die "timeout waiting for $desc"
-		sleep 0.2
+		[ "$i" -lt 15 ] || die "timeout waiting for $desc"
+		sleep 1
 	done
 }
 
