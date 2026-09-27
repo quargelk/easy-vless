@@ -300,15 +300,35 @@ sc_tlsboot() {
 	expect_fail "--check with the files installs nothing" "--check: HTTPS does not work; the installer would install" --check --local "$pc"
 	check "still no TLS backend after the refused runs" '[ -z "$(installed "$tlspkg")" ] && [ -z "$(installed ca-bundle)" ]'
 
-	note "no opkg either: bootstrap opkg and HTTPS from the verified local files"
+	# regression (CI run of f158e5cb): with feed lists of an earlier
+	# "opkg update" present, "opkg install /tmp/pc/ca-bundle_*.ipk" used the
+	# feed entry of the same version and tried to download it over the HTTPS
+	# that was still missing (circular dependency). The prerequisites must be
+	# installed from the exact local files without any download attempt.
+	tls_offline_run() { # tls_offline_run DESCRIPTION ARGS...
+		local d="$1"; shift
+		check "$d: feed lists of an earlier opkg update present" '[ -s /var/opkg-lists/openwrt_base ]'
+		expect_ok "$d: installed from the local files, installation continues" \
+			"HTTPS: .* - ok \(certificate verified\) after installing" "$@"
+		grep -q "installing the HTTPS prerequisites from $pc .*ca-bundle" "$LOG" && ok "$d: ca-bundle taken from $pc" || bad "$d: ca-bundle not from $pc"
+		if grep -qE "Downloading https://.*/(ca-bundle|libustream-)" "$LOG"; then bad "$d: opkg tried to download a TLS package"; show 30; else ok "$d: no download attempt for the TLS packages"; fi
+		check "$d: TLS backend and CA bundle installed" '[ -n "$(installed "$tlspkg")" ] && [ -n "$(installed ca-bundle)" ]'
+		check "$d: real wget HTTPS works again" 'wget -q -O /dev/null https://github.com/'
+		check "$d: feed lists restored" '[ -s /var/opkg-lists/openwrt_base ]'
+		check "$d: Easy VLESS $V installed" "[ \"\$(installed easy-vless)\" = \"$V\" ]"
+	}
+
+	note "no TLS backend / CA bundle, opkg present (normal flow with --local)"
+	tls_offline_run "opkg present" --local "$pc" --replace-dnsmasq --yes --no-start
+
+	note "no TLS backend / CA bundle and no opkg: --bootstrap-opkg from the verified local files"
+	opkg remove --force-depends "$tlspkg" ca-bundle >/dev/null 2>&1
 	opkg remove --force-removal-of-essential-packages opkg >/dev/null 2>&1; rm -f /bin/opkg
-	hash -r 2>/dev/null; check "opkg removed" '[ ! -e /bin/opkg ]'
-	expect_ok "opkg, TLS backend and CA bundle installed offline, installation continues" \
-		"HTTPS: .* - ok \(certificate verified\) after installing" --bootstrap-opkg --local "$pc" --replace-dnsmasq --yes --no-start
+	hash -r 2>/dev/null
+	check "opkg, TLS backend and CA bundle removed again" '[ ! -e /bin/opkg ] && wget -O /dev/null https://github.com/ 2>&1 | grep -q "SSL support not available"'
+	tls_offline_run "bootstrap" --bootstrap-opkg --local "$pc" --replace-dnsmasq --yes --no-start
 	grep -q "opkg .* installed from $pc/" "$LOG" && ok "opkg bootstrapped from the local verified index" || bad "opkg not bootstrapped locally"
-	check "TLS backend and CA bundle installed" '[ -n "$(installed "$tlspkg")" ] && [ -n "$(installed ca-bundle)" ]'
-	check "real wget HTTPS works again" 'wget -q -O /dev/null https://github.com/'
-	check "Easy VLESS $V installed" "[ \"\$(installed easy-vless)\" = \"$V\" ]"
+	check "opkg registered in the database after HTTPS works" '[ -n "$(installed opkg)" ]'
 	no_leftovers "tlsboot"
 }
 
