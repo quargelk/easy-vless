@@ -451,7 +451,7 @@ local_pkg_verified() {
 # (Packages, Packages.sig) and the packages, copied from a PC. The index
 # signature is checked with the router's keys and every package against it.
 ensure_https() {
-	local f name list="" names=""
+	local f name list="" names="" lists hidden rc
 	[ "${HTTPS_BROKEN:-0}" = "1" ] || return 0
 	local_index_ok || die "HTTPS does not work on this router: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR"). Nothing can be downloaded without it (there is no HTTP fallback). On a PC, download https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base/Packages and Packages.sig plus the files of libustream-mbedtls* and ca-bundle listed in Packages, copy them into one directory on the router (scp -O) and run this installer with --local DIR (README: \"HTTPS on a new router\")"
 	for f in "$OPT_LOCAL"/*.ipk; do
@@ -465,8 +465,23 @@ ensure_https() {
 	[ -n "$list" ] || die "HTTPS does not work ($(echo "$HTTPS_ERR" | tr '\n' ' ')) and $OPT_LOCAL has no TLS/CA package listed in its Packages index (libustream-mbedtls*, ca-bundle)"
 	[ "$OPT_CHECK" = "1" ] && die "--check: HTTPS does not work; the installer would install${names} from $OPT_LOCAL (verified) - run it without --check"
 	say "installing the HTTPS prerequisites from ${OPT_LOCAL} (index signature and SHA256 verified):${names}"
+	# opkg prefers a feed entry of the same name and version over the local
+	# file and would try to download it - over the HTTPS that does not work.
+	# Hide the package lists (useless without HTTPS) during this install.
+	lists="$(opkg_lists_dir)"
+	hidden=""
+	if [ -d "$lists" ]; then
+		hidden="$WORKDIR/opkg-lists.hidden"
+		mv "$lists" "$hidden" || die "cannot move $lists aside"
+	fi
 	# shellcheck disable=SC2086
-	opkg install $list || die "opkg install of${names} from $OPT_LOCAL failed"
+	opkg install $list
+	rc=$?
+	if [ -n "$hidden" ]; then
+		rm -rf "$lists"
+		mv "$hidden" "$lists" || warn "could not restore $lists - run 'opkg update'"
+	fi
+	[ "$rc" = "0" ] || die "opkg install of${names} from $OPT_LOCAL failed"
 	https_probe "$HTTPS_URL" || die "HTTPS still does not work after installing${names}: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR")"
 	HTTPS_BROKEN=0
 	say "HTTPS: ${HTTPS_URL} - ok (certificate verified) after installing${names}"
