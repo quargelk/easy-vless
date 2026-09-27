@@ -112,9 +112,24 @@ if [ -s README.md ]; then
 	for link in $(grep -oE '\]\([^)#[:space:]]+\)' README.md | sed 's/^](//; s/)$//' | grep -vE '^[a-z]+://' | sort -u); do
 		[ -e "$link" ] && ok "README link $link" || bad "README link target missing: $link"
 	done
-	for anchor in $(grep -oE '\]\(#[^)]+\)' README.md | sed 's/^](#//; s/)$//' | sort -u); do
-		grep -qiE "^#+ ${anchor}\$" README.md && ok "README anchor #$anchor" || bad "README anchor without heading: #$anchor"
+	# #anchors must match a heading slug as GitHub builds it: lower case,
+	# punctuation other than "-" and "_" removed, spaces -> "-"
+	anchors=$(python3 - README.md <<'EOF'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+body = re.sub(r"^```.*?^```", "", text, flags=re.S | re.M)
+slugs = {re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-")
+         for h in re.findall(r"^#+[ \t]+(.+?)[ \t]*$", body, flags=re.M)}
+for a in sorted(set(re.findall(r"\]\(#([^)]+)\)", text))):
+    print(("ok " if a in slugs else "bad ") + a)
+EOF
+)
+	[ -n "$anchors" ] || bad "README anchor check produced no output"
+	echo "$anchors" | while read -r res anchor; do
+		[ "$res" = ok ] && echo "PASS: README anchor #$anchor" || echo "FAIL: README anchor without heading: #$anchor"
 	done
+	n=$(echo "$anchors" | grep -c '^bad ')
+	[ "$n" -eq 0 ] || { FAIL=$((FAIL + n)); }
 	[ "$(grep -c '^```' README.md)" -ne 0 ] && [ $(( $(grep -c '^```' README.md) % 2 )) -eq 0 ] \
 		&& ok "README code fences balanced" || bad "README code fences unbalanced"
 else

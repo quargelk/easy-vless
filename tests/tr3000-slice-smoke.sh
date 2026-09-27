@@ -1,12 +1,12 @@
 #!/bin/sh
-# Easy VLESS - MVP smoke test for a real OpenWrt router (TR3000 / WR3000E).
+# Easy VLESS - smoke test for a real OpenWrt router (TR3000 / WR3000E).
 # Not installed by any package; copy to the router and run as root:
 #   sh tr3000-slice-smoke.sh [<server section id>]
 #
 # Preconditions: easy-vless, easy-vless-sing-box, luci-app-easy-vless and a
 # package providing "sing-box" (sing-box-tiny 1.12.22) are installed,
 # dnsmasq-full is installed, and at least one working VLESS server exists
-# (LuCI: Services -> Easy VLESS -> Servers, "Import VLESS URL").
+# (LuCI: Services -> Easy VLESS -> Node List, "Import VLESS URL").
 #
 # Safety: arms a 5-minute rollback timer (stop + firewall restart) before
 # starting Easy VLESS and disarms it only if every check passed.

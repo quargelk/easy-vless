@@ -89,7 +89,8 @@ define Package/easy-vless/description
   Easy VLESS is a lightweight VLESS client for OpenWrt, derived from
   PassWall2: transparent proxying with nftables/fw4 TPROXY, routing rules
   with prepared domain resources, DNS (direct/remote DNS, FakeDNS, DNS
-  redirect), VLESS URL import and URL subscriptions. This is the
+  redirect), VLESS URL import and subscriptions (VLESS URL lists, base64,
+  sing-box JSON, Clash YAML; VLESS nodes only). This is the
   engine-independent core; install easy-vless-sing-box for the VLESS engine
   and luci-app-easy-vless for the web interface. Needs dnsmasq-full (nftset
   support) at runtime.
