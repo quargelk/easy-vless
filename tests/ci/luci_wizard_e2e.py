@@ -152,7 +152,10 @@ def main():
         browser = p.chromium.launch()
         ctx = browser.new_context(viewport={"width": 1280, "height": 900})
         page = ctx.new_page()
-        page.on("pageerror", lambda e: bad("JavaScript error on %s: %s" % (page.url, e)))
+        # JavaScript errors on Easy VLESS pages fail the test; errors of other
+        # LuCI pages (e.g. the status overview after login) are only reported
+        page.on("pageerror", lambda e: bad("JavaScript error on %s: %s" % (page.url, e)) if "/easy_vless" in page.url
+                else print("NOTE: JavaScript error outside Easy VLESS on %s: %s" % (page.url, e), flush=True))
         login(page)
 
         # ---------------------------------------------------------- fresh install

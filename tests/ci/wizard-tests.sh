@@ -27,6 +27,8 @@ T="$(mktemp -d)"
 cleanup() {
 	echo "---- router container: Easy VLESS log (last 80 lines)"
 	docker exec evw sh -c 'tail -n 80 /tmp/log/easy_vless.log 2>/dev/null' || true
+	echo "---- VLESS test server log (last 40 lines)"
+	docker exec evsrv sh -c 'tail -n 40 /tmp/server.log 2>/dev/null' || true
 	docker rm -f evw evsrv >/dev/null 2>&1 || true
 	rm -rf "$T"
 }
@@ -54,7 +56,7 @@ docker cp -L evw:/usr/bin/sing-box "$T/sing-box"
 docker cp "$T/sing-box" evsrv:/usr/bin/sing-box
 cat >"$T/server.json" <<'EOF'
 {
-  "log": { "level": "warn" },
+  "log": { "level": "info" },
   "inbounds": [
     { "type": "vless", "tag": "vless-in", "listen": "0.0.0.0", "listen_port": 20443,
       "users": [ { "name": "wizard-test", "uuid": "00000000-0000-4000-8000-000000000001" } ] }
