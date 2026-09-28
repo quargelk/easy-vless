@@ -242,9 +242,23 @@ any_exists() {
 	return 1
 }
 
-is_ipv4() { case "$1" in ""|*[!0-9.]*) return 1 ;; esac; return 0; }
+# is_ip_literal HOST: an IPv4 address or a bracketed IPv6 address (no DNS)
+is_ip_literal() {
+	case "$1" in
+		\[*\]) return 0 ;;
+		""|*[!0-9.]*) return 1 ;;
+	esac
+	return 0
+}
 
-url_host() { echo "$1" | sed 's#^[a-z]*://##; s#[/:?].*##'; }
+# url_host URL: host part of URL ("[2001:db8::1]" for an IPv6 literal)
+url_host() {
+	local h="${1#*://}"
+	case "$h" in
+		\[*\]*) echo "${h%%]*}]" ;;
+		*) echo "${h%%[/:?]*}" ;;
+	esac
+}
 
 opkg_lists_dir() {
 	local d
@@ -291,13 +305,13 @@ explain_download_error() {
 	host="$(url_host "$url")"
 	case "$text" in
 		*"certificate is self-signed or not signed by a trusted CA"*)
-			echo "the TLS certificate of ${host} is not trusted: the CA certificates are missing or outdated. Install the package ca-bundle (see the README section \"HTTPS on a new router\" for a copy made on a PC); never disable certificate checks" ;;
+			echo "the TLS certificate of ${host} is not trusted: the CA certificates are missing or outdated. Install the package ca-bundle (see the README section \"HTTPS на новом роутере\" (HTTPS on a new router) for a copy made on a PC); never disable certificate checks" ;;
 		*"unknown error"*|*"not yet valid"*|*"has expired"*)
 			echo "the TLS certificate of ${host} could not be verified - most likely the system time is wrong (now: $(date -u '+%Y-%m-%d %H:%M UTC')). Set the time, e.g. 'ntpd -n -q -p 0.openwrt.pool.ntp.org', and run the installer again" ;;
 		*"SSL support not available"*)
 			echo "wget (uclient-fetch) has no TLS backend: libustream-mbedtls (and ca-bundle) must be installed" ;;
 		*"Operation not permitted"*|*"Failed to send request"*)
-			if ! is_ipv4 "$host" && command -v nslookup >/dev/null 2>&1 && ! nslookup "$host" >/dev/null 2>&1; then
+			if ! is_ip_literal "$host" && command -v nslookup >/dev/null 2>&1 && ! nslookup "$host" >/dev/null 2>&1; then
 				echo "the name ${host} cannot be resolved (DNS). Check the internet connection and the DNS server of the router ('nslookup ${host}')"
 			else
 				echo "the connection to ${host} was refused by the router itself (\"Operation not permitted\"): a DNS failure or a firewall rule blocking the router's own traffic, e.g. a leftover proxy (PassWall/PassWall2, another Easy VLESS). Check 'nslookup ${host}' and 'nft list ruleset'"
@@ -673,7 +687,7 @@ local_pkg_verified() {
 ensure_https() {
 	local f name list="" names="" lists hidden rc
 	[ "${HTTPS_BROKEN:-0}" = "1" ] || return 0
-	local_index_ok || die "HTTPS does not work on this router: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR"). Nothing can be downloaded without it (there is no HTTP fallback). On a PC, download https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base/Packages and Packages.sig plus the files of libustream-mbedtls* and ca-bundle listed in Packages, copy them into one directory on the router (scp -O) and run this installer with --local DIR (README: \"HTTPS on a new router\")"
+	local_index_ok || die "HTTPS does not work on this router: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR"). Nothing can be downloaded without it (there is no HTTP fallback). On a PC, download https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base/Packages and Packages.sig plus the files of libustream-mbedtls* and ca-bundle listed in Packages, copy them into one directory on the router (scp -O) and run this installer with --local DIR (README section \"HTTPS на новом роутере\", HTTPS on a new router)"
 	for f in "$OPT_LOCAL"/*.ipk; do
 		[ -f "$f" ] || continue
 		local_pkg_verified "$f" || continue
@@ -712,7 +726,7 @@ check_dns() {
 	local h
 	command -v nslookup >/dev/null 2>&1 || return 0
 	for h in "$@"; do
-		is_ipv4 "$h" && continue
+		is_ip_literal "$h" && continue
 		nslookup "$h" >/dev/null 2>&1 || die "the name $h cannot be resolved (DNS): check the internet connection and the DNS server of the router ('nslookup $h'). uclient-fetch reports this as \"Operation not permitted\""
 	done
 }

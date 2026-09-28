@@ -61,7 +61,7 @@ Easy VLESS прозрачно проксирует трафик роутера �
 |---|---|
 | RAM | **256 MB** установленной памяти |
 | Flash / storage | **128 MB** общего объёма (NAND/NOR-flash или диск) |
-| Свободное место | столько, сколько реально нужно для установки (см. ниже); для свежего Cudy TR3000 v1 — около 32 MB |
+| Свободное место | столько, сколько реально нужно для установки (см. ниже); для свежей установки на Cudy TR3000 v1 — около 32 MB |
 | OpenWrt | **24.10.x** с менеджером пакетов `opkg` (OpenWrt с `apk` не поддерживается) |
 | Firewall | fw4 / nftables (стандарт для OpenWrt 24.10) |
 | Пакеты Easy VLESS | `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless` (Architecture: `all`) |
@@ -82,10 +82,18 @@ Easy VLESS прозрачно проксирует трафик роутера �
 - **Свободное место** — не фиксированный порог, а реальный worst-case конкретной установки:
   - installer разрешает по feed самого роутера все пакеты, которые поставит (`sing-box-tiny`, `dnsmasq-full`, зависимости Easy VLESS, всё, чего ещё нет), и суммирует их `Installed-Size` без сжатия;
   - добавляет размер пакетов Easy VLESS и резерв 2 MB (база `opkg`, конфигурация, данные подписок и ресурсов);
-  - на UBIFS/JFFS2, которые сжимают файлы, считается 75 % этого объёма. На настоящем UBIFS worst-case установка TR3000 занимает меньше (проверяет CI job `ubifs`);
+  - на UBIFS/JFFS2, которые сжимают файлы, считается 75 % этого объёма. На настоящем UBIFS (LZO) worst-case установка TR3000 заняла 44 % (CI job `ubifs`), так что 75 % — это запас;
   - загрузки идут в `/tmp` (RAM), там installer тоже проверяет место.
 
-  Installer показывает размер storage, размер и свободное место overlay, требуемое место, запас и причину отказа. Например, для свежего TR3000 v1 (UBI 64 MiB, около 40 MB свободно, LuCI в образе): 43 новых пакета, около 41 MB без сжатия, из них `sing-box-tiny` — 28.4 MB. С учётом сжатия UBIFS и резерва требуется около 32.4 MB, запас около 7.5 MB. При обновлении (`sing-box-tiny` и зависимости уже стоят) нужно около 2.5 MB.
+  Installer показывает размер storage, размер и свободное место overlay, требуемое место, запас и причину отказа.
+
+  Пример — свежий Cudy TR3000 v1: образ 24.10.3 с LuCI, UBI 64 MiB, для `aarch64_cortex-a53`. Измерено в CI job `ubifs` на настоящем UBIFS с разметкой TR3000:
+  - новых пакетов 43, без сжатия 39.5 MB, из них `sing-box-tiny` — 27.8 MB;
+  - на UBIFS они реально занимают 17.6 MB;
+  - installer требует 31.6 MB;
+  - свободно 38.0 MB, запас около 6 MB.
+
+  При обновлении, когда `sing-box-tiny` и зависимости уже стоят, нужно около 2.5 MB.
 
 Не устанавливайте одновременно `sing-box` и `sing-box-tiny`: они предоставляют один и тот же virtual package `sing-box`.
 
@@ -121,20 +129,20 @@ sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
 
-Installer сам определяет систему и показывает, что нашёл:
+Installer сам определяет систему и показывает, что нашёл. Вывод `--check` из CI job `ubifs`: контейнер OpenWrt 24.10.3 x86-64, `/overlay` — настоящий UBIFS на смоделированном NAND 128 MiB с разметкой TR3000 v1; RAM — это память CI-runner'а:
 
 ```text
-[easy-vless] OpenWrt: 24.10.3 (r29087-d9c5716d1d), target mediatek/filogic, architecture aarch64_cortex-a53
-[easy-vless] kernel: aarch64 6.6.104, model: Cudy TR3000 v1
-[easy-vless] RAM: 481.6 MB (MemTotal), required: 256 MB
+[easy-vless] OpenWrt: 24.10.3 (r28872-daca7c049b), target x86/64, architecture x86_64
+[easy-vless] kernel: x86_64 6.8.0-1064-azure, model: unknown
+[easy-vless] RAM: 15988.7 MB (MemTotal), required: 256 MB
 [easy-vless] flash/storage: 128.0 MB (flash chip (UBI bad-block reserve)), required: 128 MB
-[easy-vless] overlay: /overlay (ubifs on /dev/ubi0_2), size 44.6 MB, free 40.1 MB
-[easy-vless] package feeds: OpenWrt 24.10.3, target mediatek/filogic, architecture aarch64_cortex-a53 - ok
-[easy-vless] packages from the feeds (aarch64_cortex-a53) to install: sing-box-tiny kmod-tun ...
-[easy-vless] free space on /overlay: 40.1 MB, required: 32.4 MB (ubifs compresses: ...) ...; margin: 7.7 MB
+[easy-vless] overlay: /overlay (ubifs on ubi0:rootfs_data), size 40.0 MB, free 38.0 MB
+[easy-vless] package feeds: OpenWrt 24.10.3, target x86/64, architecture x86_64 - ok
+[easy-vless] packages from the feeds (x86_64) to install: sing-box-tiny coreutils ... dnsmasq-full ...
+[easy-vless] free space on /overlay: 38.0 MB, required: 32.1 MB (ubifs compresses: 75% of the uncompressed 41123 KB counted) = 42 new packages (39.7 MB installed) + Easy VLESS (0.5 MB) + reserve 2.0 MB; margin: 5.8 MB
+[easy-vless] free space in /tmp: 87579.9 MB, downloads: 15.1 MB - ok
+[easy-vless] check finished: no blocking problem found (nothing was changed)
 ```
-
-(Пример вывода; числа зависят от устройства и образа.)
 
 - **Версия, target, архитектура** — из `/etc/openwrt_release`. Архитектура сверяется с ядром (`uname -m`); неизвестная архитектура или несоответствие останавливают установку (`--force` — на свой риск).
 - **Feeds** — `/etc/opkg/distfeeds.conf` должен указывать на feed именно этой версии, target и архитектуры. Feed другой архитектуры дал бы бинарные файлы для другого CPU, другого target или версии — модули ядра, которые не загрузятся. Это типично после sysupgrade со старым `distfeeds.conf`. Такой feed отклоняется.
@@ -616,6 +624,7 @@ Storage: ~20 MB
 
 - Поддерживается только протокол VLESS; узлы других типов в подписках пропускаются.
 - Поддерживается только OpenWrt 24.10.x с `opkg`; OpenWrt с `apk` не поддерживается.
+- На реальном устройстве проверен только Cudy TR3000 v1 (`aarch64_cortex-a53`). Остальные архитектуры проверены в CI на настоящих OpenWrt rootfs (ARM и MIPS — через QEMU user emulation); службу `easy_vless` с работающим procd, nftables и TPROXY в CI не запускают.
 - Нужен `dnsmasq-full` (nftset); без него сервис не запускается.
 - JSON-подписки (sing-box JSON) — **experimental**. Их покрывают автоматические тесты на подготовленных примерах, но с реальными провайдерами они проверены мало.
 - Clash YAML подписки не покрыты автоматическими тестами репозитория.
@@ -635,8 +644,9 @@ Storage: ~20 MB
 | [`tests/static-checks.sh`](tests/static-checks.sh) | CI job `checks`, локально | синтаксис shell/Lua/JS/JSON, ресурсы, screenshots, README/LICENSE, package metadata, поиск локальных путей и секретов |
 | [`tests/dnsmasq-nftset-test.sh`](tests/dnsmasq-nftset-test.sh) | static checks | определение nftset по `dnsmasq --version` |
 | [`tests/subscription-formats-test.sh`](tests/subscription-formats-test.sh) | CI job `runtime-tests`, роутер | 52 проверки форматов подписок: VLESS URL, списки plain/base64, sing-box JSON, JSON-массив, base64 JSON, неподдерживаемые outbounds, некорректный JSON, ноль VLESS-узлов, отсутствие дубликатов, сохранность ручных узлов, фильтрация чужой конфигурации |
-| [`tests/ci/openwrt-runtime-tests.sh`](tests/ci/openwrt-runtime-tests.sh) | CI job `runtime-tests` | в контейнере `openwrt/rootfs:x86-64-24.10.3`: ubusd и rpcd (без procd), `install.sh --check`, установка собранных пакетов через `install.sh --local` (sing-box-tiny из feed, замена dnsmasq на dnsmasq-full, проверка SHA256SUMS), затем subscription tests |
-| [`tests/ci/installer-tests.sh`](tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](tests/ci/installer-scenarios.sh) | CI job `runtime-tests` | каждый сценарий в новом контейнере `openwrt/rootfs:x86-64-24.10.3`, с тестовым HTTPS-сервером (настоящие сертификаты, в том числе «ещё не действительный»): `--check`, `--help`, отсутствующая утилита, неверное время, нет CA, нет TLS-библиотеки (реальный HTTPS-запрос, в том числе regression на `/lib` без `/usr/lib/libustream-ssl.so`), неверная архитектура, сбой обязательного и необязательного feed, загрузка по HTTPS, HTTP 404, изменённый пакет, неполный `SHA256SUMS`, пустой ответ, ошибка DNS, ошибки `--local`; образ без TLS-библиотеки, `ca-bundle` и `opkg` (офлайн-установка из проверенной копии feed); откат `dnsmasq` при ошибке и при прерывании; ручной bootstrap `opkg` из README и `--bootstrap-opkg` (без `opkg`, `usign` и ключей); обновление с опубликованного 0.5.1-r1 (скачивается с GitHub) с сохранением конфигурации и HWID, удаление и повторная установка |
+| [`tests/ci/openwrt-runtime-tests.sh`](tests/ci/openwrt-runtime-tests.sh) | CI job `runtime-tests`, на каждом target матрицы | в контейнере OpenWrt rootfs (см. [Supported Architectures](#supported-architectures)): ubusd и rpcd (без procd), `install.sh --check`, установка собранных пакетов через `install.sh --local` (sing-box-tiny из feed этой архитектуры, замена dnsmasq на dnsmasq-full, проверка SHA256SUMS), затем subscription tests |
+| [`tests/ci/installer-tests.sh`](tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](tests/ci/installer-scenarios.sh) | CI job `runtime-tests`, на каждом target матрицы | каждый сценарий в новом контейнере OpenWrt rootfs, с тестовым HTTPS-сервером (настоящие сертификаты, в том числе «ещё не действительный»): `--check` с определением версии, target, архитектуры, RAM, flash и overlay, `--help`, отсутствующая утилита, неверное время, нет CA, нет TLS-библиотеки (реальный HTTPS-запрос, в том числе regression на `/lib` без `/usr/lib/libustream-ssl.so`), неверная и неизвестная архитектура, feeds другой архитектуры, target и версии, сбой обязательного и необязательного feed; системные требования: разметка flash реальных устройств (TR3000 v1 с журналом ядра и без него, NAND 64 MB, NOR 16 MB, диски x86 120 MiB и 1 GiB, RAM 128 и 256 MB), настоящий лимит памяти контейнера 128 и 256 MB, настоящий `/overlay` 16 MB (отказ) и 40 MB с разметкой TR3000 (установка); архитектура всех установленных пакетов и запуск `sing-box` на этом CPU; загрузка по HTTPS, HTTP 404, изменённый пакет, неполный `SHA256SUMS`, пустой ответ, ошибка DNS, ошибки `--local`; образ без TLS-библиотеки, `ca-bundle` и `opkg` (офлайн-установка из проверенной копии feed); откат `dnsmasq` при ошибке и при прерывании; ручной bootstrap `opkg` из README и `--bootstrap-opkg` (без `opkg`, `usign` и ключей); обновления 0.5.1-r1 → 0.5.1-r2 → текущая версия опубликованными installer'ами (скачиваются с GitHub) с сохранением конфигурации и HWID, удаление и повторная установка |
+| [`tests/ci/ubifs-tests.sh`](tests/ci/ubifs-tests.sh) | CI job `ubifs` | настоящий стек flash в ядре runner'а: nandsim NAND 128 MiB с разметкой TR3000 v1, UBI, UBIFS. Проверяет резерв UBI под bad blocks, место, которое worst-case набор пакетов TR3000 (`aarch64_cortex-a53`) реально занимает на UBIFS, против коэффициента installer'а. `install.sh` с этим UBIFS в роли `/overlay` определяет flash 128 MB и проходит проверку; NAND 64 MiB отклоняется |
 | [`tests/tr3000-slice-smoke.sh`](tests/tr3000-slice-smoke.sh) | вручную на роутере | запуск/остановка сервиса, nftables, ip rule, процессы sing-box; с таймером отката |
 
 Локально:
@@ -649,7 +659,7 @@ bash tests/static-checks.sh
 
 ## Build
 
-Пакеты собираются официальным OpenWrt SDK. Эталонная сборка — GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)): OpenWrt 24.10.3 SDK для mediatek/filogic. Все пакеты имеют архитектуру `all`, поэтому подходят для любой архитектуры OpenWrt 24.10.
+Пакеты собираются официальным OpenWrt SDK. Эталонная сборка — GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)): OpenWrt 24.10.3 SDK для mediatek/filogic. Все пакеты имеют архитектуру `all`, поэтому один и тот же набор подходит для любого target и архитектуры OpenWrt 24.10 (архитектурно-зависимые зависимости ставятся из feed роутера).
 
 Ручная сборка в распакованном OpenWrt 24.10.3 SDK:
 
@@ -676,8 +686,9 @@ CI jobs:
 
 - `checks` — static checks;
 - `build` — сборка всех пакетов, проверка содержимого и зависимостей каждого `.ipk`, `dist/` с `SHA256SUMS`;
-- `runtime-tests` — installer и subscription tests в OpenWrt 24.10.3 rootfs;
-- `release` — только для тегов `v*`, после успешных `checks`, `build` и `runtime-tests`: draft GitHub Release с файлами из `dist/`.
+- `runtime-tests` — матрица: installer и subscription tests на настоящих OpenWrt rootfs нескольких target и архитектур, см. [Supported Architectures](#supported-architectures);
+- `ubifs` — flash/UBIFS на ядре runner'а (nandsim);
+- `release` — только для тегов `v*`, после успешных `checks`, `build`, `runtime-tests` и `ubifs`: draft GitHub Release с файлами из `dist/`.
 
 ---
 

@@ -952,7 +952,7 @@ jobs:
 
           sing-box-tiny is not bundled; it comes from the router's official OpenWrt package feed.
 
-          Before downloading on a router, the system time must be correct (HTTPS certificates cannot be verified with a clock that is behind): see "HTTPS on a new router" in the README.
+          Before downloading on a router, the system time must be correct (HTTPS certificates cannot be verified with a clock that is behind): see the README section "HTTPS на новом роутере" (HTTPS on a new router).
           EOF
           gh release create "${tag}" dist/* --draft --verify-tag \
             --title "Easy VLESS ${v}" --notes-file release-notes.md

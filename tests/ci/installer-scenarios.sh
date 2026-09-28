@@ -186,6 +186,10 @@ sc_preflight() {
 	expect_fail "empty download -> refused" "download failed: SHA256SUMS" --base-url "$SRV/empty" $A
 	# shellcheck disable=SC2086
 	expect_fail "unresolvable release host -> DNS diagnosis" "nonexistent.invalid cannot be resolved|refused by the router itself" --base-url "https://nonexistent.invalid/x" $A
+	# an IPv6 literal is an address, not a name: no DNS check, no "[" host
+	# shellcheck disable=SC2086
+	expect_fail "IPv6 literal release URL: download attempted without a DNS lookup" "URL: +https://\\[::1\\]:9/x/SHA256SUMS" --base-url "https://[::1]:9/x" $A
+	grep -q "cannot be resolved" "$LOG" && bad "IPv6 literal treated as a DNS name" || ok "IPv6 literal not treated as a DNS name"
 
 	note "--local errors"
 	mkdir -p /tmp/l-empty /tmp/l-old /tmp/l-sums
