@@ -44,6 +44,8 @@ flash() {
 	# only this chip's boot messages in the kernel log
 	dmesg -C
 	modprobe nandsim id_bytes="$1" parts="$2"
+	modprobe ubi
+	modprobe ubifs
 	cat /proc/mtd
 	ubiattach -m "$3" -d 0
 	# volume sizes of an OpenWrt 24.10 filogic image with LuCI (FIT kernel,

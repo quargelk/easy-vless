@@ -485,8 +485,7 @@ disk_kb() {
 		case "$name" in loop*|ram*|zram*|mtdblock*|ubiblock*|dm-*|nbd*|sr*|fd*|md*|mmcblk*boot*|mmcblk*rpmb) continue ;; esac
 		if [ -n "$dev" ] && [ "$dev" != "$name" ] && [ ! -e "$b/$dev" ]; then continue; fi
 		cat "$b/size" 2>/dev/null
-	done | awk '$1 + 0 > m { m = $1 + 0 } END { if (m > 0) printf "%d
-", m / 2 }'
+	done | awk '$1 + 0 > m { m = $1 + 0 } END { if (m > 0) printf "%d\n", m / 2 }'
 }
 
 # detect_storage: STORAGE_KB (total flash/disk size), STORAGE_HOW (source),
