@@ -7,7 +7,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.5.2
+PKG_VERSION:=0.6.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -334,6 +334,7 @@ define Package/luci-app-easy-vless/install
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/servers.js $(1)/www/luci-static/resources/view/easy_vless/servers.js
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/rules.js $(1)/www/luci-static/resources/view/easy_vless/rules.js
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/settings.js $(1)/www/luci-static/resources/view/easy_vless/settings.js
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/wizard.js $(1)/www/luci-static/resources/view/easy_vless/wizard.js
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/easy_vless
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/easy_vless/common.js $(1)/www/luci-static/resources/easy_vless/common.js

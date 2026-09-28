@@ -17,7 +17,8 @@
 #
 # Environment: W (repository, default /w), DIST (built packages, default
 # $W/dist), LIBUBUS_DIRS (where libubus is searched, default "/lib /usr/lib"),
-# SKIP_INSTALL=1 (Easy VLESS already installed: skip install.sh).
+# SKIP_INSTALL=1 (Easy VLESS already installed: skip install.sh), SKIP_TESTS=1
+# (stop after the post-install checks; the caller runs its own tests).
 
 set -eu
 W="${W:-/w}"
@@ -149,5 +150,7 @@ say "easy_vless.global (type=enabled): uci CLI '${cli_global}', luci.model.uci '
 [ "$cli_global" = "$lua_global" ] || die "luci.model.uci does not read /etc/config/easy_vless like the uci CLI"
 
 # ---------------------------------------------------------------- 9. tests
+# SKIP_TESTS=1: only prepare the container (tests/ci/wizard-setup.sh)
+[ "${SKIP_TESTS:-0}" != "1" ] || { say "SKIP_TESTS=1: setup done, tests not run here"; exit 0; }
 cd "$W/tests"
 sh subscription-formats-test.sh

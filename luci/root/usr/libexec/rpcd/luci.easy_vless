@@ -14,6 +14,7 @@ LOG_FILE=/tmp/log/${CONFIG}.log
 LINKS_FILE=/tmp/links.conf
 CLASH_API=/usr/share/easy_vless/clash_api.lua
 SUBSCRIBE=/usr/share/easy_vless/subscribe.lua
+SERVER_TEST_URL=https://www.gstatic.com/generate_204
 
 # Run a service action detached from rpcd, so a slow start/stop never hits
 # the rpcd exec timeout; LuCI polls "status" (running/busy) meanwhile.
@@ -207,6 +208,114 @@ node_ids() {
 	uci -q show ${CONFIG} | sed -n "s/^${CONFIG}\.\([^.=]*\)=nodes$/\1/p"
 }
 
+# ---------- First Run Wizard (0.6.0) ----------
+# The wizard itself is LuCI (view/easy_vless/wizard.js): it imports the server
+# with "import", tests it with "urltest_node", writes the routing with the
+# Rule Manage templates, checks and starts with "check"/"start". These two
+# methods only add what LuCI cannot do safely on its own: the first-run
+# decision, and a backup of the committed configuration so a failed Apply
+# never leaves a half-applied configuration behind.
+WIZARD_BACKUP=/etc/easy_vless/wizard-backup
+
+count_type() {
+	uci -q show ${CONFIG} | grep -c "=$1$"
+}
+
+# wizard_state: needed = the wizard was never completed, the main switch is
+# off and no existing node is selected (a manually configured router - main
+# switch on or a node selected - never gets the wizard automatically).
+method_wizard_state() {
+	local completed enabled node node_ok=0 needed=0
+	completed=$(uci -q get ${CONFIG}.@global[0].wizard_completed)
+	enabled=$(uci -q get ${CONFIG}.@global[0].enabled)
+	node=$(uci -q get ${CONFIG}.@global[0].node)
+	[ -n "$node" ] && [ "$(uci -q get ${CONFIG}.${node})" = "nodes" ] && node_ok=1
+	[ "$completed" != "1" ] && [ "$enabled" != "1" ] && [ "$node_ok" = 0 ] && needed=1
+	json_init
+	json_add_boolean "needed" "$needed"
+	json_add_boolean "completed" "$([ "$completed" = 1 ] && echo 1 || echo 0)"
+	json_add_boolean "enabled" "$([ "$enabled" = 1 ] && echo 1 || echo 0)"
+	json_add_string "node" "$node"
+	json_add_boolean "node_ok" "$node_ok"
+	json_add_int "servers" "$(uci -q show ${CONFIG} | grep -c "\.protocol='vless'$")"
+	json_add_int "rules" "$(count_type shunt_rules)"
+	json_add_int "subscriptions" "$(count_type subscribe_list)"
+	json_add_boolean "backup" "$([ -s "$WIZARD_BACKUP" ] && echo 1 || echo 0)"
+	json_dump
+}
+
+# wizard <action>:
+#   backup        copy the committed configuration (before Apply writes it)
+#   restore       put that copy back (Apply failed or was abandoned) and bring
+#                 the service to the restored state: stopped when its main
+#                 switch is off, restarted with the old configuration when on
+#   finish        Apply succeeded: wizard_completed=1, drop the copy
+#   connectivity  HTTPS request from the router itself (through Easy VLESS
+#                 while it runs with Localhost Proxy): the Done page status
+method_wizard() {
+	local action="$1" code
+	json_init
+	case "$action" in
+		backup)
+			mkdir -p "${WIZARD_BACKUP%/*}"
+			if uci -q show ${CONFIG} >/dev/null && cp -f /etc/config/${CONFIG} "${WIZARD_BACKUP}.tmp" && mv -f "${WIZARD_BACKUP}.tmp" "$WIZARD_BACKUP"; then
+				json_add_boolean "ok" 1
+			else
+				rm -f "${WIZARD_BACKUP}.tmp"
+				json_add_boolean "ok" 0
+				json_add_string "error" "Cannot save a copy of /etc/config/${CONFIG} to ${WIZARD_BACKUP}."
+			fi
+		;;
+		restore)
+			if [ ! -s "$WIZARD_BACKUP" ]; then
+				json_add_boolean "ok" 0
+				json_add_string "error" "No saved configuration to restore (${WIZARD_BACKUP} is missing)."
+				json_dump
+				return
+			fi
+			uci -q revert ${CONFIG}
+			if ! cp -f "$WIZARD_BACKUP" /etc/config/${CONFIG}; then
+				json_add_boolean "ok" 0
+				json_add_string "error" "Cannot restore /etc/config/${CONFIG} from ${WIZARD_BACKUP}."
+				json_dump
+				return
+			fi
+			rm -f "$WIZARD_BACKUP"
+			json_add_boolean "ok" 1
+			json_add_int "log_mark" "$(log_lines)"
+			if [ "$(uci -q get ${CONFIG}.@global[0].enabled)" = "1" ]; then
+				json_add_string "service" "restart"
+				run_detached $INIT restart
+			else
+				json_add_string "service" "stop"
+				run_detached $INIT stop
+			fi
+		;;
+		finish)
+			uci -q set ${CONFIG}.@global[0].wizard_completed='1'
+			if uci -q commit ${CONFIG}; then
+				rm -f "$WIZARD_BACKUP"
+				json_add_boolean "ok" 1
+			else
+				json_add_boolean "ok" 0
+				json_add_string "error" "uci commit ${CONFIG} failed."
+			fi
+		;;
+		connectivity)
+			# certificate verified (no -k); 204 = the probe endpoint answered
+			code=$(curl -s -o /dev/null --connect-timeout 5 --max-time 10 -w '%{http_code}' "$SERVER_TEST_URL" 2>/dev/null)
+			json_add_boolean "ok" "$(case "$code" in 200|204) echo 1 ;; *) echo 0 ;; esac)"
+			json_add_string "http_code" "$code"
+			json_add_string "url" "$SERVER_TEST_URL"
+		;;
+		*)
+			json_add_boolean "ok" 0
+			json_add_string "error" "Unknown action."
+		;;
+	esac
+	json_dump
+}
+
 # Import one or more vless:// links through the existing subscribe.lua parser.
 method_import() {
 	local links="$1" before after out code mark found newlog skipped
@@ -330,6 +439,8 @@ case "$1" in
 		json_add_object "resources"; json_close_object
 		json_add_object "groups"; json_close_object
 		json_add_object "group_test"; json_add_string "group" "string"; json_close_object
+		json_add_object "wizard_state"; json_close_object
+		json_add_object "wizard"; json_add_string "action" "string"; json_close_object
 		json_dump
 	;;
 	call)
@@ -363,6 +474,11 @@ case "$1" in
 			group_test)
 				json_load "$input"; json_get_var group group
 				method_group_test "$group"
+			;;
+			wizard_state) method_wizard_state ;;
+			wizard)
+				json_load "$input"; json_get_var action action
+				method_wizard "$action"
 			;;
 			*)
 				json_init; json_add_int "code" 2; json_add_string "output" "Unknown method"; json_dump

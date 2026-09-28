@@ -19,11 +19,21 @@ const CONFIG = ev.CONFIG;
 const ROUTER = ev.ROUTER;
 
 return view.extend({
+	/* A new, not yet configured installation opens the First Run Wizard
+	 * (rpcd wizard_state: never completed, main switch off, no node
+	 * selected) - unless it was left with "Leave setup" in this session. */
 	load: function() {
-		return Promise.all([
-			uci.load(CONFIG),
-			ev.callStatus()
-		]);
+		return ev.callWizardState().then(function(ws) {
+			if (ws.needed && !ws.rpc_error && !ev.wizardDismissed()) {
+				window.location.replace(L.url('admin/services/easy_vless/wizard'));
+				return new Promise(function() {});
+			}
+			return Promise.all([
+				uci.load(CONFIG),
+				ev.callStatus(),
+				ws
+			]);
+		});
 	},
 
 	/* ---------- connection tests (Server Test of the Main Router targets) ---------- */
@@ -117,6 +127,7 @@ return view.extend({
 
 	render: function(data) {
 		const status = data[1] || {};
+		const wstate = data[2] || {};
 		let m, s, o;
 
 		ev.ensureRouter();
@@ -190,6 +201,11 @@ return view.extend({
 				ev.pageStyle(),
 				E('h2', {}, _('Easy VLESS')),
 				E('div', { 'class': 'cbi-map-descr' }, _('VLESS client based on sing-box. Main switch, main node and shunt targets here; servers and URL Test groups in Node List; rule conditions in Rule Manage; DNS and forwarding in Settings.')),
+				wstate.needed ? E('div', { 'class': 'alert-message warning', 'id': 'ev-setup-note' }, [
+					E('p', {}, _('Easy VLESS is not set up yet. The setup wizard adds your VLESS server, tests it, sets up the routing and starts Easy VLESS.')),
+					E('a', { 'class': 'btn cbi-button cbi-button-action', 'href': L.url('admin/services/easy_vless/wizard'),
+						'click': function() { ev.setWizardDismissed(false); } }, _('Start setup wizard'))
+				]) : '',
 				ev.renderHeader(m, status, null, false, true),
 				mapEl,
 				E('div', { 'class': 'cbi-section' }, [

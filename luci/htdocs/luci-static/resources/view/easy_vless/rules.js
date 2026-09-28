@@ -298,7 +298,8 @@ return view.extend({
 	},
 
 	/* Prepared rule from the resource manifest (explicit user action; the
-	 * future Wizard uses the same templates). Staged; Save commits it. */
+	 * First Run Wizard uses the same templates through ev.applyTemplate).
+	 * Staged; Save commits it. */
 	handleTemplate: function(select) {
 		const t = TEMPLATES.filter(function(x) { return x.id == select.value; })[0];
 		if (!t)
@@ -308,21 +309,9 @@ return view.extend({
 			ev.notify(_('A rule named "%s" already exists.').format(t.remarks), 'warning');
 			return Promise.resolve();
 		}
-		const id = (/^[A-Za-z0-9_]+$/.test(t.id) && !uci.get(CONFIG, t.id)) ? t.id : ev.newName('rule_');
-		uci.add(CONFIG, 'shunt_rules', id);
-		uci.set(CONFIG, id, 'remarks', t.remarks);
-		uci.set(CONFIG, id, 'network', t.network || 'tcp,udp');
-		if (t.port) uci.set(CONFIG, id, 'port', t.port);
-		if (t.domain_resource) uci.set(CONFIG, id, 'domain_resource', L.toArray(t.domain_resource));
-		ev.ensureRouter();
-		let target = t.target || '';
-		if (target == '@active') {
-			/* "selected VLESS": the current main node / Main Router Default,
-			 * only if that is a server or URL Test group */
-			const cur = ev.activeTarget();
-			target = (ev.isServer(cur) || ev.isGroup(cur)) ? cur : '';
-		}
-		if (target) uci.set(CONFIG, ROUTER, id, target);
+		/* "@active" = "selected VLESS": the current main node / Main Router
+		 * Default, only if that is a server or URL Test group */
+		const target = ev.applyTemplate(t, null, ev.activeTarget()).target;
 		return ev.exclusive(_('Add prepared rule'), L.bind(function() {
 			return ev.saveAndCommit(this.map).then(function() {
 				ev.notify(target

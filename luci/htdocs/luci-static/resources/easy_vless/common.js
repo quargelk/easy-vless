@@ -23,6 +23,7 @@
  *                                   sourcePort, port, domain_list, ip_list);
  *                                   section order = rule priority
  *   config subscribe_list           one subscription (subscribe.lua)
+ *   easy_vless.global.wizard_completed  First Run Wizard finished (0.6.0)
  *
  * Targets: '_direct' (Direct), '_blackhole' (Block), '_default' (rules only:
  * same as Default), a server id or a URL Test group id.
@@ -43,9 +44,13 @@ const callUrltestNode = rpc.declare({ object: 'luci.easy_vless', method: 'urltes
 const callResources = rpc.declare({ object: 'luci.easy_vless', method: 'resources', expect: { '': {} } });
 const callGroups = rpc.declare({ object: 'luci.easy_vless', method: 'groups', expect: { '': {} } });
 const callGroupTest = rpc.declare({ object: 'luci.easy_vless', method: 'group_test', params: [ 'group' ], expect: { '': {} } });
+const callWizardState = rpc.declare({ object: 'luci.easy_vless', method: 'wizard_state', expect: { '': {} } });
+const callWizard = rpc.declare({ object: 'luci.easy_vless', method: 'wizard', params: [ 'action' ], expect: { '': {} } });
 /* Requires "ubus": { "uci": [ "commit" ] } in the ACL (luci-base does not
  * grant it; without it every save silently failed - see current-state.md). */
 const callUciCommit = rpc.declare({ object: 'uci', method: 'commit', params: [ 'config' ] });
+/* Drops changes staged in this LuCI session (a Save that failed half-way). */
+const callUciRevert = rpc.declare({ object: 'uci', method: 'revert', params: [ 'config' ] });
 
 function sleep(ms) {
 	return new Promise(function(resolve) { window.setTimeout(resolve, ms); });
@@ -81,6 +86,9 @@ return baseclass.extend({
 	callResources: function() { return safe(callResources()); },
 	callGroups: function() { return safe(callGroups()); },
 	callGroupTest: function(id) { return safe(callGroupTest(id)); },
+	callWizardState: function() { return safe(callWizardState()); },
+	callWizard: function(action) { return safe(callWizard(action)); },
+	callUciRevert: function() { return safe(callUciRevert(CONFIG)); },
 
 	/* Ports field: comma separated ports or from:to ranges, 1-65535. */
 	validPorts: function(v) {
@@ -91,6 +99,21 @@ return baseclass.extend({
 			const a = +m[1], b = m[2] ? +m[2] : a;
 			return a >= 1 && b <= 65535 && a <= b;
 		});
+	},
+
+	/* ---------- First Run Wizard ---------- */
+
+	/* "Leave setup" in the wizard: Main stops opening it automatically for
+	 * this browser session (it shows a "Start setup" note instead). */
+	wizardDismissed: function() {
+		try { return window.sessionStorage.getItem('easy_vless.wizard.dismissed') == '1'; } catch (e) { return false; }
+	},
+
+	setWizardDismissed: function(on) {
+		try {
+			if (on) window.sessionStorage.setItem('easy_vless.wizard.dismissed', '1');
+			else window.sessionStorage.removeItem('easy_vless.wizard.dismissed');
+		} catch (e) {}
 	},
 
 	/* ---------- node helpers ---------- */
@@ -233,6 +256,36 @@ return baseclass.extend({
 		if (i < 0 || j < 0 || j >= list.length)
 			return false;
 		return uci.move(CONFIG, sid, list[j]['.name'], !up);
+	},
+
+	/* Prepared rule from the resource manifest (Rule Manage "Add prepared
+	 * rule" and the First Run Wizard). Staged in uci; the caller commits.
+	 * An existing rule with the same name is reused, never duplicated.
+	 * target: explicit target, or null = the template's own target where
+	 * "@active" means activeTarget (the selected server / URL Test group).
+	 * Returns { id, target, existed }. */
+	applyTemplate: function(t, target, activeTarget) {
+		const existing = this.rules().filter(function(r) { return (r.remarks || '') == t.remarks; })[0];
+		let id;
+		if (existing)
+			id = existing['.name'];
+		else {
+			id = (/^[A-Za-z0-9_]+$/.test(t.id) && !uci.get(CONFIG, t.id)) ? t.id : this.newName('rule_');
+			uci.add(CONFIG, 'shunt_rules', id);
+			uci.set(CONFIG, id, 'remarks', t.remarks);
+			uci.set(CONFIG, id, 'network', t.network || 'tcp,udp');
+			if (t.port) uci.set(CONFIG, id, 'port', t.port);
+			if (t.domain_resource) uci.set(CONFIG, id, 'domain_resource', L.toArray(t.domain_resource));
+		}
+		this.ensureRouter();
+		if (target == null) {
+			target = t.target || '';
+			if (target == '@active')
+				target = (this.isServer(activeTarget) || this.isGroup(activeTarget)) ? activeTarget : '';
+		}
+		if (target)
+			uci.set(CONFIG, ROUTER, id, target);
+		return { id: id, target: target, existed: !!existing };
 	},
 
 	/* ---------- result / busy UI ---------- */
@@ -417,19 +470,21 @@ return baseclass.extend({
 		});
 	},
 
-	/* check -> enable + detached restart -> poll status (health) -> result. */
-	startFlow: function() {
+	/* check -> enable + detached restart -> poll status (health). No UI;
+	 * resolves { ok, stage: 'rpc' | 'check' | 'start', output, status,
+	 * timeout } (Main's Save & Start and the wizard's Apply use it). */
+	startService: function(onChecked) {
 		let before;
-		this.showBusy(_('Start'), _('Checking the configuration with sing-box…'));
 		return this.callStatus().then(L.bind(function(st) {
 			before = st || {};
 			return safe(callStart());
 		}, this)).then(L.bind(function(res) {
 			if (res.rpc_error)
-				return this.showResult(_('Start'), 'bad', _('Start request failed'), res.output);
+				return { ok: false, stage: 'rpc', output: res.output };
 			if (!res.ok && res.code !== 0)
-				return this.showResult(_('Start'), 'bad', _('Not started: configuration check failed. Network settings were not changed.'), res.output);
-			this.showBusy(_('Start'), _('Configuration valid. Starting sing-box, firewall and DNS…'));
+				return { ok: false, stage: 'check', output: res.output };
+			if (onChecked)
+				onChecked(res);
 			return this.waitFor(function(st, sawBusy, elapsed) {
 				if (st.busy)
 					return null;
@@ -441,20 +496,43 @@ return baseclass.extend({
 			}, 45000, res.log_mark).then(L.bind(function(r) {
 				this.lastStatus = r.status;
 				this.refreshStatus();
-				if (r.done) {
-					const st = r.status;
-					this.showResult(_('Start'), 'ok', _('Running'), null, E('ul', {}, [
-						E('li', {}, _('PID: %s').format(st.pid)),
-						E('li', {}, _('sing-box: %s').format(st.singbox_version || '?')),
-						E('li', {}, _('Firewall: %s').format(st.nft_table ? _('nft table inet easy_vless present') : _('absent'))),
-						E('li', {}, _('Memory: %s').format(st.rss_kb ? '%.1f MiB'.format(st.rss_kb / 1024) : '-'))
-					]));
-				}
-				else {
-					this.showResult(_('Start'), 'bad', r.timeout ? _('Start did not finish in time') : _('sing-box is not running (the start was rolled back)'), (r.status && r.status.log) || '');
-				}
+				return { ok: !!r.done, stage: 'start', timeout: !!r.timeout, status: r.status || {}, output: (r.status && r.status.log) || '' };
 			}, this));
 		}, this));
+	},
+
+	startFlow: function() {
+		this.showBusy(_('Start'), _('Checking the configuration with sing-box…'));
+		return this.startService(L.bind(function() {
+			this.showBusy(_('Start'), _('Configuration valid. Starting sing-box, firewall and DNS…'));
+		}, this)).then(L.bind(function(r) {
+			if (r.stage == 'rpc')
+				return this.showResult(_('Start'), 'bad', _('Start request failed'), r.output);
+			if (r.stage == 'check')
+				return this.showResult(_('Start'), 'bad', _('Not started: configuration check failed. Network settings were not changed.'), r.output);
+			if (r.ok) {
+				const st = r.status;
+				this.showResult(_('Start'), 'ok', _('Running'), null, E('ul', {}, [
+					E('li', {}, _('PID: %s').format(st.pid)),
+					E('li', {}, _('sing-box: %s').format(st.singbox_version || '?')),
+					E('li', {}, _('Firewall: %s').format(st.nft_table ? _('nft table inet easy_vless present') : _('absent'))),
+					E('li', {}, _('Memory: %s').format(st.rss_kb ? '%.1f MiB'.format(st.rss_kb / 1024) : '-'))
+				]));
+			}
+			else {
+				this.showResult(_('Start'), 'bad', r.timeout ? _('Start did not finish in time') : _('sing-box is not running (the start was rolled back)'), r.output);
+			}
+		}, this));
+	},
+
+	/* Wait until a detached start/stop has finished: resolves once the init
+	 * script lock is gone (not before 2.5 s, so the detached job has begun). */
+	waitIdle: function(logFrom, timeout) {
+		return this.waitFor(function(st, sawBusy, elapsed) {
+			if (st.busy)
+				return null;
+			return elapsed > 2500 ? true : null;
+		}, timeout || 60000, logFrom);
 	},
 
 	stopFlow: function() {

@@ -45,5 +45,13 @@
 			"type": "view",
 			"path": "easy_vless/settings"
 		}
+	},
+	"admin/services/easy_vless/wizard": {
+		"title": "Setup Wizard",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/wizard"
+		}
 	}
 }

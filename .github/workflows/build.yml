@@ -12,7 +12,9 @@ name: Build easy-vless packages
 #                  QEMU user emulation): scripts/install.sh with the built
 #                  packages, tests/subscription-formats-test.sh, installer,
 #                  system requirement and bootstrap scenarios
-#                  (tests/ci/installer-tests.sh)
+#                  (tests/ci/installer-tests.sh); First Run Wizard backend
+#                  (ubus) on every target and the LuCI wizard in headless
+#                  Chromium on x86-64 (tests/ci/wizard-tests.sh)
 #   ubifs          real kernel flash stack (nandsim NAND, UBI, UBIFS) with
 #                  the TR3000 v1 layout: flash detection, UBIFS compression
 #                  of a worst-case installation (tests/ci/ubifs-tests.sh)
@@ -653,6 +655,7 @@ jobs:
             ./www/luci-static/resources/view/easy_vless/servers.js \
             ./www/luci-static/resources/view/easy_vless/rules.js \
             ./www/luci-static/resources/view/easy_vless/settings.js \
+            ./www/luci-static/resources/view/easy_vless/wizard.js \
             ./www/luci-static/resources/easy_vless/common.js \
             ./usr/share/luci/menu.d/luci-app-easy-vless.json \
             ./usr/share/rpcd/acl.d/luci-app-easy-vless.json \
@@ -807,9 +810,10 @@ jobs:
           - { name: mvebu-cortexa9 ARMv7 24.10.3, image: "openwrt/rootfs:mvebu-cortexa9-24.10.3", platform: "linux/arm_cortex-a9_vfpv3-d16",   arch: arm_cortex-a9_vfpv3-d16 }
           - { name: malta-be MIPS BE 24.10.3,     image: "openwrt/rootfs:malta-be-24.10.3",       platform: "linux/mips_24kc",                 arch: mips_24kc }
         group:
-          - { name: runtime+sysreq, runtime: "1", scenarios: "preflight sysreq ram128 ram256 smallspace tr3000" }
-          - { name: install,        runtime: "0", scenarios: "online rollback upgrade" }
-          - { name: bootstrap,      runtime: "0", scenarios: "bootstrap tlsboot" }
+          - { name: runtime+sysreq, runtime: "1", wizard: "0", scenarios: "preflight sysreq ram128 ram256 smallspace tr3000" }
+          - { name: install,        runtime: "0", wizard: "0", scenarios: "online rollback upgrade" }
+          - { name: bootstrap,      runtime: "0", wizard: "0", scenarios: "bootstrap tlsboot" }
+          - { name: wizard,         runtime: "0", wizard: "1", scenarios: "" }
     name: runtime-tests (${{ matrix.target.name }}, ${{ matrix.group.name }})
     env:
       OPENWRT_ROOTFS_IMAGE: ${{ matrix.target.image }}
@@ -871,6 +875,7 @@ jobs:
             /bin/ash /w/tests/ci/openwrt-runtime-tests.sh
 
       - name: Installer scenarios (${{ matrix.group.scenarios }})
+        if: matrix.group.scenarios != ''
         run: |
           set -euo pipefail
           # preflight:  detection, checks, clock, CA/TLS, feeds of another
@@ -889,6 +894,33 @@ jobs:
           # tlsboot:    no TLS backend / CA bundle / opkg: offline install from a
           #             signature-verified local copy of the base feed
           bash tests/ci/installer-tests.sh dist ${{ matrix.group.scenarios }}
+
+      - name: Playwright (headless Chromium) for the LuCI wizard test
+        if: matrix.group.wizard == '1' && matrix.target.platform == ''
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user playwright==1.47.0
+          python3 -m playwright install --with-deps chromium
+
+      # First Run Wizard: backend (ubus/rpcd calls of the wizard, a real VLESS
+      # server in a second container, service start with nftables in the
+      # router container) on every target; the LuCI wizard in a real browser
+      # on x86-64 (tests/ci/wizard-tests.sh)
+      - name: First Run Wizard tests
+        if: matrix.group.wizard == '1'
+        env:
+          WIZARD_E2E: ${{ matrix.target.platform == '' && '1' || '0' }}
+          SHOTS: ${{ github.workspace }}/wizard-shots
+        run: bash tests/ci/wizard-tests.sh dist
+
+      - name: Upload wizard screenshots
+        if: always() && matrix.group.wizard == '1' && matrix.target.platform == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: wizard-screenshots-${{ strategy.job-index }}
+          path: wizard-shots/
+          if-no-files-found: ignore
+          retention-days: 14
 
   # Real flash: the runner kernel simulates NAND chips (nandsim) with the
   # TR3000 v1 partition layout, UBI and a real UBIFS overlay.

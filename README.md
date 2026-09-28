@@ -6,7 +6,7 @@
 
 Easy VLESS прозрачно проксирует трафик роутера и LAN-устройств через VLESS-серверы. Он использует sing-box и поддерживает Reality, раздельное туннелирование с готовыми списками доменов, подписки (включая HAPP/HWID) и URL Test. Проект основан на PassWall2 и оставляет из него только то, что нужно для VLESS-клиента.
 
-**Текущая версия: 0.5.2-r1** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only**
+**Текущая версия: 0.6.0-r1** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only**
 
 Проект тестировался на **Cudy TR3000 v1** с **OpenWrt 24.10.3** (см. [Tested Hardware](#tested-hardware)).
 
@@ -124,7 +124,7 @@ Easy VLESS прозрачно проксирует трафик роутера �
 Установка одинакова на всех архитектурах:
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.2/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.6.0/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -154,13 +154,13 @@ Installer сам определяет систему и показывает, ч
 
 ### Файлы релиза и SHA256SUMS
 
-Готовые пакеты публикуются на странице [Releases](https://github.com/quargelk/easy-vless/releases). Релиз `v0.5.2` содержит:
+Готовые пакеты публикуются на странице [Releases](https://github.com/quargelk/easy-vless/releases). Релиз `v0.6.0` содержит:
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.5.2-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.5.2-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.5.2-r1_all.ipk` | LuCI-интерфейс |
+| `easy-vless_0.6.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.6.0-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.6.0-r1_all.ipk` | LuCI-интерфейс |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 всех файлов выше |
 
@@ -228,7 +228,7 @@ date
 `install.sh` — обычный shell-скрипт, который можно прочитать перед запуском:
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.2/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.6.0/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -246,7 +246,7 @@ sh /tmp/install.sh
 2. выполняет `opkg update`. Feeds, нужные Easy VLESS (core, kmods, base, packages, luci), обязаны работать; сбой остальных (routing, telephony, собственные) даёт только предупреждение;
 3. оставляет установленный `sing-box`/`sing-box-tiny` >= 1.12.0 или готовит установку `sing-box-tiny` из официального репозитория OpenWrt (подпись репозитория и checksum пакета проверяет `opkg`);
 4. если `dnsmasq` без nftset, предлагает замену на `dnsmasq-full` и выполняет её только после подтверждения, см. [dnsmasq](#dnsmasq);
-5. скачивает `SHA256SUMS` и пакеты Easy VLESS по прямым URL тега `v0.5.2` (или берёт их из `--local`) и проверяет каждый пакет по `SHA256SUMS`. Затем разрешает по feed роутера все пакеты, которые будут установлены, вместе с зависимостями, проверяет их архитектуру и сравнивает worst-case размер со свободным местом на overlay и в `/tmp`. Это делается и с `--check`;
+5. скачивает `SHA256SUMS` и пакеты Easy VLESS по прямым URL тега `v0.6.0` (или берёт их из `--local`) и проверяет каждый пакет по `SHA256SUMS`. Затем разрешает по feed роутера все пакеты, которые будут установлены, вместе с зависимостями, проверяет их архитектуру и сравнивает worst-case размер со свободным местом на overlay и в `/tmp`. Это делается и с `--check`;
 6. устанавливает `sing-box-tiny`, при необходимости заменяет `dnsmasq`, затем устанавливает `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless`;
 7. включает автозапуск; перезапускает сервис, только если Main switch уже включён (новую установку запускают из LuCI после добавления сервера);
 8. показывает итоговое состояние.
@@ -271,8 +271,8 @@ sh /tmp/install.sh
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_0.5.2-r1_all.ipk easy-vless-sing-box_0.5.2-r1_all.ipk luci-app-easy-vless_0.5.2-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.5.2/$f"
+for f in SHA256SUMS easy-vless_0.6.0-r1_all.ipk easy-vless-sing-box_0.6.0-r1_all.ipk luci-app-easy-vless_0.6.0-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.6.0/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -310,9 +310,9 @@ cd / && rm -rf /tmp/opkg-bootstrap
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.5.2-r1_all.ipk
-opkg install ./easy-vless-sing-box_0.5.2-r1_all.ipk
-opkg install ./luci-app-easy-vless_0.5.2-r1_all.ipk
+opkg install ./easy-vless_0.6.0-r1_all.ipk
+opkg install ./easy-vless-sing-box_0.6.0-r1_all.ipk
+opkg install ./luci-app-easy-vless_0.6.0-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
