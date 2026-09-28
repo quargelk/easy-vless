@@ -120,11 +120,18 @@ if [ "$(jget "$r" @.ok)" != true ]; then
 	# diagnostics: the same temporary instance, with a debug log
 	echo "---- diagnostics of the failed Server Test"
 	uci set $CONFIG.@global[0].loglevel='debug'; uci commit $CONFIG
-	NO_REC_PROCESS=1 /usr/share/easy_vless/app.sh run_socks flag=diag node="$GOOD" bind=127.0.0.1 socks_port=48999 config_file=diag.json log_file=/tmp/diag-sb.log
+	NO_REC_PROCESS=1 /usr/share/easy_vless/app.sh run_socks flag=diag node="$GOOD" bind=127.0.0.1 socks_port=48999 config_file=diag.json log_file=diag-sb.log
 	sleep 5
-	curl -sv --max-time 8 -o /dev/null -x socks5h://127.0.0.1:48999 https://www.gstatic.com/generate_204 2>&1 | tail -n 8
-	echo "-- sing-box log"; cat /tmp/diag-sb.log 2>/dev/null | tail -n 40
-	echo "-- generated config"; cat "$(find /tmp/etc -name 'diag*.json' | head -n1)" 2>/dev/null | head -n 80
+	curl -sv --max-time 8 -o /dev/null -x socks5h://127.0.0.1:48999 https://www.gstatic.com/generate_204 2>&1 | tail -n 4
+	echo "-- sing-box log"; cat "$(find /tmp/etc -name 'diag-sb.log' | head -n1)" 2>/dev/null | tail -n 30
+	cfg="$(find /tmp/etc -name 'diag*.json' | head -n1)"
+	echo "-- the same configuration without routing_mark (SO_MARK), port 48998"
+	sed -e '/"routing_mark"/d' -e 's/48999/48998/' -e 's#"output": ".*"#"output": "/tmp/diag2.log"#' "$cfg" >/tmp/diag2.json
+	/usr/bin/sing-box run -c /tmp/diag2.json >/dev/null 2>&1 &
+	sleep 5
+	curl -s --max-time 8 -o /dev/null -w "without routing_mark: HTTP %{http_code}, curl exit %{exitcode}\n" -x socks5h://127.0.0.1:48998 https://www.gstatic.com/generate_204
+	tail -n 15 /tmp/diag2.log 2>/dev/null
+	kill $! 2>/dev/null
 	busybox pgrep -af "diag" | awk '!/wizard-backend/{print $1}' | xargs -r kill -9
 	uci set $CONFIG.@global[0].loglevel='warn'; uci commit $CONFIG
 fi
