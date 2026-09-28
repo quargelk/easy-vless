@@ -356,7 +356,7 @@ return view.extend({
 		s.sortable = false;
 		s.nodescriptions = true;
 		s.addbtntitle = _('Add rule');
-		ev.compactWhenEmpty(s, _('No rules yet.'));
+		ev.compactWhenEmpty(s, _('No rules yet. The quickest start: choose a prepared rule next to Add rule and press Add prepared rule.'));
 		ev.commitOnModalSave(s, _('Rule'));
 		s.modaltitle = function(section_id) {
 			return _('Rule') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New rule'));
@@ -445,9 +445,10 @@ return view.extend({
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Rule Manage')),
+				E('div', { 'class': 'cbi-map-descr' }, _('A rule says which traffic it matches (conditions: domains, IPs, ports...). Where the matching traffic goes (Direct, a server, Block) is its target, set here or on Main. Rules work while Node on Main is "Main Router".')),
 				ev.renderHeader(m, status, null, true),
 				ev.shuntEnabled() ? '' : E('div', { 'class': 'alert-message' },
-					E('p', {}, _('The main node is not the Main Router, so rules are currently not used. Select "Main Router (shunt)" as Node on Main to route by rules.'))),
+					E('p', {}, _('Rules are not used right now: Node on Main is not the Main Router. Select "Main Router (shunt)" as Node on Main to route by rules.'))),
 				mapEl,
 				E('div', { 'class': 'cbi-section' }, [
 					E('h3', {}, _('Resources')),

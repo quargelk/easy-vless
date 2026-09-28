@@ -3,7 +3,7 @@
 # the repository root: bash tests/static-checks.sh).
 #
 # Checks: git whitespace (git diff --check), shell / Lua / JS syntax, JSON
-# validity, prepared resources (presence, manifest, byte identity with the
+# validity, translations (luci/po), prepared resources (presence, manifest, byte identity with the
 # reference lists via tests/resources.sha256), screenshots, package metadata
 # and a scan for local paths, credentials and development leftovers.
 #
@@ -58,6 +58,16 @@ for f in $JS_FILES; do
 done
 ok "JS syntax ($(echo "$JS_FILES" | grep -c .) files)"
 
+echo "== translations"
+# luci/po: template current, every string translated, same placeholders
+# and HTML tags; every catalog compiles (scripts/po2lmo.py, as in the build)
+if out=$(python3 scripts/i18n-sync.py --check 2>&1); then ok "i18n catalogs: $(echo "$out" | tr '\n' ' ')"; else bad "i18n catalogs"; echo "$out"; fi
+for po in luci/po/*/easy-vless.po; do
+	lmo=$(mktemp)
+	if python3 scripts/po2lmo.py "$po" "$lmo" && [ -s "$lmo" ]; then ok "po2lmo $po ($(wc -c < "$lmo") bytes)"; else bad "po2lmo $po"; fi
+	rm -f "$lmo"
+done
+
 echo "== JSON"
 JSON_FILES=$(tracked '*.json')
 for f in $JSON_FILES; do
@@ -96,7 +106,7 @@ for f in proxy.txt russia.txt; do
 done
 
 echo "== screenshots"
-for img in rule-manage node-list add-subscription main connection-test settings-dns settings-forwarding wizard-server-test wizard-done; do
+for img in main node-list subscriptions add-subscription rule-manage connection-test settings-dns settings-forwarding settings-advanced wizard-1 wizard-3 wizard-5 wizard-7; do
 	f="docs/images/${img}.png"
 	if [ -s "$f" ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
 		ok "screenshot $f"
@@ -104,37 +114,18 @@ for img in rule-manage node-list add-subscription main connection-test settings-
 		bad "screenshot missing or not a PNG: $f"
 	fi
 done
+# no unused (stale) images: every tracked file in docs/images is shown in README.md
+for f in $(tracked 'docs/images/*'); do
+	grep -qF "($f)" README.md || bad "docs/images file not used in README.md: $f"
+done
 
-echo "== README and LICENSE"
-if [ -s README.md ]; then
-	ok "README.md present"
-	# relative links and images: [text](path) / ![alt](path), ignoring URLs and #anchors
-	for link in $(grep -oE '\]\([^)#[:space:]]+\)' README.md | sed 's/^](//; s/)$//' | grep -vE '^[a-z]+://' | sort -u); do
-		[ -e "$link" ] && ok "README link $link" || bad "README link target missing: $link"
-	done
-	# #anchors must match a heading slug as GitHub builds it: lower case,
-	# punctuation other than "-" and "_" removed, spaces -> "-"
-	anchors=$(python3 - README.md <<'EOF'
-import re, sys
-text = open(sys.argv[1], encoding="utf-8").read()
-body = re.sub(r"^```.*?^```", "", text, flags=re.S | re.M)
-slugs = {re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-")
-         for h in re.findall(r"^#+[ \t]+(.+?)[ \t]*$", body, flags=re.M)}
-for a in sorted(set(re.findall(r"\]\(#([^)]+)\)", text))):
-    print(("ok " if a in slugs else "bad ") + a)
-EOF
-)
-	[ -n "$anchors" ] || bad "README anchor check produced no output"
-	echo "$anchors" | while read -r res anchor; do
-		[ "$res" = ok ] && echo "PASS: README anchor #$anchor" || echo "FAIL: README anchor without heading: #$anchor"
-	done
-	n=$(echo "$anchors" | grep -c '^bad ')
-	[ "$n" -eq 0 ] || { FAIL=$((FAIL + n)); }
-	[ "$(grep -c '^```' README.md)" -ne 0 ] && [ $(( $(grep -c '^```' README.md) % 2 )) -eq 0 ] \
-		&& ok "README code fences balanced" || bad "README code fences unbalanced"
-else
-	bad "README.md missing"
-fi
+echo "== README, documentation and LICENSE"
+[ -s README.md ] && ok "README.md present" || bad "README.md missing"
+[ -s docs/technical.md ] && ok "docs/technical.md present" || bad "docs/technical.md missing"
+# relative links, images and #anchors (also into other .md files), code fences
+out=$(python3 tests/doc-links.py README.md docs/technical.md); rc=$?
+echo "$out"
+FAIL=$((FAIL + rc))
 grep -q 'GNU GENERAL PUBLIC LICENSE' LICENSE 2>/dev/null && grep -q 'Version 3, 29 June 2007' LICENSE && [ "$(wc -l < LICENSE)" -gt 600 ] \
 	&& ok "LICENSE: full GPL-3.0 text" || bad "LICENSE missing or not the full GPL-3.0 text"
 
@@ -169,9 +160,9 @@ grep -qF "releases/download/${IT}/install.sh" scripts/install.sh && ok "install.
 # README: release URLs and package file names of this version only
 grep -qF "releases/download/${IT}/install.sh" README.md && ok "README installer URL uses ${IT}" || bad "README installer URL does not use ${IT}"
 grep -qF "easy-vless_${IV}_all.ipk" README.md && ok "README package names use ${IV}" || bad "README package names do not use ${IV}"
-stale=$(grep -oE 'releases/download/v[0-9][^/ )]*|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)_[0-9][^_ ]*_all\.ipk' README.md \
+stale=$(grep -hoE 'releases/download/v[0-9][^/ )]*|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)_[0-9][^_ ]*_all\.ipk' README.md docs/technical.md \
 	| grep -vF -e "releases/download/${IT}" -e "_${IV}_all.ipk" | sort -u)
-[ -z "$stale" ] && ok "README has no other release versions" || bad "README mentions other release versions: $(echo "$stale" | tr '\n' ' ')"
+[ -z "$stale" ] && ok "README and docs/technical.md have no other release versions" || bad "README or docs/technical.md mention other release versions: $(echo "$stale" | tr '\n' ' ')"
 grep -qF "**Текущая версия: ${IV}**" README.md && ok "README current version ${IV}" || bad "README current version is not ${IV}"
 
 echo "== local paths, credentials, development leftovers"

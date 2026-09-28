@@ -60,7 +60,8 @@ function testShort(r) {
 		return E('em', {}, _('testing…'));
 	if (r.ok)
 		return E('span', { 'title': '%s → HTTP %s'.format(r.url || '', r.http_code || '') }, [ ev.badge(_('PASS'), 'ok'), ' ', _('%d ms').format(r.delay) ]);
-	return E('span', { 'title': r.error || '' }, [ ev.badge(_('FAIL'), 'bad'), ' ', E('small', {}, (r.error || '').length > 50 ? r.error.substr(0, 47) + '…' : (r.error || '')) ]);
+	const err = ev.testError(r);
+	return E('span', { 'title': err }, [ ev.badge(_('FAIL'), 'bad'), ' ', E('small', {}, err.length > 50 ? err.substr(0, 47) + '…' : err) ]);
 }
 
 /* Last delay sing-box measured for this server in a running URL Test group
@@ -395,7 +396,7 @@ return view.extend({
 		s.sortable = false;
 		s.nodescriptions = true;
 		s.addbtntitle = _('Add VLESS');
-		ev.compactWhenEmpty(s, _('No servers yet: use Add VLESS or Import VLESS URL.'));
+		ev.compactWhenEmpty(s, _('No servers yet: paste a vless:// link with Import VLESS URL, or enter the settings by hand with Add VLESS.'));
 		ev.commitOnModalSave(s, _('VLESS server'));
 		/* the add button lives in the page toolbar (Add VLESS) */
 		s.renderSectionAdd = function() { return E([]); };
@@ -584,7 +585,7 @@ return view.extend({
 		s.anonymous = true;
 		s.nodescriptions = true;
 		s.addbtntitle = _('Add subscription');
-		ev.compactWhenEmpty(s, _('No subscriptions.'));
+		ev.compactWhenEmpty(s, _('No subscriptions. If your provider gave you a subscription link (https://...), add it with Add subscription.'));
 		ev.commitOnModalSave(s, _('Subscription'));
 		s.modaltitle = function(section_id) {
 			return _('URL Subscription') + ' » ' + (uci.get(CONFIG, section_id, 'remark') || _('New subscription'));
@@ -622,7 +623,7 @@ return view.extend({
 		o = s.option(form.Value, 'remark', _('Name'));
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'url', _('Subscription URL'));
+		o = s.option(form.Value, 'url', _('Subscription URL'), _('The http:// or https:// link from your provider.'));
 		o.rmempty = false;
 		o.validate = function(section_id, value) {
 			return /^https?:\/\/\S+$/.test(value || '') ? true : _('Expecting an http:// or https:// URL');
@@ -659,7 +660,7 @@ return view.extend({
 
 		/* User-Agent: subscribe.lua sends option user_agent as the HTTP
 		 * User-Agent header (unset/"curl" = curl's default, as before). */
-		o = s.option(form.ListValue, '_ua_mode', _('Spoof App'),
+		o = s.option(form.ListValue, '_ua_mode', _('User-Agent'),
 			_('HAPP sends "User-Agent: HAPP" (for providers that serve the node list only to the HAPP app); enable HWID Support as well if the provider requires it.'));
 		o.modalonly = true;
 		o.value('', _('Default (curl)'));
@@ -679,7 +680,7 @@ return view.extend({
 				uci.unset(CONFIG, section_id, 'user_agent');
 		};
 
-		o = s.option(form.Value, 'user_agent', _('UserAgent'));
+		o = s.option(form.Value, 'user_agent', _('Custom User-Agent'));
 		o.modalonly = true;
 		o.depends('_ua_mode', 'custom');
 		o.rmempty = false;
@@ -688,11 +689,11 @@ return view.extend({
 			return /^[A-Za-z0-9 ._\/()+;:,=-]+$/.test(value || '') ? true : _('Letters, digits, spaces and . _ / ( ) + ; : , = - only');
 		};
 
-		o = s.option(form.Flag, 'auto_update', _('Auto Update'),
+		o = s.option(form.Flag, 'auto_update', _('Automatic update'),
 			_('Update this subscription periodically while Easy VLESS is started (cron).'));
 		o.modalonly = true;
 
-		o = s.option(form.ListValue, 'auto_update_interval', _('Auto Update Delay'),
+		o = s.option(form.ListValue, 'auto_update_interval', _('Update interval'),
 			_('Time between automatic updates.'));
 		o.modalonly = true;
 		o.depends('auto_update', '1');
@@ -706,8 +707,8 @@ return view.extend({
 		o.value('direct', _('Direct'));
 		o.value('proxy', _('Proxy'));
 
-		o = s.option(form.Flag, 'allowInsecure', _('allowInsecure'),
-			_('Keep the allowInsecure flag of imported nodes (certificate validation skipped). Off by default.'));
+		o = s.option(form.Flag, 'allowInsecure', _('Allow insecure nodes'),
+			_('Keep the allowInsecure flag of imported nodes (their TLS certificate is not verified). Off by default: such nodes are imported with certificate verification.'));
 		o.modalonly = true;
 		o.default = '0';
 		o.rmempty = false;
@@ -719,7 +720,7 @@ return view.extend({
 		s.anonymous = true;
 		s.nodescriptions = true;
 		s.addbtntitle = _('Add group');
-		ev.compactWhenEmpty(s, _('No URL Test groups.'));
+		ev.compactWhenEmpty(s, _('No URL Test groups. A group is optional: it switches automatically to the fastest of several servers.'));
 		ev.commitOnModalSave(s, _('URL Test group'));
 		s.modaltitle = function(section_id) {
 			return _('URL Test group') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New group'));
@@ -821,14 +822,15 @@ return view.extend({
 				ev.pageStyle(),
 				E('h2', {}, _('Node List')),
 				ev.renderHeader(m, status, null, true, false),
+				E('div', { 'class': 'cbi-map-descr' }, _('Servers: your VLESS servers - add one by hand or import a vless:// link, then Use it or test it. URL Subscriptions: a link from your provider that downloads the server list. URL Test Groups: several servers, sing-box uses the fastest one.')),
 				E('div', { 'style': 'margin:.6em 0' }, [
 					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, 'handleImport') }, _('Import VLESS URL')),
-					' ',
-					E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleTestAll') }, _('Test all servers')),
 					' ',
 					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, function(ev_) {
 						return this.serversSection.handleAdd(ev_);
 					}) }, _('Add VLESS')),
+					' ',
+					E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleTestAll') }, _('Test all servers')),
 					' ',
 					E('input', { 'type': 'search', 'class': 'cbi-input-text', 'style': 'width:14em;vertical-align:middle',
 						'placeholder': _('Filter servers…'), 'title': _('Filter by name, address or status'),

@@ -1,0 +1,2201 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Project-Id-Version: luci-app-easy-vless\n"
+"Language: ru\n"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "RPC error: %s"
+msgstr "Ошибка RPC: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "none"
+msgstr "нет"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Direct"
+msgstr "Напрямую"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Block"
+msgstr "Блокировать"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Default target"
+msgstr "Цель по умолчанию"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test group"
+msgstr "Группа URL-теста"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Main Router (shunt)"
+msgstr "По правилам (Main Router)"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Block (blackhole)"
+msgstr "Блокировать (blackhole)"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Main node"
+msgstr "Основной узел"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Main Router: Default"
+msgstr "По правилам: по умолчанию"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Main Router: %s"
+msgstr "По правилам: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Please wait…"
+msgstr "Подождите…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Cancel"
+msgstr "Отмена"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete"
+msgstr "Удалить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "PASSED"
+msgstr "УСПЕШНО"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "WARNING"
+msgstr "ПРЕДУПРЕЖДЕНИЕ"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "FAILED"
+msgstr "ОШИБКА"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Close"
+msgstr "Закрыть"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The form contains invalid values, nothing was saved: %s"
+msgstr "В форме есть недопустимые значения, ничего не сохранено: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Saving failed (%s): %s"
+msgstr "Не удалось сохранить (%s): %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "%s failed: %s"
+msgstr "%s: ошибка: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "\"%s\" is still running; wait until it has finished."
+msgstr "«%s» ещё выполняется; дождитесь завершения."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Save"
+msgstr "Сохранить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Configuration saved. The running service is not changed; use Save & Apply to apply it."
+msgstr "Конфигурация сохранена. Работающая служба не изменена; чтобы применить изменения, нажмите «Сохранить и применить»."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Save & Apply"
+msgstr "Сохранить и применить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Saved, but the service state is unknown"
+msgstr "Сохранено, но состояние службы неизвестно"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Saved. The main switch is off, Easy VLESS stays stopped."
+msgstr "Сохранено. Главный переключатель выключен, Easy VLESS остаётся остановленным."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Check config"
+msgstr "Проверить конфигурацию"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Generating the sing-box configuration and running \"sing-box check\"…"
+msgstr "Создание конфигурации sing-box и запуск «sing-box check»…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "sing-box configuration is valid"
+msgstr "Конфигурация sing-box корректна"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Check could not run"
+msgstr "Проверку не удалось выполнить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "sing-box rejected the configuration"
+msgstr "sing-box отклонил конфигурацию"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Save & Start"
+msgstr "Сохранить и запустить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Stop"
+msgstr "Остановить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Start"
+msgstr "Запуск"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Checking the configuration with sing-box…"
+msgstr "Проверка конфигурации в sing-box…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Configuration valid. Starting sing-box, firewall and DNS…"
+msgstr "Конфигурация корректна. Запуск sing-box, правил межсетевого экрана и DNS…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Start request failed"
+msgstr "Не удалось отправить запрос на запуск"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Not started: configuration check failed. Network settings were not changed."
+msgstr "Не запущено: проверка конфигурации не пройдена. Сетевые настройки не изменены."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Running"
+msgstr "Работает"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "PID: %s"
+msgstr "PID: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "sing-box: %s"
+msgstr "sing-box: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Firewall: %s"
+msgstr "Межсетевой экран: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "nft table inet easy_vless present"
+msgstr "таблица nft inet easy_vless есть"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "absent"
+msgstr "нет"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Memory: %s"
+msgstr "Память: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Start did not finish in time"
+msgstr "Запуск не завершился вовремя"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "sing-box is not running (the start was rolled back)"
+msgstr "sing-box не работает (запуск отменён)"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Stopping Easy VLESS and removing its firewall rules…"
+msgstr "Остановка Easy VLESS и удаление его правил межсетевого экрана…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Stop request failed"
+msgstr "Не удалось отправить запрос на остановку"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Stopped. sing-box, nft table, ip rules and DNS changes were removed."
+msgstr "Остановлено. sing-box, таблица nft, правила ip и изменения DNS удалены."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Stopped, but the nft table inet easy_vless is still present."
+msgstr "Остановлено, но таблица nft inet easy_vless всё ещё есть."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Easy VLESS did not stop in time."
+msgstr "Easy VLESS не остановился вовремя."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Saved. Easy VLESS is stopped; the change applies on the next start."
+msgstr "Сохранено. Easy VLESS остановлен; изменение вступит в силу при следующем запуске."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Apply"
+msgstr "Применить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "none selected"
+msgstr "не выбран"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Main Router"
+msgstr "По правилам"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "unknown"
+msgstr "неизвестно"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Starting / stopping…"
+msgstr "Запуск / остановка…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Stopped"
+msgstr "Остановлен"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Core"
+msgstr "Ядро"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "PID %s"
+msgstr "PID %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Main switch"
+msgstr "Главный переключатель"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Enabled"
+msgstr "Включён"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Disabled"
+msgstr "Выключен"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Active"
+msgstr "Активен"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Status unavailable: %s"
+msgstr "Статус недоступен: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "main switch is on, but not running"
+msgstr "главный переключатель включён, но не работает"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "starts on boot"
+msgstr "запускается при загрузке"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Default: %s"
+msgstr "По умолчанию: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "sing-box"
+msgstr "sing-box"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "not found"
+msgstr "не найден"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "easy-vless-sing-box missing"
+msgstr "нет пакета easy-vless-sing-box"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "requires sing-box >= %s"
+msgstr "нужен sing-box >= %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Memory (RSS)"
+msgstr "Память (RSS)"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "peak %.1f MiB"
+msgstr "пик %.1f MiB"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Firewall"
+msgstr "Межсетевой экран"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "present"
+msgstr "есть"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Routing mode"
+msgstr "Режим маршрутизации"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Recent log"
+msgstr "Последние записи журнала"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "(empty)"
+msgstr "(пусто)"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "%s saved."
+msgstr "%s: сохранено."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Changes of a running service apply with Save & Apply on Main."
+msgstr "Изменения для работающей службы применяются кнопкой «Сохранить и применить» на Главной."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "None yet."
+msgstr "Пока ничего нет."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The temporary sing-box instance for this server did not start (%s). Run Check config for details."
+msgstr "Временный экземпляр sing-box для этого сервера не запустился (%s). Подробности покажет «Проверить конфигурацию»."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "no SOCKS listener"
+msgstr "нет SOCKS-порта"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Connection timeout (%s)."
+msgstr "Превышено время ожидания соединения (%s)."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "no response within 5 s"
+msgstr "нет ответа за 5 с"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "TLS handshake through the VLESS connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it."
+msgstr "Не удалось установить TLS-соединение через VLESS: сервер недоступен, отклонил соединение, или проверочный сайт заблокирован за ним."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "No answer through the VLESS connection: the server is unreachable or rejected the connection."
+msgstr "Нет ответа через VLESS-соединение: сервер недоступен или отклонил соединение."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Probe failed (HTTP %s)."
+msgstr "Проверка не удалась (HTTP %s)."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "failed"
+msgstr "ошибка"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "testing…"
+msgstr "проверка…"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "PASS"
+msgstr "ОК"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "%d ms"
+msgstr "%d мс"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "FAIL"
+msgstr "ОШИБКА"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Only VLESS servers can be exported."
+msgstr "Экспортировать можно только серверы VLESS."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Transport \"%s\" has no standard VLESS URL form."
+msgstr "У транспорта «%s» нет стандартной формы VLESS-ссылки."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Flow \"%s\" requires TLS/Reality and was not exported."
+msgstr "Flow «%s» требует TLS/Reality и не экспортирован."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Multiplex (mux) settings are not part of a VLESS URL."
+msgstr "Настройки мультиплексирования (mux) не входят в VLESS-ссылку."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Proxy chain settings are not part of a VLESS URL."
+msgstr "Настройки цепочки прокси не входят в VLESS-ссылку."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Server domain resolver/strategy settings are not part of a VLESS URL."
+msgstr "Настройки резолвера/стратегии домена сервера не входят в VLESS-ссылку."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "A custom trusted certificate is not part of a VLESS URL."
+msgstr "Собственный доверенный сертификат не входит в VLESS-ссылку."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "VLESS URL"
+msgstr "VLESS-ссылка"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Not included in the URL:"
+msgstr "Не вошло в ссылку:"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Built from the settings saved in this browser session (UCI); edits still open in a form are not included."
+msgstr "Собрана из настроек, сохранённых в этом сеансе браузера (UCI); изменения в ещё открытой форме не учтены."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "This server has saved changes that are not committed yet (press Save): the running service still uses the previous values."
+msgstr "У этого сервера есть сохранённые, но не применённые изменения (нажмите «Сохранить»): работающая служба пока использует прежние значения."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Copied."
+msgstr "Скопировано."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Copy failed - select the text and copy manually."
+msgstr "Не удалось скопировать — выделите текст и скопируйте вручную."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Copy"
+msgstr "Копировать"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "QR support unavailable. Install luci-lib-uqr to enable QR."
+msgstr "QR-код недоступен. Установите luci-lib-uqr, чтобы включить QR."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Default"
+msgstr "По умолчанию"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "No node selected yet: choose one above in Node, or add a server in Node List."
+msgstr "Узел ещё не выбран: выберите его выше в поле «Узел» или добавьте сервер в «Списке узлов»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Target"
+msgstr "Цель"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Used by"
+msgstr "Используется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Result"
+msgstr "Результат"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Latency"
+msgstr "Задержка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Response / error"
+msgstr "Ответ / ошибка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Test"
+msgstr "Проверить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Server Test of this server"
+msgstr "Проверка этого сервера"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not tested"
+msgstr "не проверялся"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "URL Test group: sing-box tests its servers itself (Node List → URL Test)"
+msgstr "Группа URL-теста: sing-box сам проверяет её серверы (Список узлов → URL-тест)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "not applicable"
+msgstr "не применимо"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Server Test"
+msgstr "Проверка сервера"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Main"
+msgstr "Главная"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "On: Save & Apply checks the configuration with sing-box and starts Easy VLESS (also after every reboot). Off: Save & Apply stops it."
+msgstr "Вкл.: «Сохранить и применить» проверяет конфигурацию в sing-box и запускает Easy VLESS (также после каждой перезагрузки). Выкл.: «Сохранить и применить» останавливает его."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Node"
+msgstr "Узел"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Where the traffic goes. <b>Main Router</b>: by the rules of Rule Manage - each rule gets a target below, everything else goes to Default. A server or a URL Test group: all traffic goes to it."
+msgstr "Куда идёт трафик. <b>По правилам</b>: по правилам из раздела «Правила» — у каждого правила ниже своя цель, всё остальное идёт в «По умолчанию». Сервер или группа URL-теста: весь трафик идёт через них."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "-- select --"
+msgstr "-- выберите --"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Not used (rule off)"
+msgstr "Не используется (правило выключено)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Traffic that matches no rule above."
+msgstr "Трафик, который не подошёл ни под одно правило выше."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "No rules yet. Create rules in <a href=\"%s\">Rule Manage</a> (the prepared RUSSIA / PROXY / QUIC / UDP rules are added there with one click); each rule then gets a target here."
+msgstr "Правил пока нет. Создайте их в разделе <a href=\"%s\">Правила</a> (готовые правила RUSSIA / PROXY / QUIC / UDP добавляются там одной кнопкой); затем здесь для каждого правила появится выбор цели."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Localhost Proxy"
+msgstr "Проксировать сам роутер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Traffic of the router itself (opkg, curl, ...) also goes through Easy VLESS routing."
+msgstr "Трафик самого роутера (opkg, curl и т. п.) тоже идёт через маршрутизацию Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Client Proxy"
+msgstr "Проксировать устройства LAN"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Traffic of LAN devices is transparently redirected (TPROXY) into Easy VLESS routing. Off: LAN devices bypass Easy VLESS."
+msgstr "Трафик устройств LAN прозрачно перенаправляется (TPROXY) в маршрутизацию Easy VLESS. Выкл.: устройства LAN идут мимо Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Easy VLESS"
+msgstr "Easy VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Easy VLESS sends the traffic of the router and of your LAN devices through a VLESS server (sing-box). Here: service status, the main switch and where the traffic goes. Servers and subscriptions are in Node List, routing rules in Rule Manage, DNS and forwarding in Settings."
+msgstr "Easy VLESS пропускает трафик роутера и устройств вашей сети через VLESS-сервер (sing-box). Здесь: состояние службы, главный переключатель и выбор, куда идёт трафик. Серверы и подписки — в «Списке узлов», правила маршрутизации — в «Правилах», DNS и перенаправление — в «Настройках»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Easy VLESS is not set up yet. The setup wizard adds your VLESS server, tests it, sets up the routing and starts Easy VLESS."
+msgstr "Easy VLESS ещё не настроен. Мастер настройки добавит ваш VLESS-сервер, проверит его, настроит маршрутизацию и запустит Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Start setup wizard"
+msgstr "Запустить мастер настройки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Connection test"
+msgstr "Проверка соединения"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Server Test opens %s over HTTPS through the server (a real request through a temporary sing-box instance, not only a TCP connect). It works whether Easy VLESS is running or not and uses the saved server settings."
+msgstr "Проверка сервера открывает %s по HTTPS через сервер (настоящий запрос через временный экземпляр sing-box, а не только TCP-подключение). Работает независимо от того, запущен ли Easy VLESS, и использует сохранённые настройки сервера."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Test all targets"
+msgstr "Проверить все цели"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Domain Resource"
+msgstr "Ресурс доменов"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Domain (manual)"
+msgstr "Домены (вручную)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "One per line. <code>domain:example.com</code> domain + subdomains · <code>full:www.example.com</code> exact · <code>regexp:\\.ru$</code> regular expression · plain text = keyword (matches any domain containing it) · <code>geosite:name</code> needs easy-vless-geodata · # comment"
+msgstr "По одному в строке. <code>domain:example.com</code> — домен и поддомены · <code>full:www.example.com</code> — точное совпадение · <code>regexp:\\.ru$</code> — регулярное выражение · просто текст = ключевое слово (подходит любой домен, который его содержит) · <code>geosite:name</code> — нужен easy-vless-geodata · # комментарий"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "IP"
+msgstr "IP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "One per line: IP, CIDR (<code>10.0.0.0/8</code>), <code>geoip:private</code> (built in) or <code>geoip:ru</code> (needs easy-vless-geodata)."
+msgstr "По одному в строке: IP, CIDR (<code>10.0.0.0/8</code>), <code>geoip:private</code> (встроено) или <code>geoip:ru</code> (нужен easy-vless-geodata)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Network"
+msgstr "Сеть"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Destination port"
+msgstr "Порт назначения"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "e.g. <code>443</code> or <code>80,443,1000:2000</code>"
+msgstr "например, <code>443</code> или <code>80,443,1000:2000</code>"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Source"
+msgstr "Источник"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Space separated: IP, CIDR or <code>geoip:private</code>."
+msgstr "Через пробел: IP, CIDR или <code>geoip:private</code>."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Source port"
+msgstr "Порт источника"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "e.g. <code>1000:2000,5000</code>"
+msgstr "например, <code>1000:2000,5000</code>"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Protocol (sniffed)"
+msgstr "Протокол (определённый)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Inbound"
+msgstr "Входящее подключение"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Transparent proxy"
+msgstr "Прозрачный прокси"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "SOCKS (node SOCKS port)"
+msgstr "SOCKS (SOCKS-порт узла)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "missing"
+msgstr "нет файла"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Resource: %s"
+msgstr "Ресурс: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "%d domains"
+msgstr "доменов: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "%d IPs"
+msgstr "IP: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "port %s"
+msgstr "порт %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "source %s"
+msgstr "источник %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "source port %s"
+msgstr "порт источника %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "protocol %s"
+msgstr "протокол %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "inbound %s"
+msgstr "входящее %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "no conditions (matches all)"
+msgstr "без условий (подходит всё)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "%s (entries: %d)"
+msgstr "%s (записей: %d)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "%s (file missing)"
+msgstr "%s (нет файла)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Remove this resource"
+msgstr "Убрать этот ресурс"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Add another resource (any of them may match)"
+msgstr "Добавить ещё один ресурс (подойдёт любой из них)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "+ resource"
+msgstr "+ ресурс"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "No prepared resources installed."
+msgstr "Готовые ресурсы не установлены."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Remove condition"
+msgstr "Убрать условие"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "+ Add condition"
+msgstr "+ Добавить условие"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "No conditions: the rule matches all traffic."
+msgstr "Нет условий: правилу подходит весь трафик."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "How conditions combine (sing-box): all condition types must match; Domain Resource, Domain and IP are alternatives - any one of them may match."
+msgstr "Как объединяются условия (sing-box): должны выполняться все типы условий; «Ресурс доменов», «Домены» и «IP» — альтернативы, достаточно любого из них."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Destination port: expecting ports (1-65535) or ranges from:to separated by commas"
+msgstr "Порт назначения: ожидаются порты (1-65535) или диапазоны от:до через запятую"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Source port: expecting ports (1-65535) or ranges from:to separated by commas"
+msgstr "Порт источника: ожидаются порты (1-65535) или диапазоны от:до через запятую"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Source: \"%s\" is not an IP, CIDR or geoip:private"
+msgstr "Источник: «%s» — не IP, не CIDR и не geoip:private"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Domain: unknown prefix in \"%s\""
+msgstr "Домены: неизвестный префикс в «%s»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Domain Resource: select at least one resource or remove the condition"
+msgstr "Ресурс доменов: выберите хотя бы один ресурс или уберите условие"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Move"
+msgstr "Переместить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "A rule named \"%s\" already exists."
+msgstr "Правило «%s» уже существует."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Add prepared rule"
+msgstr "Добавить готовое правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rule \"%s\" added with target %s. Change it on Main if needed."
+msgstr "Правило «%s» добавлено с целью %s. При необходимости измените её на Главной."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rule \"%s\" added. Choose its target on Main."
+msgstr "Правило «%s» добавлено. Выберите его цель на Главной."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Resource"
+msgstr "Ресурс"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Type"
+msgstr "Тип"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Entries"
+msgstr "Записей"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Status"
+msgstr "Статус"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "File"
+msgstr "Файл"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Domain resource"
+msgstr "Ресурс доменов"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Installed"
+msgstr "Установлен"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Missing"
+msgstr "Отсутствует"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rules"
+msgstr "Правила"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Checked from top to bottom: the first matching rule wins (higher = higher priority). Unmatched traffic goes to Default (Main). A rule whose target is \"Not used\" is inactive."
+msgstr "Проверяются сверху вниз: срабатывает первое подходящее правило (выше = важнее). Трафик, не подошедший ни под одно правило, идёт в «По умолчанию» (Главная). Правило с целью «Не используется» неактивно."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Add rule"
+msgstr "Добавить правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "No rules yet. The quickest start: choose a prepared rule next to Add rule and press Add prepared rule."
+msgstr "Правил пока нет. Быстрее всего начать так: выберите готовое правило рядом с «Добавить правило» и нажмите «Добавить готовое правило»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rule"
+msgstr "Правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "New rule"
+msgstr "Новое правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Delete rule"
+msgstr "Удалить правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Delete rule \"%s\"? This cannot be undone."
+msgstr "Удалить правило «%s»? Это действие нельзя отменить."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rule deleted."
+msgstr "Правило удалено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Down"
+msgstr "Вниз"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Up"
+msgstr "Вверх"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Add a prepared rule (conditions from the resource manifest)"
+msgstr "Добавить готовое правило (условия из манифеста ресурсов)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Name"
+msgstr "Имя"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Order"
+msgstr "Порядок"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Conditions"
+msgstr "Условия"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Where matching traffic goes (also selectable on Main). Used while the Main Router is the main node."
+msgstr "Куда идёт подходящий трафик (можно выбрать и на Главной). Действует, пока основной узел — «По правилам»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Not used"
+msgstr "Не используется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Rule Manage"
+msgstr "Правила"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "A rule says which traffic it matches (conditions: domains, IPs, ports...). Where the matching traffic goes (Direct, a server, Block) is its target, set here or on Main. Rules work while Node on Main is \"Main Router\"."
+msgstr "Правило описывает, какой трафик ему подходит (условия: домены, IP, порты…). Куда идёт этот трафик (напрямую, через сервер, блокировка) — это его цель; она задаётся здесь или на Главной. Правила работают, пока на Главной в поле «Узел» выбрано «По правилам»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rules are not used right now: Node on Main is not the Main Router. Select \"Main Router (shunt)\" as Node on Main to route by rules."
+msgstr "Сейчас правила не используются: на Главной в поле «Узел» выбрано не «По правилам». Выберите «По правилам (Main Router)» в поле «Узел» на Главной, чтобы маршрутизировать по правилам."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Resources"
+msgstr "Ресурсы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Prepared domain lists installed with Easy VLESS. Use them in a rule with the condition \"Domain Resource\"."
+msgstr "Готовые списки доменов, установленные вместе с Easy VLESS. Используйте их в правиле с условием «Ресурс доменов»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Resources unavailable: %s"
+msgstr "Ресурсы недоступны: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Selected (stopped)"
+msgstr "Выбран (остановлен)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Active (group)"
+msgstr "Активен (в группе)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "In group (stopped)"
+msgstr "В группе (остановлен)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Used by: %s"
+msgstr "Используется: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Used by %d"
+msgstr "Используется: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Inactive"
+msgstr "Не используется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "URL Test"
+msgstr "URL-тест"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "no result (not tested yet or unreachable)"
+msgstr "нет результата (ещё не проверялся или недоступен)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "No data"
+msgstr "Нет данных"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use"
+msgstr "Выбрать"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Test all servers"
+msgstr "Проверить все серверы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Import VLESS URL"
+msgstr "Импорт VLESS-ссылки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "One vless:// link per line (bulk import supported). Imported servers are saved and added to the list; existing servers are kept."
+msgstr "По одной ссылке vless:// в строке (можно несколько). Импортированные серверы сохраняются и добавляются в список; существующие серверы остаются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Paste at least one vless:// link."
+msgstr "Вставьте хотя бы одну ссылку vless://."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Parsing links…"
+msgstr "Разбор ссылок…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Import request failed"
+msgstr "Не удалось отправить запрос на импорт"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Links found: %d · imported: %d · skipped: %d"
+msgstr "Найдено ссылок: %d · импортировано: %d · пропущено: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Address"
+msgstr "Адрес"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Port"
+msgstr "Порт"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Transport"
+msgstr "Транспорт"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Security"
+msgstr "Защита"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "No server was imported (unsupported or invalid link, or a transport sing-box does not support)."
+msgstr "Ни один сервер не импортирован (неподдерживаемая или неверная ссылка либо транспорт, который sing-box не поддерживает)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Import"
+msgstr "Импортировать"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update subscription"
+msgstr "Обновить подписку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Subscription"
+msgstr "Подписка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Downloading and parsing the subscription…"
+msgstr "Загрузка и разбор подписки…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Failed"
+msgstr "Ошибка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%s nodes imported, %s skipped"
+msgstr "импортировано узлов: %s, пропущено: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Subscription update finished: %d nodes before, %d now."
+msgstr "Обновление подписки завершено: было узлов %d, стало %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Still running, check the log later."
+msgstr "Ещё выполняется, проверьте журнал позже."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Format: %s"
+msgstr "Формат: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete nodes"
+msgstr "Удалить узлы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete all nodes of subscription \"%s\"? Nodes of other subscriptions and manual servers are not touched."
+msgstr "Удалить все узлы подписки «%s»? Узлы других подписок и добавленные вручную серверы не затрагиваются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d subscribed nodes deleted."
+msgstr "Удалено узлов подписки: %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "No live results (%s). They come from the running sing-box when a group is the main node, Default or a rule target."
+msgstr "Нет текущих результатов (%s). Они приходят от работающего sing-box, когда группа — основной узел, цель по умолчанию или цель правила."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not running"
+msgstr "не работает"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Not part of the running configuration."
+msgstr "Не входит в работающую конфигурацию."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Server"
+msgstr "Сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Selected by sing-box"
+msgstr "Выбран sing-box"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "selected"
+msgstr "выбран"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Stop using the group and use this server"
+msgstr "Перестать использовать группу и выбрать этот сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use this server"
+msgstr "Выбрать этот сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Test all servers now"
+msgstr "Проверить все серверы сейчас"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test live results"
+msgstr "Текущие результаты URL-теста"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test Groups"
+msgstr "Группы URL-теста"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Servers"
+msgstr "Серверы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Add VLESS"
+msgstr "Добавить VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "No servers yet: paste a vless:// link with Import VLESS URL, or enter the settings by hand with Add VLESS."
+msgstr "Серверов пока нет: вставьте ссылку vless:// через «Импорт VLESS-ссылки» или введите настройки вручную через «Добавить VLESS»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "VLESS server"
+msgstr "VLESS-сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "New server"
+msgstr "Новый сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete server"
+msgstr "Удалить сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "This server is still used and was not deleted."
+msgstr "Этот сервер ещё используется и не был удалён."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Used by:"
+msgstr "Используется:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Select another target there first."
+msgstr "Сначала выберите там другую цель."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete server \"%s\"? This cannot be undone."
+msgstr "Удалить сервер «%s»? Это действие нельзя отменить."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Server deleted."
+msgstr "Сервер удалён."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use this server (main node, or Default target while the Main Router is the main node)"
+msgstr "Выбрать этот сервер (основной узел или цель по умолчанию, если основной узел — «По правилам»)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Server Test: HTTPS request to %s through this server (temporary sing-box instance)"
+msgstr "Проверка сервера: HTTPS-запрос к %s через этот сервер (временный экземпляр sing-box)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test of this server: request to %s through it (temporary sing-box instance)"
+msgstr "URL-тест этого сервера: запрос к %s через него (временный экземпляр sing-box)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Copy the VLESS URL of this server"
+msgstr "Скопировать VLESS-ссылку этого сервера"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "UUID"
+msgstr "UUID"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Expecting a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
+msgstr "Ожидается UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "WebSocket Host"
+msgstr "Хост WebSocket"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "WebSocket path"
+msgstr "Путь WebSocket"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "gRPC service name"
+msgstr "Имя сервиса gRPC"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "HTTPUpgrade Host"
+msgstr "Хост HTTPUpgrade"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "HTTPUpgrade path"
+msgstr "Путь HTTPUpgrade"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "TLS"
+msgstr "TLS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Reality"
+msgstr "Reality"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "SNI"
+msgstr "SNI"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Server name for TLS / Reality."
+msgstr "Имя сервера для TLS / Reality."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "uTLS"
+msgstr "uTLS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use a browser TLS fingerprint (always on with Reality)."
+msgstr "Использовать TLS-отпечаток браузера (с Reality включено всегда)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Fingerprint"
+msgstr "Отпечаток"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Public Key"
+msgstr "Публичный ключ"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Expecting a 43-character base64url X25519 public key"
+msgstr "Ожидается публичный ключ X25519 в base64url из 43 символов"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Short ID"
+msgstr "Short ID"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Expecting an even number of hexadecimal characters (at most 16)"
+msgstr "Ожидается чётное число шестнадцатеричных символов (не больше 16)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Flow"
+msgstr "Flow"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "xtls-rprx-vision needs TCP with TLS or Reality."
+msgstr "xtls-rprx-vision требует TCP с TLS или Reality."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Allow insecure"
+msgstr "Разрешить небезопасное"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Do not verify the server certificate. Not recommended."
+msgstr "Не проверять сертификат сервера. Не рекомендуется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Subscriptions"
+msgstr "Подписки по URL"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Only VLESS nodes are imported; other types are skipped and counted in the log."
+msgstr "Импортируются только узлы VLESS; узлы других типов пропускаются и учитываются в журнале."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Add subscription"
+msgstr "Добавить подписку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "No subscriptions. If your provider gave you a subscription link (https://...), add it with Add subscription."
+msgstr "Подписок нет. Если провайдер дал вам ссылку на подписку (https://...), добавьте её кнопкой «Добавить подписку»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Subscription"
+msgstr "Подписка по URL"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "New subscription"
+msgstr "Новая подписка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete subscription"
+msgstr "Удалить подписку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete subscription \"%s\"? Its nodes are kept."
+msgstr "Удалить подписку «%s»? Её узлы сохранятся."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Subscription deleted (its nodes are kept; use Delete nodes to remove them)."
+msgstr "Подписка удалена (её узлы сохранены; удалить их можно кнопкой «Удалить узлы»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update all subscriptions"
+msgstr "Обновить все подписки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete the nodes of this subscription"
+msgstr "Удалить узлы этой подписки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update"
+msgstr "Обновить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Download and import this subscription now"
+msgstr "Загрузить и импортировать эту подписку сейчас"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Subscription URL"
+msgstr "URL подписки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "The http:// or https:// link from your provider."
+msgstr "Ссылка http:// или https:// от вашего провайдера."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Expecting an http:// or https:// URL"
+msgstr "Ожидается URL http:// или https://"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Nodes"
+msgstr "Узлы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Updated"
+msgstr "Обновлена"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Not updated yet"
+msgstr "Ещё не обновлялась"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update only when connected"
+msgstr "Обновлять только при подключении"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Automatic updates run only while Easy VLESS is running. The Update button always runs."
+msgstr "Автоматическое обновление выполняется, только пока Easy VLESS работает. Кнопка «Обновить» работает всегда."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "HWID Support"
+msgstr "Поддержка HWID"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Send this router's stable hardware ID as the <code>X-HWID</code> header (with X-Device-OS / X-Ver-OS / X-Device-Model), for providers that limit devices. The ID is generated once and kept in /etc/easy_vless/hwid."
+msgstr "Передавать постоянный аппаратный идентификатор роутера в заголовке <code>X-HWID</code> (вместе с X-Device-OS / X-Ver-OS / X-Device-Model) — для провайдеров, ограничивающих число устройств. Идентификатор создаётся один раз и хранится в /etc/easy_vless/hwid."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "User-Agent"
+msgstr "User-Agent"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "HAPP sends \"User-Agent: HAPP\" (for providers that serve the node list only to the HAPP app); enable HWID Support as well if the provider requires it."
+msgstr "HAPP отправляет «User-Agent: HAPP» (для провайдеров, которые отдают список узлов только приложению HAPP); если провайдер требует, включите также «Поддержку HWID»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Default (curl)"
+msgstr "По умолчанию (curl)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Custom"
+msgstr "Свой"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Custom User-Agent"
+msgstr "Свой User-Agent"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Letters, digits, spaces and . _ / ( ) + ; : , = - only"
+msgstr "Только буквы, цифры, пробелы и . _ / ( ) + ; : , = -"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Automatic update"
+msgstr "Автоматическое обновление"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update this subscription periodically while Easy VLESS is started (cron)."
+msgstr "Периодически обновлять эту подписку, пока Easy VLESS запущен (cron)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update interval"
+msgstr "Интервал обновления"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Time between automatic updates."
+msgstr "Время между автоматическими обновлениями."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d h"
+msgstr "%d ч"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Access method"
+msgstr "Способ загрузки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "How the subscription is downloaded: directly, through the running proxy, or automatically."
+msgstr "Как загружается подписка: напрямую, через работающий прокси или автоматически."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Auto"
+msgstr "Авто"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Proxy"
+msgstr "Через прокси"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Allow insecure nodes"
+msgstr "Разрешить небезопасные узлы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Keep the allowInsecure flag of imported nodes (their TLS certificate is not verified). Off by default: such nodes are imported with certificate verification."
+msgstr "Сохранять флаг allowInsecure у импортированных узлов (их TLS-сертификат не проверяется). По умолчанию выключено: такие узлы импортируются с проверкой сертификата."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "sing-box tests the servers of a group (default %s) and uses the fastest one. Use a group as main node, Default or rule target."
+msgstr "sing-box проверяет серверы группы (по умолчанию %s) и использует самый быстрый. Группу можно выбрать основным узлом, целью по умолчанию или целью правила."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Add group"
+msgstr "Добавить группу"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "No URL Test groups. A group is optional: it switches automatically to the fastest of several servers."
+msgstr "Групп URL-теста нет. Группа не обязательна: она автоматически переключается на самый быстрый из нескольких серверов."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "New group"
+msgstr "Новая группа"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete group"
+msgstr "Удалить группу"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "This group is still used and was not deleted."
+msgstr "Эта группа ещё используется и не была удалена."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete URL Test group \"%s\"? This cannot be undone."
+msgstr "Удалить группу URL-теста «%s»? Это действие нельзя отменить."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test group deleted."
+msgstr "Группа URL-теста удалена."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use this group"
+msgstr "Выбрать эту группу"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d server(s)"
+msgstr "серверов: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Select at least one server"
+msgstr "Выберите хотя бы один сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Test URL"
+msgstr "URL для проверки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use an https:// URL: for manual tests (\"Test all servers now\") sing-box ignores http:// URLs."
+msgstr "Используйте URL https://: при ручной проверке («Проверить все серверы сейчас») sing-box игнорирует URL http://."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Interval"
+msgstr "Интервал"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "How often sing-box re-tests the servers, e.g. 3m or 180."
+msgstr "Как часто sing-box заново проверяет серверы, например 3m или 180."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Tolerance (ms)"
+msgstr "Допуск (мс)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Switch only if another server is faster by more than this."
+msgstr "Переключаться, только если другой сервер быстрее больше чем на это значение."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Node List"
+msgstr "Список узлов"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Servers: your VLESS servers - add one by hand or import a vless:// link, then Use it or test it. URL Subscriptions: a link from your provider that downloads the server list. URL Test Groups: several servers, sing-box uses the fastest one."
+msgstr "Серверы: ваши VLESS-серверы — добавьте сервер вручную или импортируйте ссылку vless://, затем выберите или проверьте его. Подписки по URL: ссылка от провайдера, по которой загружается список серверов. Группы URL-теста: несколько серверов, sing-box использует самый быстрый."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Filter servers…"
+msgstr "Фильтр серверов…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Filter by name, address or status"
+msgstr "Фильтр по имени, адресу или статусу"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Expecting ports (1-65535) or ranges from:to separated by commas"
+msgstr "Ожидаются порты (1-65535) или диапазоны от:до через запятую"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "DNS"
+msgstr "DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "While Easy VLESS runs, dnsmasq forwards DNS queries to sing-box: domains that go direct are resolved by the direct DNS, proxied domains by the remote DNS through the server. The defaults work for most setups."
+msgstr "Пока Easy VLESS работает, dnsmasq передаёт DNS-запросы в sing-box: домены, которые идут напрямую, разрешает прямой DNS, а проксируемые домены — удалённый DNS через сервер. Значения по умолчанию подходят для большинства случаев."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Direct DNS"
+msgstr "Прямой DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "DNS for domains that go direct. Auto uses the DNS servers of your internet provider."
+msgstr "DNS для доменов, которые идут напрямую. «Авто» использует DNS-серверы вашего интернет-провайдера."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Auto (ISP / dnsmasq upstream)"
+msgstr "Авто (DNS провайдера / upstream dnsmasq)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Direct DNS server"
+msgstr "Сервер прямого DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "IP or IP:port."
+msgstr "IP или IP:порт."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Direct DNS: IP versions"
+msgstr "Прямой DNS: версии IP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "UseIP: IPv4 and IPv6 addresses, UseIPv4 / UseIPv6: only that version."
+msgstr "UseIP: адреса IPv4 и IPv6, UseIPv4 / UseIPv6: только эта версия."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS protocol"
+msgstr "Протокол удалённого DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "DNS for proxied domains, queried through the server."
+msgstr "DNS для проксируемых доменов, запросы идут через сервер."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS"
+msgstr "Удалённый DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS (DoH URL)"
+msgstr "Удалённый DNS (URL DoH)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "URL, optionally followed by a bootstrap IP: <code>https://dns.google/dns-query,8.8.8.8</code>."
+msgstr "URL, при необходимости с IP для начального запроса через запятую: <code>https://dns.google/dns-query,8.8.8.8</code>."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Expecting an https:// URL"
+msgstr "Ожидается URL https://"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS EDNS Client Subnet"
+msgstr "EDNS Client Subnet для удалённого DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Public IP sent to the DNS server as client location (RFC 7871). Empty = off."
+msgstr "Публичный IP, который передаётся DNS-серверу как местоположение клиента (RFC 7871). Пусто = выключено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS route"
+msgstr "Маршрут удалённого DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "How the remote DNS server is reached."
+msgstr "Как идут запросы к удалённому DNS-серверу."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote (through the proxy)"
+msgstr "Удалённо (через прокси)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "FakeDNS"
+msgstr "FakeDNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Answer proxied domains with fake IPs (faster, the real resolution happens on the server)."
+msgstr "Отвечать на проксируемые домены поддельными IP (быстрее, настоящее разрешение имени происходит на сервере)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS: IP versions"
+msgstr "Удалённый DNS: версии IP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "UseIPv4 (default): proxied domains get IPv4 addresses only."
+msgstr "UseIPv4 (по умолчанию): проксируемые домены получают только адреса IPv4."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Static DNS entries"
+msgstr "Статические DNS-записи"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "One per line: <code>domain IP</code>, e.g. <code>dns.google 8.8.8.8</code>."
+msgstr "По одной в строке: <code>домен IP</code>, например <code>dns.google 8.8.8.8</code>."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "DNS Redirect"
+msgstr "Перенаправление DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Redirect DNS queries of proxied LAN devices to the router (dnsmasq), so their lookups follow the Easy VLESS DNS rules."
+msgstr "Перенаправлять DNS-запросы проксируемых устройств LAN на роутер (dnsmasq), чтобы они подчинялись DNS-правилам Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Forwarding"
+msgstr "Перенаправление"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Which connections of LAN devices and of the router are redirected into Easy VLESS (nftables transparent proxy). Ports: single ports and ranges <code>from:to</code>, comma separated, e.g. <code>21,80,443,1000:2000</code>."
+msgstr "Какие подключения устройств LAN и самого роутера перенаправляются в Easy VLESS (прозрачный прокси nftables). Порты: отдельные порты и диапазоны <code>от:до</code> через запятую, например <code>21,80,443,1000:2000</code>."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "TCP ports never proxied"
+msgstr "TCP-порты, которые никогда не проксируются"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Never proxied (highest priority). Empty = none."
+msgstr "Никогда не проксируются (наивысший приоритет). Пусто = нет."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "UDP ports never proxied"
+msgstr "UDP-порты, которые никогда не проксируются"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "TCP ports to redirect"
+msgstr "TCP-порты для перенаправления"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Only connections to these ports enter Easy VLESS routing; other ports go direct."
+msgstr "В маршрутизацию Easy VLESS попадают только подключения к этим портам; остальные порты идут напрямую."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "All"
+msgstr "Все"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Common ports"
+msgstr "Распространённые порты"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "UDP ports to redirect"
+msgstr "UDP-порты для перенаправления"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "TCP redirect method"
+msgstr "Способ перенаправления TCP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "TPROXY (default) keeps the original destination for sing-box; REDIRECT is a fallback for special cases."
+msgstr "TPROXY (по умолчанию) сохраняет исходный адрес назначения для sing-box; REDIRECT — запасной вариант для особых случаев."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "IPv6 TProxy"
+msgstr "IPv6 TProxy"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Experimental. Make sure your server supports IPv6."
+msgstr "Экспериментально. Убедитесь, что ваш сервер поддерживает IPv6."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Answer ping locally"
+msgstr "Отвечать на ping локально"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Ping (ICMP) cannot go through VLESS: with this on, a ping to a proxied address is answered by the router itself."
+msgstr "Ping (ICMP) не может идти через VLESS: если включено, на ping к проксируемому адресу отвечает сам роутер."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Advanced"
+msgstr "Дополнительно"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "<b>singbox</b>: all redirected traffic enters sing-box, which applies the rules."
+msgstr "<b>singbox</b>: весь перенаправленный трафик попадает в sing-box, который применяет правила."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Log level"
+msgstr "Уровень журнала"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "sing-box log"
+msgstr "Журнал sing-box"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Write the sing-box log to /tmp/etc/easy_vless/."
+msgstr "Записывать журнал sing-box в /tmp/etc/easy_vless/."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Clash API port"
+msgstr "Порт Clash API"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Local port (127.0.0.1) of the sing-box Clash API used for URL Test results; a free port is picked if it is busy."
+msgstr "Локальный порт (127.0.0.1) Clash API sing-box, через который читаются результаты URL-теста; если порт занят, выбирается свободный."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Node SOCKS port"
+msgstr "SOCKS-порт узла"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Optional local SOCKS5 inbound of the main instance (rule inbound \"SOCKS\"). Empty = off."
+msgstr "Необязательный локальный вход SOCKS5 основного экземпляра (входящее подключение «SOCKS» в правилах). Пусто = выключено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "SOCKS bind local"
+msgstr "SOCKS только локально"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Listen on 127.0.0.1 only."
+msgstr "Слушать только на 127.0.0.1."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Start delay (s)"
+msgstr "Задержка запуска (с)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Seconds to wait after boot before starting."
+msgstr "Сколько секунд ждать после загрузки перед запуском."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Settings"
+msgstr "Настройки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "DNS and forwarding of Easy VLESS. The defaults work for most setups. Changes apply with Save & Apply (the service restarts)."
+msgstr "DNS и перенаправление трафика Easy VLESS. Значения по умолчанию подходят для большинства случаев. Изменения применяются кнопкой «Сохранить и применить» (служба перезапускается)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Welcome"
+msgstr "Начало"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Routing"
+msgstr "Маршрутизация"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Review"
+msgstr "Обзор"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Done"
+msgstr "Готово"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste the vless:// link of your server."
+msgstr "Вставьте ссылку vless:// вашего сервера."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste exactly one link. More servers can be added later in Node List."
+msgstr "Вставьте ровно одну ссылку. Другие серверы можно добавить позже в «Списке узлов»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "This is not a link: a VLESS link starts with vless://"
+msgstr "Это не ссылка: ссылка VLESS начинается с vless://"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "This looks like a subscription address, not a server link. Subscriptions are added in Node List → URL Subscriptions; here paste one vless:// link."
+msgstr "Похоже на адрес подписки, а не на ссылку сервера. Подписки добавляются в «Списке узлов» → «Подписки по URL»; здесь вставьте одну ссылку vless://."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "\"%s://\" links are not supported: Easy VLESS works with VLESS servers only (vless://)."
+msgstr "Ссылки вида «%s://» не поддерживаются: Easy VLESS работает только с серверами VLESS (vless://)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The link is incomplete: expected vless://UUID@address:port?parameters#name"
+msgstr "Ссылка неполная: ожидается vless://UUID@адрес:порт?параметры#имя"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The user ID in the link is not a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
+msgstr "Идентификатор пользователя в ссылке — не UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The port in the link must be between 1 and 65535."
+msgstr "Порт в ссылке должен быть от 1 до 65535."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not tested yet"
+msgstr "ещё не проверялся"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "All traffic"
+msgstr "Весь трафик"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "new rule"
+msgstr "новое правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "was: %s"
+msgstr "было: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "unchanged"
+msgstr "без изменений"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "unknown error"
+msgstr "неизвестная ошибка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS setup"
+msgstr "Настройка Easy VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Step %d of %d"
+msgstr "Шаг %d из %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Back"
+msgstr "Назад"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Next"
+msgstr "Далее"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS sends the traffic of this router and of your devices through a VLESS server (sing-box), while Russian sites stay direct."
+msgstr "Easy VLESS пропускает трафик этого роутера и ваших устройств через VLESS-сервер (sing-box), а российские сайты открываются напрямую."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "This wizard sets it up in a few steps:"
+msgstr "Мастер настроит всё за несколько шагов:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "add your VLESS server (a vless:// link from your provider);"
+msgstr "добавить ваш VLESS-сервер (ссылку vless:// от провайдера);"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "check that the server works;"
+msgstr "проверить, что сервер работает;"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "choose what goes through the server;"
+msgstr "выбрать, что пойдёт через сервер;"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "review and start Easy VLESS."
+msgstr "проверить настройки и запустить Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "You need the vless:// link of your server. Nothing on the router changes before the last step."
+msgstr "Понадобится ссылка vless:// вашего сервера. До последнего шага на роутере ничего не меняется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS is already set up on this router. The wizard does not replace your settings: it adds a server, changes the routing only if you choose so in step 4, and Review lists every change before anything is applied."
+msgstr "Easy VLESS на этом роутере уже настроен. Мастер не заменяет ваши настройки: он добавляет сервер, меняет маршрутизацию только если вы выберете это на шаге 4, а перед применением на шаге «Обзор» показывает все изменения."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The setup was completed before; you can run it again."
+msgstr "Настройка уже была завершена; её можно пройти ещё раз."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "An earlier Apply of the wizard did not finish (the page was closed or the router restarted). The configuration saved before it can be restored."
+msgstr "Предыдущее применение мастера не завершилось (страница была закрыта или роутер перезагрузился). Конфигурацию, сохранённую до него, можно восстановить."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Restore previous configuration"
+msgstr "Восстановить прежнюю конфигурацию"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Start setup"
+msgstr "Начать настройку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Restore"
+msgstr "Восстановление"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Restoring the configuration saved before the unfinished Apply…"
+msgstr "Восстановление конфигурации, сохранённой до незавершённого применения…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The previous configuration was restored."
+msgstr "Прежняя конфигурация восстановлена."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Restore failed"
+msgstr "Восстановить не удалось"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste the vless:// link of your server. Your provider gives it to you (often as \"Copy link\" or as a QR code in the app)."
+msgstr "Вставьте ссылку vless:// вашего сервера. Её выдаёт провайдер (часто как «Скопировать ссылку» или QR-код в приложении)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Add server"
+msgstr "Добавить сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste a new VLESS link"
+msgstr "Вставить новую VLESS-ссылку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Use a server that is already in Node List"
+msgstr "Использовать сервер, который уже есть в «Списке узлов»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Added"
+msgstr "Добавлен"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server was added to Node List with these settings:"
+msgstr "Сервер добавлен в «Список узлов» с такими настройками:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Only VLESS is supported (TCP, WebSocket, gRPC, HTTPUpgrade; TLS or Reality). A subscription URL can be added later in Node List."
+msgstr "Поддерживается только VLESS (TCP, WebSocket, gRPC, HTTPUpgrade; TLS или Reality). Ссылку на подписку можно добавить позже в «Списке узлов»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Select a server."
+msgstr "Выберите сервер."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Adding…"
+msgstr "Добавление…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The router did not answer: %s"
+msgstr "Роутер не ответил: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The link was not accepted by the VLESS parser."
+msgstr "Разборщик VLESS не принял ссылку."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS now connects through the server with a temporary sing-box instance and opens two web addresses over HTTPS (a real request through the VLESS connection, not only a TCP connect)."
+msgstr "Сейчас Easy VLESS подключится через сервер с помощью временного экземпляра sing-box и откроет два адреса по HTTPS (настоящий запрос через VLESS-соединение, а не только TCP-подключение)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server works."
+msgstr "Сервер работает."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server works, but %s did not answer through it. You can continue."
+msgstr "Сервер работает, но %s через него не ответил. Можно продолжить."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server did not work. Check the link (address, port, UUID, Reality key), that the server is online, and the router's internet connection."
+msgstr "Сервер не работает. Проверьте ссылку (адрес, порт, UUID, ключ Reality), что сервер включён и что у роутера есть доступ в интернет."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "You can repeat the test, go back and paste another link, or continue anyway (Easy VLESS then starts, but the traffic through this server will not work)."
+msgstr "Можно повторить проверку, вернуться и вставить другую ссылку или всё равно продолжить (Easy VLESS запустится, но трафик через этот сервер работать не будет)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Repeat test"
+msgstr "Повторить проверку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Continue anyway"
+msgstr "Всё равно продолжить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Choose what goes through the server. Rules can be changed later in Rule Manage, their targets on Main."
+msgstr "Выберите, что пойдёт через сервер. Правила можно изменить позже в «Правилах», их цели — на Главной."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Recommended: Russian sites direct, everything else through VLESS"
+msgstr "Рекомендуется: российские сайты напрямую, остальное через VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Not available: the prepared rules could not be read (%s)."
+msgstr "Недоступно: не удалось прочитать готовые правила (%s)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "no rule templates"
+msgstr "нет шаблонов правил"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Everything through VLESS"
+msgstr "Всё через VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "All traffic of the router and of the LAN devices goes through %s."
+msgstr "Весь трафик роутера и устройств LAN идёт через %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Keep the current routing"
+msgstr "Оставить текущую маршрутизацию"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The routing is not changed; the server is only added to Node List. Current routing:"
+msgstr "Маршрутизация не меняется; сервер только добавляется в «Список узлов». Текущая маршрутизация:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "on"
+msgstr "вкл."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "off"
+msgstr "выкл."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Check the settings. Apply saves them, checks the configuration with sing-box and starts Easy VLESS."
+msgstr "Проверьте настройки. «Применить» сохранит их, проверит конфигурацию в sing-box и запустит Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Proxied domains"
+msgstr "Проксируемые домены"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "%s through the server"
+msgstr "%s через сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Direct domains"
+msgstr "Домены напрямую"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "the provider's DNS (automatic)"
+msgstr "DNS провайдера (автоматически)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "DNS of LAN devices"
+msgstr "DNS устройств LAN"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "redirected to the router (dnsmasq → sing-box)"
+msgstr "перенаправляется на роутер (dnsmasq → sing-box)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not redirected"
+msgstr "не перенаправляется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "LAN devices"
+msgstr "Устройства LAN"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "transparent proxy (%s)"
+msgstr "прозрачный прокси (%s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not proxied"
+msgstr "не проксируются"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The router itself"
+msgstr "Сам роутер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "proxied"
+msgstr "проксируется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Ports"
+msgstr "Порты"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "DNS and forwarding keep their current values; change them later in Settings."
+msgstr "DNS и перенаправление сохраняют текущие значения; их можно изменить позже в «Настройках»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "What Apply does"
+msgstr "Что делает «Применить»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "the routing is not changed"
+msgstr "маршрутизация не меняется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "writes the routing above (Rule Manage / Main)"
+msgstr "записывает маршрутизацию выше («Правила» / Главная)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "checks the configuration with sing-box; nothing starts if it is invalid"
+msgstr "проверяет конфигурацию в sing-box; при ошибке ничего не запускается"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "turns the main switch on: Easy VLESS starts now and on every boot"
+msgstr "включает главный переключатель: Easy VLESS запускается сейчас и при каждой загрузке"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "starts sing-box, the firewall rules (nft table inet easy_vless) and the DNS forwarding"
+msgstr "запускает sing-box, правила межсетевого экрана (таблица nft inet easy_vless) и перенаправление DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "An earlier Apply of the wizard did not finish. Apply saves a new copy first; to go back to the configuration from before that earlier Apply, restore it now."
+msgstr "Предыдущее применение мастера не завершилось. «Применить» сначала сохранит новую копию; чтобы вернуться к конфигурации, которая была до того применения, восстановите её сейчас."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Save a copy of the current configuration"
+msgstr "Сохранить копию текущей конфигурации"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Save the configuration"
+msgstr "Сохранить конфигурацию"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Check the configuration (sing-box check)"
+msgstr "Проверить конфигурацию (sing-box check)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Start Easy VLESS"
+msgstr "Запустить Easy VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Check the service status"
+msgstr "Проверить состояние службы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Finish the setup"
+msgstr "Завершить настройку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The configuration from before Apply was restored; Easy VLESS was not left half-configured."
+msgstr "Конфигурация, которая была до применения, восстановлена; Easy VLESS не остался настроенным наполовину."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Restoring the previous configuration failed: %s"
+msgstr "Не удалось восстановить прежнюю конфигурацию: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Go back to change the server or the routing, or try Apply again."
+msgstr "Вернитесь, чтобы изменить сервер или маршрутизацию, или попробуйте применить ещё раз."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Try again"
+msgstr "Повторить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Apply failed: the current configuration could not be saved. Nothing was changed."
+msgstr "Не удалось применить: не удалось сохранить текущую конфигурацию. Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The configuration is invalid: Easy VLESS was not started."
+msgstr "Конфигурация неверна: Easy VLESS не запущен."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS did not start in time."
+msgstr "Easy VLESS не запустился вовремя."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS did not start (the start was rolled back)."
+msgstr "Easy VLESS не запустился (запуск отменён)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS started, but its status is not complete (process: %s, firewall table: %s)."
+msgstr "Easy VLESS запущен, но его состояние неполное (процесс: %s, таблица межсетевого экрана: %s)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "running"
+msgstr "работает"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS runs, but the setup could not be marked as finished."
+msgstr "Easy VLESS работает, но не удалось отметить настройку как завершённую."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Apply failed: the configuration could not be saved."
+msgstr "Не удалось применить: не удалось сохранить конфигурацию."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Apply failed: %s"
+msgstr "Не удалось применить: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "OK"
+msgstr "ОК"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "no answer"
+msgstr "нет ответа"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "%s did not answer (HTTP %s). Check the Server Test on Main."
+msgstr "%s не ответил (HTTP %s). Проверьте сервер на Главной («Проверка соединения»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS is set up and running."
+msgstr "Easy VLESS настроен и работает."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Russian sites direct, everything else through VLESS"
+msgstr "Российские сайты напрямую, остальное через VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Service"
+msgstr "Служба"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Connection"
+msgstr "Соединение"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Main shows the status and the connection test, Node List manages servers and subscriptions, Rule Manage the rules."
+msgstr "На Главной — состояние и проверка соединения, в «Списке узлов» — серверы и подписки, в «Правилах» — правила."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Open Main"
+msgstr "Открыть Главную"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Open Node List"
+msgstr "Открыть «Список узлов»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Open Rule Manage"
+msgstr "Открыть «Правила»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Finish"
+msgstr "Готово"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Leave the setup?"
+msgstr "Выйти из настройки?"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Nothing was applied: Easy VLESS and your settings stay as they are."
+msgstr "Ничего не применено: Easy VLESS и ваши настройки остаются как были."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server \"%s\" added in this setup is removed again."
+msgstr "Сервер «%s», добавленный в этой настройке, будет удалён."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "You can open the setup again at any time: Services → Easy VLESS → Setup Wizard."
+msgstr "Мастер можно открыть снова в любой момент: Службы → Easy VLESS → Мастер настройки."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Continue setup"
+msgstr "Продолжить настройку"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Leave setup"
+msgstr "Выйти из настройки"
+
+#: luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Setup Wizard"
+msgstr "Мастер настройки"

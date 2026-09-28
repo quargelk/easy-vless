@@ -162,14 +162,19 @@ method_urltest_node() {
 		;;
 		*)
 			json_add_boolean "ok" 0
+			# error_kind + error_detail (curl's own message): LuCI shows a
+			# translated explanation; "error" stays the English text.
+			detail="$errmsg"; kind="other"
 			case "$exitcode" in
-				7|97) errmsg="The temporary sing-box instance for this server did not start (${errmsg:-no SOCKS listener}). Run Check config for details." ;;
-				28) errmsg="Connection timeout (${errmsg:-no response within 5 s})." ;;
-				35) errmsg="TLS handshake through the VLESS connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it (${errmsg})." ;;
-				52|56) errmsg="No answer through the VLESS connection: the server is unreachable or rejected the connection (${errmsg})." ;;
+				7|97) kind="no_instance"; errmsg="The temporary sing-box instance for this server did not start (${errmsg:-no SOCKS listener}). Run Check config for details." ;;
+				28) kind="timeout"; errmsg="Connection timeout (${errmsg:-no response within 5 s})." ;;
+				35) kind="tls"; errmsg="TLS handshake through the VLESS connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it (${errmsg})." ;;
+				52|56) kind="no_answer"; errmsg="No answer through the VLESS connection: the server is unreachable or rejected the connection (${errmsg})." ;;
 			esac
-			[ -n "$errmsg" ] || errmsg="Probe failed (HTTP ${code:-none})."
+			[ -n "$errmsg" ] || { kind="probe"; errmsg="Probe failed (HTTP ${code:-none})."; }
 			json_add_string "error" "$errmsg"
+			json_add_string "error_kind" "$kind"
+			json_add_string "error_detail" "$detail"
 		;;
 	esac
 	json_dump

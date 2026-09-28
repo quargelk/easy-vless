@@ -59,7 +59,7 @@ return view.extend({
 	renderTests: function() {
 		const rows = this.targetRows();
 		if (!rows.length)
-			return E('p', {}, E('em', {}, _('No main node selected.')));
+			return E('p', {}, E('em', {}, _('No node selected yet: choose one above in Node, or add a server in Node List.')));
 
 		const byTarget = {};
 		rows.forEach(function(r) { (byTarget[r.target] = byTarget[r.target] || []).push(r.entry); });
@@ -83,7 +83,7 @@ return view.extend({
 				}
 				else if (r) {
 					result = ev.badge(_('FAIL'), 'bad');
-					detail = r.error || '';
+					detail = ev.testError(r);
 				}
 				else
 					detail = E('em', {}, _('not tested'));
@@ -138,11 +138,11 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.Flag, 'enabled', _('Main switch'),
-			_('Save & Apply starts Easy VLESS when on (after a successful sing-box check) and stops it when off.'));
+			_('On: Save & Apply checks the configuration with sing-box and starts Easy VLESS (also after every reboot). Off: Save & Apply stops it.'));
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'node', _('Node'),
-			_('<b>Main Router</b>: traffic is routed by the rules of Rule Manage; each rule gets a target below, unmatched traffic goes to Default. A server or URL Test group here sends all traffic to it.'));
+			_('Where the traffic goes. <b>Main Router</b>: by the rules of Rule Manage - each rule gets a target below, everything else goes to Default. A server or a URL Test group: all traffic goes to it.'));
 		o.value('', _('-- select --'));
 		o.value(ROUTER, _('Main Router (shunt)'));
 		ev.servers().forEach(function(srv) { o.value(srv['.name'], ev.label(srv['.name'])); });
@@ -181,7 +181,7 @@ return view.extend({
 			o.depends('node', ROUTER);
 			o.rawhtml = true;
 			o.cfgvalue = function() {
-				return '<em>' + _('No rules yet. Create rules in <a href="%s">Rule Manage</a> (prepared RUSSIA / PROXY / QUIC / UDP rules are available there); their entries then appear here.').format(L.url('admin/services/easy_vless/rules')) + '</em>';
+				return '<em>' + _('No rules yet. Create rules in <a href="%s">Rule Manage</a> (the prepared RUSSIA / PROXY / QUIC / UDP rules are added there with one click); each rule then gets a target here.').format(L.url('admin/services/easy_vless/rules')) + '</em>';
 			};
 		}
 
@@ -200,7 +200,7 @@ return view.extend({
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Easy VLESS')),
-				E('div', { 'class': 'cbi-map-descr' }, _('VLESS client based on sing-box. Main switch, main node and shunt targets here; servers and URL Test groups in Node List; rule conditions in Rule Manage; DNS and forwarding in Settings.')),
+				E('div', { 'class': 'cbi-map-descr' }, _('Easy VLESS sends the traffic of the router and of your LAN devices through a VLESS server (sing-box). Here: service status, the main switch and where the traffic goes. Servers and subscriptions are in Node List, routing rules in Rule Manage, DNS and forwarding in Settings.')),
 				wstate.needed ? E('div', { 'class': 'alert-message warning', 'id': 'ev-setup-note' }, [
 					E('p', {}, _('Easy VLESS is not set up yet. The setup wizard adds your VLESS server, tests it, sets up the routing and starts Easy VLESS.')),
 					E('a', { 'class': 'btn cbi-button cbi-button-action', 'href': L.url('admin/services/easy_vless/wizard'),
@@ -211,7 +211,7 @@ return view.extend({
 				E('div', { 'class': 'cbi-section' }, [
 					E('h3', {}, _('Connection test')),
 					E('p', { 'class': 'cbi-value-description' },
-						_('Server Test: a temporary sing-box instance with the server\'s VLESS outbound fetches %s over HTTPS (not a TCP connect). It works whether Easy VLESS is running or not; results are for the saved configuration.').format(ev.SERVER_TEST_URL)),
+						_('Server Test opens %s over HTTPS through the server (a real request through a temporary sing-box instance, not only a TCP connect). It works whether Easy VLESS is running or not and uses the saved server settings.').format(ev.SERVER_TEST_URL)),
 					E('div', { 'id': 'ev-main-tests' }, this.renderTests()),
 					E('button', { 'class': 'btn cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'handleTest', null) }, _('Test all targets'))
 				])

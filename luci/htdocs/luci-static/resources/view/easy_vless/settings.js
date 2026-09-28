@@ -36,10 +36,10 @@ return view.extend({
 
 		/* ===== DNS ===== */
 		s = m.section(form.NamedSection, 'global', 'global', _('DNS'),
-			_('sing-box DNS: direct DNS for direct traffic, remote DNS (through the proxy) for proxied domains. dnsmasq forwards to sing-box while Easy VLESS runs.'));
+			_('While Easy VLESS runs, dnsmasq forwards DNS queries to sing-box: domains that go direct are resolved by the direct DNS, proxied domains by the remote DNS through the server. The defaults work for most setups.'));
 		s.addremove = false;
 
-		o = s.option(form.ListValue, 'direct_dns_protocol', _('Direct DNS'));
+		o = s.option(form.ListValue, 'direct_dns_protocol', _('Direct DNS'), _('DNS for domains that go direct. Auto uses the DNS servers of your internet provider.'));
 		o.value('auto', _('Auto (ISP / dnsmasq upstream)'));
 		o.value('udp', 'UDP');
 		o.value('tcp', 'TCP');
@@ -51,13 +51,13 @@ return view.extend({
 		o.datatype = 'or(ipaddr,ipaddrport(1))';
 		o.rmempty = false;
 
-		o = s.option(form.ListValue, 'direct_dns_query_strategy', _('Direct Query Strategy'));
+		o = s.option(form.ListValue, 'direct_dns_query_strategy', _('Direct DNS: IP versions'), _('UseIP: IPv4 and IPv6 addresses, UseIPv4 / UseIPv6: only that version.'));
 		o.value('UseIP');
 		o.value('UseIPv4');
 		o.value('UseIPv6');
 		o.default = 'UseIP';
 
-		o = s.option(form.ListValue, 'remote_dns_protocol', _('Remote DNS Protocol'));
+		o = s.option(form.ListValue, 'remote_dns_protocol', _('Remote DNS protocol'), _('DNS for proxied domains, queried through the server.'));
 		o.value('tcp', 'TCP');
 		o.value('udp', 'UDP');
 		o.value('tls', 'DoT (TLS)');
@@ -72,7 +72,7 @@ return view.extend({
 		o.datatype = 'or(ipaddr,ipaddrport(1))';
 		o.default = '1.1.1.1';
 
-		o = s.option(form.Value, 'remote_dns_doh', _('Remote DNS DoH'),
+		o = s.option(form.Value, 'remote_dns_doh', _('Remote DNS (DoH URL)'),
 			_('URL, optionally followed by a bootstrap IP: <code>https://dns.google/dns-query,8.8.8.8</code>.'));
 		o.depends('remote_dns_protocol', 'doh');
 		o.value('https://1.1.1.1/dns-query');
@@ -88,7 +88,7 @@ return view.extend({
 			_('Public IP sent to the DNS server as client location (RFC 7871). Empty = off.'));
 		o.datatype = 'ipaddr';
 
-		o = s.option(form.ListValue, 'remote_dns_detour', _('Remote DNS Outbound'));
+		o = s.option(form.ListValue, 'remote_dns_detour', _('Remote DNS route'), _('How the remote DNS server is reached.'));
 		o.value('remote', _('Remote (through the proxy)'));
 		o.value('direct', _('Direct'));
 		o.default = 'remote';
@@ -97,13 +97,13 @@ return view.extend({
 			_('Answer proxied domains with fake IPs (faster, the real resolution happens on the server).'));
 		o.rmempty = false;
 
-		o = s.option(form.ListValue, 'remote_dns_query_strategy', _('Remote Query Strategy'));
+		o = s.option(form.ListValue, 'remote_dns_query_strategy', _('Remote DNS: IP versions'), _('UseIPv4 (default): proxied domains get IPv4 addresses only.'));
 		o.value('UseIP');
 		o.value('UseIPv4');
 		o.value('UseIPv6');
 		o.default = 'UseIPv4';
 
-		o = s.option(form.TextValue, 'dns_hosts', _('Domain Override'),
+		o = s.option(form.TextValue, 'dns_hosts', _('Static DNS entries'),
 			_('One per line: <code>domain IP</code>, e.g. <code>dns.google 8.8.8.8</code>.'));
 		o.rows = 4;
 
@@ -114,29 +114,29 @@ return view.extend({
 
 		/* ===== Forwarding ===== */
 		s = m.section(form.NamedSection, 'global_forwarding', 'global_forwarding', _('Forwarding'),
-			_('nftables (fw4) transparent proxy: table inet easy_vless, TPROXY + fwmark routing. Ports: single ports and ranges <code>from:to</code>, comma separated, e.g. <code>21,80,443,1000:2000</code>.'));
+			_('Which connections of LAN devices and of the router are redirected into Easy VLESS (nftables transparent proxy). Ports: single ports and ranges <code>from:to</code>, comma separated, e.g. <code>21,80,443,1000:2000</code>.'));
 		s.addremove = false;
 
-		o = s.option(form.Value, 'tcp_no_redir_ports', _('TCP No Redir Ports'),
+		o = s.option(form.Value, 'tcp_no_redir_ports', _('TCP ports never proxied'),
 			_('Never proxied (highest priority). Empty = none.'));
 		o.validate = portsValidate;
 
-		o = s.option(form.Value, 'udp_no_redir_ports', _('UDP No Redir Ports'),
+		o = s.option(form.Value, 'udp_no_redir_ports', _('UDP ports never proxied'),
 			_('Never proxied (highest priority). Empty = none.'));
 		o.validate = portsValidate;
 
-		o = s.option(form.Value, 'tcp_redir_ports', _('TCP Redir Ports'));
+		o = s.option(form.Value, 'tcp_redir_ports', _('TCP ports to redirect'), _('Only connections to these ports enter Easy VLESS routing; other ports go direct.'));
 		o.value('1:65535', _('All'));
 		o.value('22,25,53,80,143,443,465,587,853,993,995,8080,8443', _('Common ports'));
 		o.default = '1:65535';
 		o.validate = portsValidate;
 
-		o = s.option(form.Value, 'udp_redir_ports', _('UDP Redir Ports'));
+		o = s.option(form.Value, 'udp_redir_ports', _('UDP ports to redirect'), _('Only connections to these ports enter Easy VLESS routing; other ports go direct.'));
 		o.value('1:65535', _('All'));
 		o.default = '1:65535';
 		o.validate = portsValidate;
 
-		o = s.option(form.ListValue, 'tcp_proxy_way', _('TCP Proxy Way'));
+		o = s.option(form.ListValue, 'tcp_proxy_way', _('TCP redirect method'), _('TPROXY (default) keeps the original destination for sing-box; REDIRECT is a fallback for special cases.'));
 		o.value('tproxy', 'TPROXY');
 		o.value('redirect', 'REDIRECT');
 		o.default = 'tproxy';
@@ -145,7 +145,7 @@ return view.extend({
 			_('Experimental. Make sure your server supports IPv6.'));
 		o.rmempty = false;
 
-		o = s.option(form.Flag, 'accept_icmp', _('Hijacking ICMP (PING)'));
+		o = s.option(form.Flag, 'accept_icmp', _('Answer ping locally'), _('Ping (ICMP) cannot go through VLESS: with this on, a ping to a proxied address is answered by the router itself.'));
 		o.rmempty = false;
 
 		/* ===== Other ===== */
@@ -183,7 +183,7 @@ return view.extend({
 		s = m.section(form.NamedSection, 'global_delay', 'global_delay');
 		s.addremove = false;
 
-		o = s.option(form.Value, 'start_delay', _('Delay Start'), _('Seconds to wait after boot before starting.'));
+		o = s.option(form.Value, 'start_delay', _('Start delay (s)'), _('Seconds to wait after boot before starting.'));
 		o.datatype = 'uinteger';
 		o.placeholder = '1';
 
@@ -192,6 +192,7 @@ return view.extend({
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Settings')),
+				E('div', { 'class': 'cbi-map-descr' }, _('DNS and forwarding of Easy VLESS. The defaults work for most setups. Changes apply with Save & Apply (the service restarts).')),
 				ev.renderHeader(m, status, null, true),
 				mapEl
 			]);
