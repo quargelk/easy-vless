@@ -120,7 +120,7 @@ ubus -t 5 call uci configs
 if [ "${SKIP_INSTALL:-0}" != "1" ]; then
 	opkg update
 	command -v fw4 >/dev/null 2>&1 || opkg install firewall4
-	sh "$W/scripts/install.sh" --check
+	sh "$W/scripts/install.sh" --check --local "$DIST"
 	sh "$W/scripts/install.sh" --local "$DIST" --replace-dnsmasq --yes --no-start
 fi
 

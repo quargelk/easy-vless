@@ -6,9 +6,16 @@ name: Build easy-vless packages
 #                  metadata, local-path/credential scan
 #   build          real OpenWrt 24.10.3 mediatek/filogic SDK build of all
 #                  packages, per-package content checks, dist/ + SHA256SUMS
-#   runtime-tests  OpenWrt 24.10.3 x86-64 rootfs containers: scripts/install.sh
-#                  with the built packages, tests/subscription-formats-test.sh,
-#                  installer/bootstrap scenarios (tests/ci/installer-tests.sh)
+#   runtime-tests  matrix of real OpenWrt rootfs images (x86-64 24.10.3 and
+#                  24.10.8, armsr-armv8 aarch64, armsr-armv7 and mvebu
+#                  cortex-a9 ARMv7, malta-be MIPS big-endian; non-x86 through
+#                  QEMU user emulation): scripts/install.sh with the built
+#                  packages, tests/subscription-formats-test.sh, installer,
+#                  system requirement and bootstrap scenarios
+#                  (tests/ci/installer-tests.sh)
+#   ubifs          real kernel flash stack (nandsim NAND, UBI, UBIFS) with
+#                  the TR3000 v1 layout: flash detection, UBIFS compression
+#                  of a worst-case installation (tests/ci/ubifs-tests.sh)
 #   release        only for tags v*: tag/version check, draft GitHub Release
 #                  with the dist/ files (the only job with contents: write)
 #
@@ -779,12 +786,104 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # One job per real OpenWrt rootfs image (release/target/architecture) and
+  # test group. x86-64 runs natively; the other architectures run their own
+  # OpenWrt userland through QEMU user emulation (binfmt) - the binaries,
+  # package feeds and "uname -m" are those of that architecture, nothing is
+  # renamed or faked. The Easy VLESS packages are the same "all" packages
+  # built above for every target.
   runtime-tests:
     needs: build
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: ${{ matrix.target.platform == '' && 60 || 150 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: x86-64 24.10.3,               image: "openwrt/rootfs:x86-64-24.10.3",         platform: "",                                arch: x86_64 }
+          - { name: x86-64 24.10.8,               image: "openwrt/rootfs:x86-64-24.10.8",         platform: "",                                arch: x86_64 }
+          - { name: armsr-armv8 aarch64 24.10.3,  image: "openwrt/rootfs:armsr-armv8-24.10.3",    platform: "linux/aarch64_generic",           arch: aarch64_generic }
+          - { name: armsr-armv7 ARMv7 24.10.3,    image: "openwrt/rootfs:armsr-armv7-24.10.3",    platform: "linux/arm_cortex-a15_neon-vfpv4", arch: arm_cortex-a15_neon-vfpv4 }
+          - { name: mvebu-cortexa9 ARMv7 24.10.3, image: "openwrt/rootfs:mvebu-cortexa9-24.10.3", platform: "linux/arm_cortex-a9_vfpv3-d16",   arch: arm_cortex-a9_vfpv3-d16 }
+          - { name: malta-be MIPS BE 24.10.3,     image: "openwrt/rootfs:malta-be-24.10.3",       platform: "linux/mips_24kc",                 arch: mips_24kc }
+        group:
+          - { name: runtime+sysreq, runtime: "1", scenarios: "preflight sysreq ram128 ram256 smallspace tr3000" }
+          - { name: install,        runtime: "0", scenarios: "online rollback upgrade" }
+          - { name: bootstrap,      runtime: "0", scenarios: "bootstrap tlsboot" }
+    name: runtime-tests (${{ matrix.target.name }}, ${{ matrix.group.name }})
     env:
-      OPENWRT_ROOTFS_IMAGE: openwrt/rootfs:x86-64-24.10.3
+      OPENWRT_ROOTFS_IMAGE: ${{ matrix.target.image }}
+      DOCKER_PLATFORM: ${{ matrix.target.platform }}
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+
+      - name: QEMU user emulation (binfmt) for ${{ matrix.target.arch }}
+        if: matrix.target.platform != ''
+        uses: docker/setup-qemu-action@v3
+
+      - name: Pull the rootfs image and verify its architecture
+        run: |
+          set -euo pipefail
+          p=()
+          [ -z "${DOCKER_PLATFORM}" ] || p=(--platform "${DOCKER_PLATFORM}")
+          docker pull "${p[@]}" "${OPENWRT_ROOTFS_IMAGE}"
+          out="$(docker run --rm "${p[@]}" "${OPENWRT_ROOTFS_IMAGE}" /bin/ash -c '. /etc/openwrt_release; echo "$DISTRIB_RELEASE $DISTRIB_TARGET $DISTRIB_ARCH $(uname -m)"')"
+          echo "OpenWrt release/target/architecture/kernel: $out"
+          file_out="$(docker create "${p[@]}" "${OPENWRT_ROOTFS_IMAGE}")"
+          docker cp "$file_out:/bin/busybox" /tmp/busybox >/dev/null 2>&1 || docker cp -L "$file_out:/bin/busybox" /tmp/busybox
+          docker rm "$file_out" >/dev/null
+          file -L /tmp/busybox
+          echo "$out" | grep -q " ${{ matrix.target.arch }} " || { echo "unexpected architecture"; exit 1; }
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: easy-vless-dist
+          path: dist
+
+      - name: Installer + subscription tests
+        if: matrix.group.runtime == '1'
+        run: |
+          set -euo pipefail
+          # The packages are architecture "all"; the container uses the
+          # official feeds of its own release/target/architecture, so
+          # install.sh exercises the real opkg flow (sing-box-tiny from the
+          # feed, dnsmasq -> dnsmasq-full replacement, SHA256SUMS).
+          # There is no procd in the container (service restarts only warn):
+          # the script starts ubusd and rpcd itself, verifies ubus/uci/rpcd
+          # before and after the installation, then runs the tests unchanged.
+          p=()
+          [ -z "${DOCKER_PLATFORM}" ] || p=(--platform "${DOCKER_PLATFORM}")
+          docker run --rm "${p[@]}" -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" \
+            /bin/ash /w/tests/ci/openwrt-runtime-tests.sh
+
+      - name: Installer scenarios (${{ matrix.group.scenarios }})
+        run: |
+          set -euo pipefail
+          # preflight:  detection, checks, clock, CA/TLS, feeds of another
+          #             architecture/target/release, download/checksum errors
+          # sysreq:     flash/RAM layouts of real routers (TR3000 v1, 64 MB
+          #             NAND, 16 MB NOR, x86 disks, 128/256 MB RAM)
+          # ram128/256: real memory limit of the container (docker --memory)
+          # smallspace: real 16 MB /overlay (tmpfs) -> refused
+          # tr3000:     TR3000 v1 layout, real 40 MB /overlay -> installs
+          # online:     HTTPS release download, repeated run, architecture of
+          #             every installed package, preserved config
+          # rollback:   dnsmasq-full failure and interruption -> old dnsmasq back
+          # upgrade:    published 0.5.1-r1 -> 0.5.1-r2 (from GitHub) -> this
+          #             build, uninstall, reinstall
+          # bootstrap:  README manual opkg bootstrap and install.sh --bootstrap-opkg
+          # tlsboot:    no TLS backend / CA bundle / opkg: offline install from a
+          #             signature-verified local copy of the base feed
+          bash tests/ci/installer-tests.sh dist ${{ matrix.group.scenarios }}
+
+  # Real flash: the runner kernel simulates NAND chips (nandsim) with the
+  # TR3000 v1 partition layout, UBI and a real UBIFS overlay.
+  ubifs:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
     steps:
       - name: Checkout easy-vless
         uses: actions/checkout@v4
@@ -795,35 +894,20 @@ jobs:
           name: easy-vless-dist
           path: dist
 
-      - name: Installer + subscription tests on OpenWrt 24.10.3 (x86-64 rootfs container)
+      - name: Kernel modules (nandsim, UBI, UBIFS) and mtd-utils
         run: |
           set -euo pipefail
-          # The packages are architecture "all"; the container uses the
-          # official x86-64 feeds of the same OpenWrt release, so install.sh
-          # exercises the real opkg flow (sing-box-tiny from the feed,
-          # dnsmasq -> dnsmasq-full replacement, SHA256SUMS verification).
-          # There is no procd in the container (service restarts only warn):
-          # the script starts ubusd and rpcd itself, verifies ubus/uci/rpcd
-          # before and after the installation, then runs the tests unchanged.
-          docker run --rm -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" \
-            /bin/ash /w/tests/ci/openwrt-runtime-tests.sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mtd-utils "linux-modules-extra-$(uname -r)"
+          uname -r
+          for m in nandsim ubi ubifs; do modinfo -n "$m"; done
 
-      - name: Installer / bootstrap tests (fresh OpenWrt 24.10.3 rootfs container per scenario)
-        run: |
-          set -euo pipefail
-          # preflight: checks, clock, CA/TLS, feeds, download and checksum errors
-          # online:    HTTPS release download, repeated run, preserved config
-          # rollback:  dnsmasq-full failure and interruption -> old dnsmasq back
-          # bootstrap: README manual opkg bootstrap and install.sh --bootstrap-opkg
-          # tlsboot:   no TLS backend / CA bundle / opkg: offline install from a
-          #            signature-verified local copy of the base feed, then install
-          # upgrade:   published v0.5.1 (0.5.1-r1, from GitHub) -> this build,
-          #            uninstall, reinstall
-          bash tests/ci/installer-tests.sh dist
+      - name: UBIFS / flash tests
+        run: sudo bash tests/ci/ubifs-tests.sh dist
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [checks, build, runtime-tests]
+    needs: [checks, build, runtime-tests, ubifs]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:

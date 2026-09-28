@@ -7,14 +7,33 @@
 # every scenario of tests/ci/installer-scenarios.sh in its own fresh
 # openwrt/rootfs container (default bridge network: nothing runs in the
 # runner's network namespace).
+#
+# OPENWRT_ROOTFS_IMAGE selects the OpenWrt release/target (default x86-64
+# 24.10.3); DOCKER_PLATFORM (e.g. linux/aarch64_generic) runs an image of
+# another architecture through QEMU user emulation (binfmt, registered by
+# docker/setup-qemu-action): the real OpenWrt userland of that architecture.
+# Some scenarios run with real limits of the container: RAM (--memory) or a
+# small /overlay (size-limited tmpfs).
 
 set -euo pipefail
 W="$(cd "$(dirname "$0")/../.." && pwd)"
 DIST="$(cd "${1:?usage: $0 <dist dir> [scenario...]}" && pwd)"
 shift
 SCENARIOS=("$@")
-[ ${#SCENARIOS[@]} -gt 0 ] || SCENARIOS=(preflight online rollback bootstrap tlsboot upgrade)
+[ ${#SCENARIOS[@]} -gt 0 ] || SCENARIOS=(preflight sysreq ram128 ram256 smallspace tr3000 online rollback bootstrap tlsboot upgrade)
 IMAGE="${OPENWRT_ROOTFS_IMAGE:-openwrt/rootfs:x86-64-24.10.3}"
+PLATFORM=()
+[ -z "${DOCKER_PLATFORM:-}" ] || PLATFORM=(--platform "$DOCKER_PLATFORM")
+
+# docker options of a scenario: real resource limits of the container
+scenario_opts() {
+	case "$1" in
+		ram128) echo "--memory 128m --memory-swap 128m" ;;
+		ram256) echo "--memory 256m --memory-swap 256m" ;;
+		smallspace) echo "--tmpfs /overlay:size=16m" ;;
+		tr3000) echo "--tmpfs /overlay:size=40m" ;;
+	esac
+}
 T="$(mktemp -d)"
 GW="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')"
 V="$(sed -n 's/^EV_VERSION="\(.*\)"$/\1/p' "$W/scripts/install.sh")"
@@ -78,7 +97,8 @@ failed=()
 for sc in "${SCENARIOS[@]}"; do
 	echo
 	echo "################ scenario: $sc"
-	if docker run --rm \
+	# shellcheck disable=SC2046
+	if docker run --rm "${PLATFORM[@]}" $(scenario_opts "$sc") \
 		-v "$W:/w:ro" -v "$DIST:/dist:ro" -v "$T/ca.crt:/tls/ca.crt:ro" \
 		-e W=/w -e DIST=/dist -e TEST_CA=/tls/ca.crt \
 		-e SRV="https://$GW:8443" -e SRV_FUTURE="https://$GW:8444" \

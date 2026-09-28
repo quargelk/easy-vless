@@ -1,21 +1,30 @@
 #!/bin/sh
-# Easy VLESS installer for OpenWrt 24.10 (opkg, fw4/nftables).
+# Easy VLESS installer for OpenWrt 24.10 (opkg, fw4/nftables), any target and
+# architecture that the official OpenWrt feeds provide sing-box-tiny for.
 # https://github.com/quargelk/easy-vless
 #
 # A plain, readable shell script: download it, read it, then run it as root.
-#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.1-r2/install.sh
+#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.2/install.sh
 #   sh /tmp/install.sh --check          # only check the router, install nothing
 #   sh /tmp/install.sh                  # install
 #
+# The Easy VLESS packages are "Architecture: all" (shell/Lua/JS only); every
+# architecture-specific package (sing-box-tiny, dnsmasq-full, curl, kernel
+# modules, ...) comes from the official feeds configured on the router for its
+# own release, target and architecture (/etc/opkg/distfeeds.conf).
+#
 # What it does, in order (stops at the first error; nothing is changed before
-# step 5 has downloaded and verified every file):
-#   1. checks the router: root, OpenWrt release and architecture, required
-#      tools, system time (HTTPS certificates cannot be verified with a clock
-#      that is behind - a one-time NTP synchronisation is tried), TLS library
-#      and CA certificates for HTTPS, DNS, opkg, fw4/nftables, PassWall2 not
-#      running, free space; when opkg itself is missing on an OpenWrt 24.10.x
-#      router, it can bootstrap opkg from the official package archive of this
-#      release and architecture (--bootstrap-opkg or an interactive "y"; see
+# step 5 has downloaded and verified every file and checked the free space):
+#   1. detects and checks the router: root, OpenWrt release, target and
+#      architecture (/etc/openwrt_release against the running kernel), RAM
+#      (>= 256 MB) and flash/storage size (>= 128 MB), required tools, system
+#      time (HTTPS certificates cannot be verified with a clock that is
+#      behind - a one-time NTP synchronisation is tried), TLS library and CA
+#      certificates for HTTPS, DNS, opkg, the package feeds (release, target
+#      and architecture of this router), fw4/nftables, PassWall2 not running;
+#      when opkg itself is missing on an OpenWrt 24.10.x router, it can
+#      bootstrap opkg from the official package archive of this release and
+#      architecture (--bootstrap-opkg or an interactive "y"; see
 #      bootstrap_opkg below);
 #   2. opkg update (the feeds Easy VLESS needs must work; optional feeds such
 #      as routing/telephony may fail with a warning);
@@ -29,7 +38,10 @@
 #      downloaded first and a backup of /etc/config/dhcp; an error or an
 #      interruption (Ctrl-C) during the replacement restores the old dnsmasq;
 #   5. downloads the Easy VLESS packages of this release and verifies them
-#      against the release SHA256SUMS (or uses --local DIR);
+#      against the release SHA256SUMS (or uses --local DIR); resolves every
+#      package that will be installed (with all dependencies, from the feeds
+#      of this architecture) and checks the free space on the overlay and in
+#      /tmp against their worst-case installed size - also with --check;
 #   6. installs easy-vless, easy-vless-sing-box and luci-app-easy-vless
 #      (existing /etc/config/easy_vless is kept; opkg treats it as a conffile);
 #   7. enables the service; restarts it only when it is already switched on
@@ -43,18 +55,45 @@
 
 set -u
 
-EV_VERSION="0.5.1-r2"
-EV_TAG="v0.5.1-r2"
+EV_VERSION="0.5.2-r1"
+EV_TAG="v0.5.2"
 EV_REPO="quargelk/easy-vless"
 EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 # Release date of this installer: a system clock before this date is certainly
 # wrong, and TLS certificates cannot be verified with it.
-EV_MIN_DATE="2026-09-27"
+EV_MIN_DATE="2026-09-28"
 EV_PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
 SINGBOX_MIN="1.12.0"
 SUPPORTED_RELEASE="24.10"
 OPKG_ARCHIVE="https://archive.openwrt.org/releases"
 OPKG_STATUS="/usr/lib/opkg/status"
+
+# System requirements.
+# RAM: 256 MB installed. The kernel reports less as MemTotal (its own code
+# and memory reserved for Wi-Fi offload/firmware: a 256 MB router shows about
+# 225-250 MB), so a MemTotal of at least 200 MB is accepted as 256 MB; a
+# 128 MB router shows about 120 MB and is refused.
+MIN_RAM_MB=256
+MIN_RAM_KB=204800
+# Flash/storage: at least 128 MB in total (NAND/NOR chip or disk; "128 MB"
+# media hold 128,000,000 bytes = 125000 KiB or more). The space actually
+# needed is checked separately against the free space of the overlay.
+MIN_STORAGE_MB=128
+MIN_STORAGE_KB=125000
+# Free space: worst-case installed size of every new package plus this
+# reserve (opkg database and control files, configuration, subscription and
+# resource data written at run time).
+SPACE_RESERVE_KB=2048
+# UBIFS (LZO) and JFFS2 (LZMA) compress every file. Measured on the sing-box
+# binary (4 KiB blocks as UBIFS compresses them): 55 % of the uncompressed
+# size with zlib-1, LZO a little more; the CI job "ubifs" verifies the value
+# on a real UBIFS. Other filesystems (ext4, f2fs, tmpfs) are counted 1:1.
+COMPRESSED_FS_PERCENT=75
+# Test hook: hardware information (/proc/meminfo, /proc/mounts, /proc/mtd,
+# /sys/class/mtd, /sys/class/ubi, /sys/block, kernel log in dmesg.txt) is read
+# below this directory instead of / (tests/ci/sysroot/*: layouts of real
+# devices that a container cannot have).
+SYS="${EV_TEST_SYSROOT:-}"
 
 OPT_CHECK=0
 OPT_LOCAL=""
@@ -82,8 +121,10 @@ Easy VLESS ${EV_VERSION} installer for OpenWrt ${SUPPORTED_RELEASE}.x (opkg, fw4
 
 Usage: sh install.sh [options]
 
-  --check            only run the checks (router, time, HTTPS, opkg feeds,
-                     sing-box, dnsmasq); install and change nothing
+  --check            only run the checks (router, RAM, flash, time, HTTPS,
+                     opkg feeds, sing-box, dnsmasq, release files, free
+                     space); install and change nothing (files are only
+                     downloaded to a temporary directory in /tmp)
   --local DIR        install the Easy VLESS .ipk files and SHA256SUMS from DIR
                      instead of downloading them from GitHub
   --base-url URL     download the release files from URL (an https:// mirror
@@ -95,8 +136,10 @@ Usage: sh install.sh [options]
   --bootstrap-opkg   allow installing opkg itself when it is missing
                      (OpenWrt ${SUPPORTED_RELEASE}.x, from ${OPKG_ARCHIVE})
   --force            continue on an OpenWrt release other than ${SUPPORTED_RELEASE}.x,
-                     on an architecture mismatch, or without an opkg package
-                     database (not tested)
+                     on an architecture mismatch or unknown architecture,
+                     with package feeds of another release/target/architecture,
+                     or without an opkg package database (not tested; the
+                     RAM, flash and free space requirements still apply)
   -h, --help         show this help
 
 Optional packages (easy-vless-xray, easy-vless-geodata) are never installed
@@ -305,23 +348,201 @@ fetch() {
 
 # ---------------------------------------------------------------- preflight
 
+# arch_family ARCH: CPU family of an OpenWrt package architecture
+# (DISTRIB_ARCH, e.g. aarch64_cortex-a53, arm_cortex-a7_neon-vfpv4,
+# mipsel_24kc, x86_64); empty for an architecture this installer does not know
+arch_family() {
+	case "$1" in
+		aarch64_*|aarch64) echo aarch64 ;;
+		arm_*) echo arm ;;
+		x86_64) echo x86_64 ;;
+		i386_*) echo i386 ;;
+		mips64_*|mips64el_*) echo mips64 ;;
+		mips_*|mipsel_*) echo mips ;;
+		riscv64_*) echo riscv64 ;;
+		loongarch64_*) echo loongarch64 ;;
+		powerpc64_*) echo powerpc64 ;;
+		powerpc_*) echo powerpc ;;
+		arc_*) echo arc ;;
+	esac
+}
+
 # arch_matches_kernel: DISTRIB_ARCH is plausible for the running kernel
 # (a copied /etc/openwrt_release or a wrong image must not make the
-# installer fetch binaries for another CPU)
+# installer fetch binaries for another CPU). uname -m: aarch64, armv7l,
+# x86_64, i686, mips (both byte orders), mips64, riscv64, ppc, ...
 arch_matches_kernel() {
 	local m
 	m="$(uname -m 2>/dev/null)"
-	case "$DISTRIB_ARCH" in
-		aarch64*) [ "$m" = "aarch64" ] ;;
+	case "$(arch_family "$DISTRIB_ARCH")" in
+		aarch64) [ "$m" = "aarch64" ] ;;
+		arm) case "$m" in arm*|aarch64) return 0 ;; esac; return 1 ;;
 		x86_64) [ "$m" = "x86_64" ] ;;
-		i386*) case "$m" in i?86) return 0 ;; esac; return 1 ;;
-		arm_*) case "$m" in arm*|aarch64) return 0 ;; esac; return 1 ;;
-		mips64*) [ "$m" = "mips64" ] ;;
-		mips*) [ "$m" = "mips" ] ;;
-		riscv64*) [ "$m" = "riscv64" ] ;;
-		loongarch64*) [ "$m" = "loongarch64" ] ;;
-		*) return 0 ;;
+		i386) case "$m" in i?86) return 0 ;; esac; return 1 ;;
+		mips64) [ "$m" = "mips64" ] ;;
+		mips) [ "$m" = "mips" ] ;;
+		riscv64) [ "$m" = "riscv64" ] ;;
+		loongarch64) [ "$m" = "loongarch64" ] ;;
+		powerpc64) [ "$m" = "ppc64" ] ;;
+		powerpc) [ "$m" = "ppc" ] ;;
+		arc) case "$m" in arc*) return 0 ;; esac; return 1 ;;
+		*) return 1 ;;
 	esac
+}
+
+# ---------------------------------------------------------------- system detection
+
+# kernel_log: kernel messages (boot messages included while they are still
+# in the ring buffer)
+kernel_log() {
+	if [ -n "$SYS" ]; then cat "$SYS/dmesg.txt" 2>/dev/null; return 0; fi
+	dmesg 2>/dev/null
+}
+
+# fs_space MOUNTPOINT: "<size KB> <available KB>" of the filesystem (POSIX
+# df output; the last line, so a long device name cannot shift the fields)
+fs_space() {
+	{ df -Pk "$1" 2>/dev/null || df -k "$1" 2>/dev/null; } | awk 'NR > 1 { s = $(NF - 4); a = $(NF - 2) } END { if (s != "") print s, a }'
+}
+
+# detect_ram: RAM_KB = MemTotal, or the memory limit of this process' control
+# group when that is lower (a container or a memory-limited service)
+detect_ram() {
+	local cg lim
+	RAM_KB="$(awk '$1 == "MemTotal:" { print $2; exit }' "$SYS/proc/meminfo" 2>/dev/null)"
+	RAM_HOW="MemTotal"
+	[ -z "$SYS" ] || return 0
+	cg="$(sed -n 's/^0::\(.*\)$/\1/p' /proc/self/cgroup 2>/dev/null | head -n1)"
+	[ -n "$cg" ] || return 0
+	lim="$(cat "/sys/fs/cgroup${cg%/}/memory.max" 2>/dev/null)"
+	case "$lim" in ""|*[!0-9]*) return 0 ;; esac
+	lim="$(awk -v b="$lim" 'BEGIN { printf "%d", b / 1024 }')"
+	if [ -z "$RAM_KB" ] || [ "$lim" -lt "$RAM_KB" ]; then
+		RAM_KB="$lim"
+		RAM_HOW="memory limit of the control group"
+	fi
+}
+
+# detect_overlay: mount point (/overlay, or / without an overlay), device and
+# filesystem type of the filesystem that packages are installed to
+detect_overlay() {
+	OVL_MNT=/
+	awk '$2 == "/overlay" { f = 1 } END { exit !f }' "$SYS/proc/mounts" 2>/dev/null && OVL_MNT=/overlay
+	OVL_DEV="$(awk -v m="$OVL_MNT" '$2 == m { d = $1 } END { print d }' "$SYS/proc/mounts" 2>/dev/null)"
+	OVL_FS="$(awk -v m="$OVL_MNT" '$2 == m { t = $3 } END { print t }' "$SYS/proc/mounts" 2>/dev/null)"
+	set -- $(fs_space "$OVL_MNT")
+	OVL_SIZE_KB="${1:-}"
+	OVL_FREE_KB="${2:-}"
+}
+
+# flash_chip_kb: size of the flash chip printed by the NAND, SPI-NAND and
+# SPI-NOR drivers at boot ("... 128 MiB, block size: 128 KiB ...",
+# "nand: 128 MiB, SLC, ...", "spi-nor spi0.0: w25q128 (16384 Kbytes)")
+flash_chip_kb() {
+	kernel_log | awk '
+		{ kb = 0 }
+		match($0, /[0-9]+ MiB, (block size|SLC|MLC|erase size)/) { kb = substr($0, RSTART, RLENGTH) + 0; kb *= 1024 }
+		match($0, /\([0-9]+ Kbytes\)/) { kb = substr($0, RSTART + 1, RLENGTH - 1) + 0 }
+		kb > max { max = kb }
+		END { if (max > 0) print max }'
+}
+
+# ubi_chip_kb N: size of the flash chip under UBI device N. UBI reserves
+# eraseblocks for bad blocks in proportion to the WHOLE chip
+# (CONFIG_MTD_UBI_BEB_LIMIT: 20 per 1024 eraseblocks of the chip), so
+# (reserved_for_bad + bad_peb_count) * 1024 / 20 eraseblocks is the chip size
+# (a lower bound when UBI could not reserve all of them).
+ubi_chip_kb() {
+	local d="$SYS/sys/class/ubi/ubi$1" rsv bad mtd peb
+	rsv="$(cat "$d/reserved_for_bad" 2>/dev/null)"
+	bad="$(cat "$d/bad_peb_count" 2>/dev/null)"
+	mtd="$(cat "$d/mtd_num" 2>/dev/null)"
+	peb="$(cat "$SYS/sys/class/mtd/mtd$mtd/erasesize" 2>/dev/null)"
+	[ -n "$rsv" ] && [ -n "$bad" ] && [ -n "$peb" ] || return 0
+	awk -v r="$rsv" -v b="$bad" -v e="$peb" 'BEGIN { if (r + b > 0) printf "%d\n", (r + b) * 1024 / 20 * e / 1024 }'
+}
+
+# mtd_extent_kb: the flash chip is at least as large as its partition layout
+# (end of the last partition; the chip size itself is not in sysfs)
+mtd_extent_kb() {
+	local m size off max=0
+	for m in "$SYS"/sys/class/mtd/mtd*; do
+		case "$m" in *ro) continue ;; esac
+		size="$(cat "$m/size" 2>/dev/null)" || continue
+		off="$(cat "$m/offset" 2>/dev/null)"
+		size="$(awk -v s="$size" -v o="${off:-0}" 'BEGIN { printf "%d", (s + o) / 1024 }')"
+		[ "$size" -gt "$max" ] && max="$size"
+	done
+	[ "$max" -gt 0 ] && echo "$max"
+}
+
+# disk_kb DEVICE: size of the whole disk holding DEVICE (sda2 -> sda,
+# mmcblk0p2 -> mmcblk0); without DEVICE: the largest real disk
+disk_kb() {
+	local dev="${1#/dev/}" b name
+	for b in "$SYS"/sys/block/*; do
+		name="${b##*/}"
+		case "$name" in loop*|ram*|zram*|mtdblock*|ubiblock*|dm-*|nbd*|sr*|fd*|md*|mmcblk*boot*|mmcblk*rpmb) continue ;; esac
+		if [ -n "$dev" ] && [ "$dev" != "$name" ] && [ ! -e "$b/$dev" ]; then continue; fi
+		cat "$b/size" 2>/dev/null
+	done | awk '$1 + 0 > m { m = $1 + 0 } END { if (m > 0) printf "%d
+", m / 2 }'
+}
+
+# detect_storage: STORAGE_KB (total flash/disk size), STORAGE_HOW (source),
+# STORAGE_EXACT (1: measured, 0: only a lower bound is known)
+detect_storage() {
+	local kb n
+	STORAGE_KB=""; STORAGE_HOW=""; STORAGE_EXACT=0
+	case "$OVL_FS" in
+		ubifs|jffs2)
+			kb="$(flash_chip_kb)"
+			if [ -n "$kb" ]; then
+				STORAGE_KB="$kb"; STORAGE_HOW="flash chip (kernel log)"; STORAGE_EXACT=1; return 0
+			fi
+			if [ "$OVL_FS" = ubifs ]; then
+				n="$(echo "$OVL_DEV" | sed -n 's#^\(/dev/\)\{0,1\}ubi\([0-9][0-9]*\).*#\2#p')"
+				[ -n "$n" ] || n=0
+				kb="$(ubi_chip_kb "$n")"
+				if [ -n "$kb" ]; then
+					STORAGE_KB="$kb"; STORAGE_HOW="flash chip (UBI bad-block reserve)"; STORAGE_EXACT=1; return 0
+				fi
+			fi
+			kb="$(mtd_extent_kb)"
+			[ -n "$kb" ] && { STORAGE_KB="$kb"; STORAGE_HOW="MTD partition layout (lower bound)"; }
+			;;
+		*)
+			kb="$(disk_kb "$OVL_DEV")"
+			[ -n "$kb" ] || kb="$(disk_kb "")"
+			[ -n "$kb" ] && { STORAGE_KB="$kb"; STORAGE_HOW="disk"; STORAGE_EXACT=1; }
+			;;
+	esac
+	return 0
+}
+
+mb() { awk -v k="${1:-0}" 'BEGIN { printf "%.1f", k / 1024 }'; }
+size_or_unknown() { if [ -n "$1" ]; then echo "$(mb "$1") MB"; else echo "unknown"; fi; }
+
+# check_system_requirements: RAM and flash size (before anything is changed
+# or downloaded)
+check_system_requirements() {
+	detect_ram
+	detect_overlay
+	detect_storage
+	say "RAM: $(size_or_unknown "$RAM_KB") (${RAM_HOW}), required: ${MIN_RAM_MB} MB"
+	say "flash/storage: $(size_or_unknown "$STORAGE_KB")${STORAGE_HOW:+ (${STORAGE_HOW})}, required: ${MIN_STORAGE_MB} MB"
+	say "overlay: ${OVL_MNT} (${OVL_FS:-?} on ${OVL_DEV:-?}), size $(size_or_unknown "$OVL_SIZE_KB"), free $(size_or_unknown "$OVL_FREE_KB")"
+	[ -n "$RAM_KB" ] || die "cannot read the RAM size (MemTotal in /proc/meminfo)"
+	if [ "$RAM_KB" -lt "$MIN_RAM_KB" ]; then
+		die "not enough RAM: $(mb "$RAM_KB") MB (${RAM_HOW}), required: ${MIN_RAM_MB} MB installed RAM (the kernel reports at least $((MIN_RAM_KB / 1024)) MB on such a router). Nothing was changed."
+	fi
+	if [ -z "$STORAGE_KB" ]; then
+		warn "the flash/storage size could not be determined - only the free space is checked"
+	elif [ "$STORAGE_KB" -lt "$MIN_STORAGE_KB" ]; then
+		[ "$STORAGE_EXACT" = "1" ] && die "flash/storage too small: $(mb "$STORAGE_KB") MB (${STORAGE_HOW}), required: at least ${MIN_STORAGE_MB} MB. Nothing was changed."
+		warn "flash size: at least $(mb "$STORAGE_KB") MB (${STORAGE_HOW}; the chip size is no longer in the kernel log) - only the free space is checked"
+	fi
+	[ -n "$OVL_FREE_KB" ] || die "cannot determine the free space of ${OVL_MNT} (df)"
 }
 
 sync_clock() {
@@ -683,6 +904,168 @@ opkg_update() {
 	grep -qs '^option check_signature' /etc/opkg.conf || warn "opkg signature checking (option check_signature) is not enabled in /etc/opkg.conf"
 }
 
+# check_feeds: the official package feeds in /etc/opkg/distfeeds.conf must be
+# the ones of this router (release, target, architecture): feeds of another
+# architecture give binaries for another CPU, of another target or release
+# kernel modules that do not load (typical after a sysupgrade that kept an
+# old distfeeds.conf, or a file copied from another router). Feeds with other
+# URLs (mirrors with another layout, custom feeds) are not judged here; the
+# dependency resolution in check_space verifies what they offer.
+check_feeds() {
+	local name url rel rest bad=""
+	[ -s /etc/opkg/distfeeds.conf ] || die "/etc/opkg/distfeeds.conf is missing or empty - configure the official package feeds of OpenWrt ${DISTRIB_RELEASE} first"
+	while read -r name url; do
+		case "$url" in
+			*/releases/*/packages/*|*/releases/*/targets/*) ;;
+			*) continue ;;
+		esac
+		rel="${url#*/releases/}"; rest="${rel#*/}"; rel="${rel%%/*}"
+		[ "$rel" = "$DISTRIB_RELEASE" ] || bad="${bad}
+  ${name}: release ${rel}, this router runs ${DISTRIB_RELEASE} (${url})"
+		case "$rest" in
+			packages/*)
+				rest="${rest#packages/}"
+				[ "${rest%%/*}" = "$DISTRIB_ARCH" ] || bad="${bad}
+  ${name}: architecture ${rest%%/*}, this router is ${DISTRIB_ARCH} (${url})"
+				;;
+			targets/*)
+				rest="${rest#targets/}"
+				case "$rest/" in
+					"${DISTRIB_TARGET}/"*) ;;
+					*) bad="${bad}
+  ${name}: target $(echo "$rest" | cut -d/ -f1-2), this router is ${DISTRIB_TARGET} (${url})" ;;
+				esac
+				;;
+		esac
+	done <<EOF
+$(awk '$1 ~ /^src/ && NF >= 3 { print $2, $3 }' /etc/opkg/distfeeds.conf)
+EOF
+	if [ -n "$bad" ]; then
+		echo "[easy-vless] package feeds in /etc/opkg/distfeeds.conf that do not belong to this router:${bad}" >&2
+		[ "$OPT_FORCE" = "1" ] || die "the package feeds are not the ones of OpenWrt ${DISTRIB_RELEASE} ${DISTRIB_TARGET} ${DISTRIB_ARCH} - packages for another CPU/kernel would be installed. Restore the original /etc/opkg/distfeeds.conf of this firmware (or use --force)"
+		warn "package feeds of another release/target/architecture - continuing because of --force"
+	fi
+	say "package feeds: OpenWrt ${DISTRIB_RELEASE}, target ${DISTRIB_TARGET}, architecture ${DISTRIB_ARCH} - ok"
+}
+
+# ---------------------------------------------------------------- free space
+
+# lists_stream: the downloaded package indexes of all feeds
+lists_stream() {
+	local l
+	for l in "$(opkg_lists_dir)"/*; do
+		[ -f "$l" ] || continue
+		case "$l" in *.sig) continue ;; esac
+		{ gzip -dc "$l" 2>/dev/null || cat "$l"; }
+		echo
+	done
+}
+
+# resolve_new NAME...: every package that "opkg install NAME..." adds to this
+# router - NAMEs and their dependencies, recursively, from the feed indexes -
+# that is not installed yet. Output: "<package> <architecture> <installed
+# size in bytes> <download size in bytes>" per package, "MISSING <dependency>"
+# for a dependency that no feed provides.
+resolve_new() {
+	{ cat "$OPKG_STATUS" 2>/dev/null; echo; echo "@@LISTS@@"; lists_stream; } | awk -v want="$*" '
+		function clean(s) { gsub(/\([^)]*\)/, "", s); gsub(/[ \t]/, "", s); return s }
+		function flush(   n, a, i, q) {
+			if (p == "") return
+			if (!lists) {
+				if (st ~ / installed$/) {
+					have[p] = 1
+					n = split(prv, a, ","); for (i = 1; i <= n; i++) { q = clean(a[i]); if (q != "") have[q] = 1 }
+				}
+			} else if (!(p in dep)) {
+				dep[p] = d; arch[p] = ar; isz[p] = sz + 0; dsz[p] = dl + 0; pv[p] = prv
+				n = split(prv, a, ","); for (i = 1; i <= n; i++) { q = clean(a[i]); if (q != "" && !(q in prov)) prov[q] = p }
+			}
+			p = ""
+		}
+		$0 == "@@LISTS@@" { flush(); lists = 1; next }
+		/^Package: / { flush(); p = $2; d = ""; prv = ""; sz = 0; dl = 0; st = ""; ar = ""; next }
+		/^Depends: / { d = substr($0, 10); next }
+		/^Provides: / { prv = substr($0, 11); next }
+		/^Installed-Size: / { sz = $2; next }
+		/^Size: / { dl = $2; next }
+		/^Architecture: / { ar = $2; next }
+		/^Status: / { st = $0; next }
+		END {
+			flush()
+			nq = split(want, q, " ")
+			for (h = 1; h <= nq; h++) {
+				na = split(q[h], alt, "|"); ok = 0
+				for (j = 1; j <= na; j++) { x = clean(alt[j]); if (x in have) { ok = 1; break } }
+				if (ok) continue
+				pick = ""
+				for (j = 1; j <= na && pick == ""; j++) { x = clean(alt[j]); if (x in dep) pick = x; else if (x in prov) pick = prov[x] }
+				if (pick == "") { print "MISSING", clean(alt[1]); continue }
+				if (pick in have) continue
+				have[pick] = 1
+				m = split(pv[pick], a, ","); for (k = 1; k <= m; k++) { x = clean(a[k]); if (x != "") have[x] = 1 }
+				print pick, arch[pick], isz[pick], dsz[pick]
+				m = split(dep[pick], a, ","); for (k = 1; k <= m; k++) if (a[k] ~ /[^ \t]/) q[++nq] = a[k]
+			}
+		}'
+}
+
+# ipk_control IPK FIELD: a field of the control file inside an .ipk
+ipk_control() {
+	local d="$WORKDIR/ctl.$$"
+	rm -rf "$d"; mkdir -p "$d" || return 1
+	tar -xzf "$1" -C "$d" ./control.tar.gz 2>/dev/null || tar -xzf "$1" -C "$d" 2>/dev/null || { rm -rf "$d"; return 1; }
+	tar -xzf "$d/control.tar.gz" -C "$d" 2>/dev/null
+	sed -n "s/^$2: //p" "$d/control" 2>/dev/null | head -n1
+	rm -rf "$d"
+}
+
+# check_space: resolve everything that this run installs (sing-box-tiny,
+# dnsmasq-full, the Easy VLESS packages and all their dependencies from the
+# feeds of this router) and compare the worst-case installed size with the
+# free space of the overlay; the downloads go to /tmp (RAM).
+check_space() {
+	local wants="" own_kb=0 p f dep sz res newkb dlkb n missing wrong need_kb margin_kb tmp_free fsnote=""
+	for p in $EV_PACKAGES; do
+		f="$PKGDIR/${p}_${EV_VERSION}_all.ipk"
+		sz="$(ipk_control "$f" Installed-Size)"
+		dep="$(ipk_control "$f" Depends)"
+		[ -n "$sz" ] || die "cannot read the control data of $(basename "$f")"
+		own_kb=$((own_kb + sz / 1024 + 1))
+		wants="$wants $(echo "$dep" | sed 's/ //g; s/,/ /g')"
+	done
+	# the packages Easy VLESS itself provides are not taken from the feeds
+	wants="$(for p in $wants; do case "$p" in easy-vless|easy-vless-sing-box|luci-app-easy-vless) ;; *) echo "$p" ;; esac; done)"
+	[ "$SB_ACTION" = "install" ] && wants="sing-box-tiny $wants"
+	# dnsmasq-full: installed in this run (or, with --check, proposed)
+	[ "$NEED_DNSMASQ" = "1" ] && wants="$wants dnsmasq-full"
+	# shellcheck disable=SC2086
+	res="$(resolve_new $wants)"
+	missing="$(echo "$res" | awk '$1 == "MISSING" { printf " %s", $2 }')"
+	[ -z "$missing" ] || die "dependencies not available in the package feeds of this router (${DISTRIB_ARCH}):${missing} - Easy VLESS cannot be installed on this architecture/firmware with the official feeds"
+	wrong="$(echo "$res" | awk -v a="$DISTRIB_ARCH" 'NF == 4 && $2 != a && $2 != "all" && $2 != "noarch" { printf " %s(%s)", $1, $2 }')"
+	[ -z "$wrong" ] || die "the package feeds offer packages for another architecture:${wrong}, this router is ${DISTRIB_ARCH}"
+	n="$(echo "$res" | awk 'NF == 4 { n++ } END { print n + 0 }')"
+	newkb="$(echo "$res" | awk 'NF == 4 { s += $3 } END { printf "%d", s / 1024 + 0.999 }')"
+	dlkb="$(echo "$res" | awk 'NF == 4 { s += $4 } END { printf "%d", s / 1024 + 0.999 }')"
+	[ "$n" = "0" ] || say "packages from the feeds (${DISTRIB_ARCH}) to install: $(echo "$res" | awk 'NF == 4 { printf "%s%s", sep, $1; sep = " " }')"
+	need_kb=$((newkb + own_kb))
+	case "$OVL_FS" in
+		ubifs|jffs2)
+			need_kb=$((need_kb * COMPRESSED_FS_PERCENT / 100))
+			fsnote=" (${OVL_FS} compresses: ${COMPRESSED_FS_PERCENT}% of the uncompressed $((newkb + own_kb)) KB counted)" ;;
+	esac
+	need_kb=$((need_kb + SPACE_RESERVE_KB))
+	margin_kb=$((OVL_FREE_KB - need_kb))
+	say "free space on ${OVL_MNT}: $(mb "$OVL_FREE_KB") MB, required: $(mb "$need_kb") MB${fsnote} = ${n} new packages ($(mb "$newkb") MB installed) + Easy VLESS ($(mb "$own_kb") MB) + reserve $(mb "$SPACE_RESERVE_KB") MB; margin: $(mb "$margin_kb") MB"
+	[ "$margin_kb" -ge 0 ] || die "not enough free space on ${OVL_MNT}: $(mb "$OVL_FREE_KB") MB free, $(mb "$need_kb") MB required (missing $(mb $((0 - margin_kb))) MB). Nothing was changed. Free space by removing unused packages, or use a router with more flash"
+	set -- $(fs_space /tmp)
+	tmp_free="${2:-}"
+	if [ -n "$tmp_free" ]; then
+		[ "$tmp_free" -ge $((dlkb + 2048)) ] || die "not enough free space in /tmp (RAM) for the downloads: $(mb "$tmp_free") MB free, $(mb $((dlkb + 2048))) MB required. Nothing was changed."
+		say "free space in /tmp: $(mb "$tmp_free") MB, downloads: $(mb "$dlkb") MB - ok"
+	fi
+}
+
 # ---------------------------------------------------------------- 1. checks
 say "Easy VLESS ${EV_VERSION} installer"
 
@@ -699,7 +1082,11 @@ case "${DISTRIB_RELEASE:-}" in
 		;;
 esac
 [ -n "${DISTRIB_ARCH:-}" ] || die "DISTRIB_ARCH is empty in /etc/openwrt_release"
-if ! arch_matches_kernel; then
+say "kernel: $(uname -m 2>/dev/null) $(uname -r 2>/dev/null), model: $(cat /tmp/sysinfo/model 2>/dev/null || echo unknown)"
+if [ -z "$(arch_family "$DISTRIB_ARCH")" ]; then
+	[ "$OPT_FORCE" = "1" ] || die "architecture ${DISTRIB_ARCH} is not supported by this installer. Use --force to try anyway (sing-box-tiny must exist in the official feed of this architecture)."
+	warn "unknown architecture ${DISTRIB_ARCH} - continuing because of --force"
+elif ! arch_matches_kernel; then
 	[ "$OPT_FORCE" = "1" ] || die "architecture mismatch: /etc/openwrt_release says ${DISTRIB_ARCH}, the kernel runs on $(uname -m). Use --force to continue anyway."
 	warn "architecture mismatch (${DISTRIB_ARCH} / $(uname -m)) - continuing because of --force"
 fi
@@ -712,11 +1099,14 @@ done
 
 WORKDIR="$(mktemp -d /tmp/easy-vless-install.XXXXXX)" || die "cannot create a temporary directory in /tmp"
 
+check_system_requirements
+
 check_clock
 check_https
 if [ -z "$OPT_LOCAL" ] && [ "${HTTPS_BROKEN:-0}" = "0" ]; then
 	check_dns "$(url_host "$EV_BASE_URL")"
 fi
+check_feeds
 
 if ! command -v opkg >/dev/null 2>&1; then
 	command -v apk >/dev/null 2>&1 && die "this OpenWrt uses apk instead of opkg - not supported by Easy VLESS ${EV_VERSION} (OpenWrt ${SUPPORTED_RELEASE}.x with opkg is required)"
@@ -749,7 +1139,6 @@ register_bootstrapped
 
 # ---------------------------------------------------------------- 3. sing-box
 SB_ACTION=""
-SB_SIZE=""
 SB_VER="$(singbox_version || true)"
 if [ -n "$SB_VER" ]; then
 	version_ge "$SB_VER" "$SINGBOX_MIN" || die "installed sing-box ${SB_VER} is older than ${SINGBOX_MIN}. Upgrade it (opkg upgrade sing-box or sing-box-tiny) and run this script again."
@@ -766,21 +1155,8 @@ else
 		*) die "sing-box-tiny in the feed is built for '${SB_FEED_ARCH}', this router is '${DISTRIB_ARCH}'" ;;
 	esac
 	version_ge "${SB_FEED_VER%%-*}" "$SINGBOX_MIN" || die "the feed offers sing-box-tiny ${SB_FEED_VER}, Easy VLESS needs >= ${SINGBOX_MIN}"
-	SB_SIZE="$(pkg_field sing-box-tiny Installed-Size)"
 	say "sing-box-tiny ${SB_FEED_VER} (${SB_FEED_ARCH}) found in the official feed"
 	SB_ACTION="install"
-fi
-
-# free space on the overlay (packages are installed there)
-FREE_KB="$(df -k /overlay 2>/dev/null | awk 'NR == 2 { print $4 }')"
-[ -n "$FREE_KB" ] || FREE_KB="$(df -k / 2>/dev/null | awk 'NR == 2 { print $4 }')"
-NEED_KB=3072
-[ -n "${SB_SIZE:-}" ] && NEED_KB=$(( NEED_KB + SB_SIZE / 1024 ))
-if [ -n "$FREE_KB" ]; then
-	say "free space: $((FREE_KB / 1024)) MB, needed about $((NEED_KB / 1024 + 1)) MB"
-	[ "$FREE_KB" -ge "$NEED_KB" ] || die "not enough free space on the overlay (${FREE_KB} KB free, about ${NEED_KB} KB needed)"
-else
-	warn "could not determine free space"
 fi
 
 # ---------------------------------------------------------------- 4. dnsmasq
@@ -816,15 +1192,9 @@ else
 	fi
 fi
 
-if [ "$OPT_CHECK" = "1" ]; then
-	say "check finished: no blocking problem found"
-	[ "$SB_ACTION" = "install" ] && say "  the installer will install sing-box-tiny from the official feed"
-	[ "$NEED_DNSMASQ" = "1" ] && say "  the installer will ask to replace dnsmasq with dnsmasq-full (or use --replace-dnsmasq)"
-	exit 0
-fi
-
 # ---------------------------------------------------------------- 5. packages
-# Every file is downloaded (or copied) and verified before anything is changed.
+# Every file is downloaded (or copied) and verified before anything is changed
+# (also with --check: the release files and the free space are checked too).
 PKGDIR="$WORKDIR/packages"
 mkdir -p "$PKGDIR" || die "cannot create $PKGDIR"
 if [ -n "$OPT_LOCAL" ]; then
@@ -858,6 +1228,15 @@ for p in $EV_PACKAGES; do
 	[ "$(sha256_of "$PKGDIR/$f")" = "$want" ] || die "checksum mismatch for ${f} (SHA256SUMS: ${want}, file: $(sha256_of "$PKGDIR/$f")) - nothing was installed"
 done
 say "Easy VLESS packages verified against SHA256SUMS"
+
+check_space
+
+if [ "$OPT_CHECK" = "1" ]; then
+	say "check finished: no blocking problem found (nothing was changed)"
+	[ "$SB_ACTION" = "install" ] && say "  the installer will install sing-box-tiny from the official feed"
+	[ "$NEED_DNSMASQ" = "1" ] && say "  the installer will ask to replace dnsmasq with dnsmasq-full (or use --replace-dnsmasq)"
+	exit 0
+fi
 
 # ---------------------------------------------------------------- 3b. sing-box
 if [ "$SB_ACTION" = "install" ]; then

@@ -6,7 +6,7 @@
 
 Easy VLESS прозрачно проксирует трафик роутера и LAN-устройств через VLESS-серверы. Он использует sing-box и поддерживает Reality, раздельное туннелирование с готовыми списками доменов, подписки (включая HAPP/HWID) и URL Test. Проект основан на PassWall2 и оставляет из него только то, что нужно для VLESS-клиента.
 
-**Текущая версия: 0.5.1-r2** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only**
+**Текущая версия: 0.5.2-r1** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only**
 
 Проект тестировался на **Cudy TR3000 v1** с **OpenWrt 24.10.3** (см. [Tested Hardware](#tested-hardware)).
 
@@ -15,7 +15,9 @@ Easy VLESS прозрачно проксирует трафик роутера �
 ## Содержание
 
 - [Возможности](#возможности)
-- [Требования](#требования)
+- [System Requirements](#system-requirements)
+- [Supported Architectures](#supported-architectures)
+- [Multi-Architecture Installation](#multi-architecture-installation)
 - [Установка](#установка)
   - [Файлы релиза и SHA256SUMS](#файлы-релиза-и-sha256sums)
   - [HTTPS на новом роутере](#https-на-новом-роутере)
@@ -53,34 +55,104 @@ Easy VLESS прозрачно проксирует трафик роутера �
 - Server Test (реальный HTTPS-запрос через сервер) и URL Test (группы с автоматическим выбором сервера)
 - LuCI-интерфейс: **Main**, **Node List**, **Rule Manage**, **Settings**
 
-## Требования
+## System Requirements
 
-| | |
+| | Минимум |
 |---|---|
+| RAM | **256 MB** установленной памяти |
+| Flash / storage | **128 MB** общего объёма (NAND/NOR-flash или диск) |
+| Свободное место | столько, сколько реально нужно для установки (см. ниже); для свежего Cudy TR3000 v1 — около 32 MB |
 | OpenWrt | **24.10.x** с менеджером пакетов `opkg` (OpenWrt с `apk` не поддерживается) |
 | Firewall | fw4 / nftables (стандарт для OpenWrt 24.10) |
-| Пакеты Easy VLESS | `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless` |
+| Пакеты Easy VLESS | `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless` (Architecture: `all`) |
 | VLESS engine | `sing-box-tiny` **>= 1.12.0** из официального репозитория пакетов OpenWrt (или полный `sing-box`) |
 | dnsmasq | `dnsmasq-full` (dnsmasq с поддержкой nftset), см. [dnsmasq](#dnsmasq) |
-| Место | около 3 МБ для пакетов Easy VLESS, плюс размер `sing-box-tiny` и зависимостей |
 | Сеть | интернет, рабочий DNS, **правильное системное время** (NTP), CA-сертификаты (`ca-bundle`) и TLS для `wget` (`libustream-mbedtls`); в стандартных образах OpenWrt 24.10 они есть, см. [HTTPS на новом роутере](#https-на-новом-роутере) |
 | Конфликты | PassWall2 должен быть остановлен |
 
-Пакеты Easy VLESS имеют архитектуру `all` (shell/Lua/JS, без бинарных файлов). Архитектурное ограничение одно: для архитектуры роутера в официальном репозитории OpenWrt должен быть `sing-box-tiny` версии 1.12.0 или новее. `install.sh --check` проверяет это до установки.
+`install.sh` проверяет требования до любых изменений. При несоответствии установка останавливается и показывает фактическое и требуемое значение; на роутере ничего не меняется.
+
+- **RAM** — `MemTotal` из `/proc/meminfo` (или лимит памяти cgroup, если он меньше). Ядро показывает меньше установленной памяти, потому что часть занимают само ядро и резерв под Wi-Fi/firmware: у роутера с 256 MB это примерно 225–250 MB. Поэтому как 256 MB принимается `MemTotal` от 200 MB; роутер со 128 MB (около 120 MB) отклоняется.
+- **Flash / storage** — общий объём носителя, а не размер раздела и не свободное место:
+  - для NAND/NOR — размер чипа из сообщения драйвера в журнале ядра (`spi-nand … 128 MiB`, `nand: 128 MiB`, `spi-nor … (16384 Kbytes)`);
+  - если сообщения там уже нет — из резерва UBI под bad blocks: UBI резервирует 20 блоков на каждые 1024 блока всего чипа;
+  - для x86 и роутеров с eMMC — размер диска.
+
+  Если известна только разметка MTD (нижняя граница), installer предупреждает и решает по свободному месту. Образ x86, записанный на диск 1:1 (120.5 MiB), меньше 128 MB: диск нужно увеличить.
+- **Свободное место** — не фиксированный порог, а реальный worst-case конкретной установки:
+  - installer разрешает по feed самого роутера все пакеты, которые поставит (`sing-box-tiny`, `dnsmasq-full`, зависимости Easy VLESS, всё, чего ещё нет), и суммирует их `Installed-Size` без сжатия;
+  - добавляет размер пакетов Easy VLESS и резерв 2 MB (база `opkg`, конфигурация, данные подписок и ресурсов);
+  - на UBIFS/JFFS2, которые сжимают файлы, считается 75 % этого объёма. На настоящем UBIFS worst-case установка TR3000 занимает меньше (проверяет CI job `ubifs`);
+  - загрузки идут в `/tmp` (RAM), там installer тоже проверяет место.
+
+  Installer показывает размер storage, размер и свободное место overlay, требуемое место, запас и причину отказа. Например, для свежего TR3000 v1 (UBI 64 MiB, около 40 MB свободно, LuCI в образе): 43 новых пакета, около 41 MB без сжатия, из них `sing-box-tiny` — 28.4 MB. С учётом сжатия UBIFS и резерва требуется около 32.4 MB, запас около 7.5 MB. При обновлении (`sing-box-tiny` и зависимости уже стоят) нужно около 2.5 MB.
 
 Не устанавливайте одновременно `sing-box` и `sing-box-tiny`: они предоставляют один и тот же virtual package `sing-box`.
+
+## Supported Architectures
+
+Пакеты Easy VLESS — **один универсальный набор с `Architecture: all`** (shell/Lua/JS, без бинарных файлов). Один и тот же `easy-vless_<version>_all.ipk` ставится на любой target и любую архитектуру OpenWrt 24.10.x.
+
+Архитектурно-зависимые пакеты (`sing-box-tiny`, `dnsmasq-full`, `curl`, `ip-full`, модули ядра `kmod-nft-*` и остальные зависимости) Easy VLESS не содержит. `opkg` берёт их из официальных feed самого роутера, то есть для его версии, target и архитектуры. Поэтому поддерживается любая архитектура, для которой в официальном feed OpenWrt 24.10 есть `sing-box-tiny` >= 1.12. В 24.10.3 это, например, `aarch64_*`, `arm_*`, `x86_64`, `i386_*`, `mips_*`, `mipsel_*`. Если пакета или зависимости для архитектуры нет, `install.sh` сообщает об этом до установки.
+
+Поддерживаемые версии OpenWrt: **24.10.x** (opkg). OpenWrt 25.x и snapshot используют `apk` и не поддерживаются.
+
+Проверено в CI на настоящих OpenWrt rootfs. Используются собственные userland, feed и `uname -m` каждой архитектуры: x86-64 работает нативно, остальные — через QEMU user emulation; строки архитектуры нигде не подменяются.
+
+| OpenWrt | Target | Architecture | Что проверяется |
+|---|---|---|---|
+| 24.10.3 | x86/64 | `x86_64` | все сценарии installer'а, subscription tests |
+| 24.10.8 | x86/64 | `x86_64` | все сценарии installer'а, subscription tests |
+| 24.10.3 | armsr/armv8 | `aarch64_generic` | все сценарии installer'а, subscription tests |
+| 24.10.3 | armsr/armv7 | `arm_cortex-a15_neon-vfpv4` | все сценарии installer'а, subscription tests |
+| 24.10.3 | mvebu/cortexa9 | `arm_cortex-a9_vfpv3-d16` | все сценарии installer'а, subscription tests |
+| 24.10.3 | malta/be | `mips_24kc` (big-endian) | все сценарии installer'а, subscription tests |
+| 24.10.3 | (ядро runner'а, nandsim) | UBI/UBIFS, разметка TR3000 v1 | размер flash, сжатие UBIFS, установка с UBIFS overlay |
+
+На реальном устройстве проверен Cudy TR3000 v1 (mediatek/filogic, `aarch64_cortex-a53`), см. [Tested Hardware](#tested-hardware). Для остальных архитектур реальные роутеры не тестировались: проверены userland, feed и installer в CI.
+
+## Multi-Architecture Installation
+
+Установка одинакова на всех архитектурах:
+
+```sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.2/install.sh
+sh /tmp/install.sh --check
+sh /tmp/install.sh
+```
+
+Installer сам определяет систему и показывает, что нашёл:
+
+```text
+[easy-vless] OpenWrt: 24.10.3 (r29087-d9c5716d1d), target mediatek/filogic, architecture aarch64_cortex-a53
+[easy-vless] kernel: aarch64 6.6.104, model: Cudy TR3000 v1
+[easy-vless] RAM: 481.6 MB (MemTotal), required: 256 MB
+[easy-vless] flash/storage: 128.0 MB (flash chip (UBI bad-block reserve)), required: 128 MB
+[easy-vless] overlay: /overlay (ubifs on /dev/ubi0_2), size 44.6 MB, free 40.1 MB
+[easy-vless] package feeds: OpenWrt 24.10.3, target mediatek/filogic, architecture aarch64_cortex-a53 - ok
+[easy-vless] packages from the feeds (aarch64_cortex-a53) to install: sing-box-tiny kmod-tun ...
+[easy-vless] free space on /overlay: 40.1 MB, required: 32.4 MB (ubifs compresses: ...) ...; margin: 7.7 MB
+```
+
+(Пример вывода; числа зависят от устройства и образа.)
+
+- **Версия, target, архитектура** — из `/etc/openwrt_release`. Архитектура сверяется с ядром (`uname -m`); неизвестная архитектура или несоответствие останавливают установку (`--force` — на свой риск).
+- **Feeds** — `/etc/opkg/distfeeds.conf` должен указывать на feed именно этой версии, target и архитектуры. Feed другой архитектуры дал бы бинарные файлы для другого CPU, другого target или версии — модули ядра, которые не загрузятся. Это типично после sysupgrade со старым `distfeeds.conf`. Такой feed отклоняется.
+- **Зависимости** — каждый пакет, который будет установлен, берётся из feed этой архитектуры, и его `Architecture` проверяется до установки.
+- **Bootstrap `opkg`** (`--bootstrap-opkg`) берёт `opkg`, `usign` и `openwrt-keyring` из `https://archive.openwrt.org/releases/<версия>/packages/<архитектура>/base/` этого роутера (или из `--local` с проверенным индексом), см. [Bootstrap opkg](#bootstrap-opkg).
+- **RAM, flash, свободное место** — см. [System Requirements](#system-requirements).
 
 ## Установка
 
 ### Файлы релиза и SHA256SUMS
 
-Готовые пакеты публикуются на странице [Releases](https://github.com/quargelk/easy-vless/releases). Релиз `v0.5.1-r2` содержит:
+Готовые пакеты публикуются на странице [Releases](https://github.com/quargelk/easy-vless/releases). Релиз `v0.5.2` содержит:
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.5.1-r2_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.5.1-r2_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.5.1-r2_all.ipk` | LuCI-интерфейс |
+| `easy-vless_0.5.2-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.5.2-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.5.2-r1_all.ipk` | LuCI-интерфейс |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 всех файлов выше |
 
@@ -148,7 +220,7 @@ date
 `install.sh` — обычный shell-скрипт, который можно прочитать перед запуском:
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.1-r2/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.5.2/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -161,7 +233,7 @@ sh /tmp/install.sh
 2. выполняет `opkg update`. Feeds, нужные Easy VLESS (core, kmods, base, packages, luci), обязаны работать; сбой остальных (routing, telephony, собственные) даёт только предупреждение;
 3. оставляет установленный `sing-box`/`sing-box-tiny` >= 1.12.0 или готовит установку `sing-box-tiny` из официального репозитория OpenWrt (подпись репозитория и checksum пакета проверяет `opkg`);
 4. если `dnsmasq` без nftset, предлагает замену на `dnsmasq-full` и выполняет её только после подтверждения, см. [dnsmasq](#dnsmasq);
-5. скачивает `SHA256SUMS` и пакеты Easy VLESS по прямым URL тега `v0.5.1-r2` (или берёт их из `--local`) и проверяет каждый пакет по `SHA256SUMS`;
+5. скачивает `SHA256SUMS` и пакеты Easy VLESS по прямым URL тега `v0.5.2` (или берёт их из `--local`) и проверяет каждый пакет по `SHA256SUMS`;
 6. устанавливает `sing-box-tiny`, при необходимости заменяет `dnsmasq`, затем устанавливает `easy-vless`, `easy-vless-sing-box`, `luci-app-easy-vless`;
 7. включает автозапуск; перезапускает сервис, только если Main switch уже включён (новую установку запускают из LuCI после добавления сервера);
 8. показывает итоговое состояние.
@@ -186,8 +258,8 @@ sh /tmp/install.sh
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_0.5.1-r2_all.ipk easy-vless-sing-box_0.5.1-r2_all.ipk luci-app-easy-vless_0.5.1-r2_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.5.1-r2/$f"
+for f in SHA256SUMS easy-vless_0.5.2-r1_all.ipk easy-vless-sing-box_0.5.2-r1_all.ipk luci-app-easy-vless_0.5.2-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.5.2/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -225,9 +297,9 @@ cd / && rm -rf /tmp/opkg-bootstrap
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.5.1-r2_all.ipk
-opkg install ./easy-vless-sing-box_0.5.1-r2_all.ipk
-opkg install ./luci-app-easy-vless_0.5.1-r2_all.ipk
+opkg install ./easy-vless_0.5.2-r1_all.ipk
+opkg install ./easy-vless-sing-box_0.5.2-r1_all.ipk
+opkg install ./luci-app-easy-vless_0.5.2-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
