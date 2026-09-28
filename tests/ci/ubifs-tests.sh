@@ -153,7 +153,9 @@ run() { # run DESCRIPTION EXPECTED_RC PATTERN ARGS...
 	rc=$?
 	set -e
 	sed 's/^/    | /' "$T/out" | grep -E "RAM|flash|overlay|free space|ERROR|WARNING|check finished|installed" || true
-	if { [ "$rc_want" = 0 ] && [ "$rc" = 0 ] || [ "$rc_want" != 0 ] && [ "$rc" != 0 ]; } && grep -qE -e "$pat" "$T/out"; then ok "$d"; else bad "$d (rc=$rc, expected /$pat/)"; tail -n 30 "$T/out"; fi
+	local rc_ok=0
+	if [ "$rc_want" = 0 ]; then [ "$rc" = 0 ] && rc_ok=1; else [ "$rc" != 0 ] && rc_ok=1; fi
+	if [ "$rc_ok" = 1 ] && grep -qE -e "$pat" "$T/out"; then ok "$d"; else bad "$d (rc=$rc, expected /$pat/)"; tail -n 30 "$T/out"; fi
 }
 echo "######## install.sh with the TR3000 v1 flash as /overlay (LuCI installed like in the release image)"
 run "flash detected as 128 MB, UBIFS overlay, --check passes" 0 \
