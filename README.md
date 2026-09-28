@@ -659,7 +659,7 @@ Storage: ~20 MB
 - Поддерживается только протокол VLESS; узлы других типов в подписках пропускаются.
 - Поддерживается только OpenWrt 24.10.x с `opkg`; OpenWrt с `apk` не поддерживается.
 - На реальном устройстве проверен только Cudy TR3000 v1 (`aarch64_cortex-a53`). Остальные архитектуры проверены в CI на настоящих OpenWrt rootfs (ARM и MIPS — через QEMU user emulation).
-- Запуск службы (sing-box, nftables TPROXY, ip rule) в CI проверяется только на x86-64: контейнер OpenWrt с `NET_ADMIN`, procd как менеджер служб (не PID 1), настоящий VLESS-сервер во втором контейнере. Под QEMU user emulation nftables не работает (нет netlink netfilter), поэтому на ARM/MIPS эти проверки помечаются SKIP с причиной. First Run Wizard в браузере проверяется на x86-64; на реальном роутере 0.6.0 ещё не проверялся.
+- Запуск службы (sing-box, nftables TPROXY, ip rule) в CI проверяется только на x86-64: контейнер OpenWrt с `NET_ADMIN`, procd как менеджер служб (не PID 1), настоящий VLESS-сервер во втором контейнере. QEMU user emulation не эмулирует netlink netfilter (nftables) и `setsockopt(SO_MARK)` (`routing_mark` sing-box), поэтому на ARM/MIPS запуск службы и успешный Server Test / URL Test помечаются SKIP с конкретной причиной из лога; неудачный Server Test, импорт, первый запуск, копия и восстановление конфигурации проверяются и там. First Run Wizard в браузере проверяется на x86-64; на реальном роутере 0.6.0 ещё не проверялся.
 - Нужен `dnsmasq-full` (nftset); без него сервис не запускается.
 - JSON-подписки (sing-box JSON) — **experimental**. Их покрывают автоматические тесты на подготовленных примерах, но с реальными провайдерами они проверены мало.
 - Clash YAML подписки не покрыты автоматическими тестами репозитория.
