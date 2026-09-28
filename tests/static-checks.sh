@@ -106,13 +106,17 @@ for f in proxy.txt russia.txt; do
 done
 
 echo "== screenshots"
-for img in main node-list rule-manage add-subscription connection-test settings-dns settings-forwarding wizard; do
+for img in main node-list subscriptions add-subscription rule-manage connection-test settings-dns settings-forwarding settings-advanced wizard-1 wizard-3 wizard-5 wizard-7; do
 	f="docs/images/${img}.png"
 	if [ -s "$f" ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
 		ok "screenshot $f"
 	else
 		bad "screenshot missing or not a PNG: $f"
 	fi
+done
+# no unused (stale) images: every tracked file in docs/images is shown in README.md
+for f in $(tracked 'docs/images/*'); do
+	grep -qF "($f)" README.md || bad "docs/images file not used in README.md: $f"
 done
 
 echo "== README, documentation and LICENSE"

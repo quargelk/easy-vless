@@ -1,9 +1,12 @@
 # Easy VLESS — техническая документация
 
-Подробности для тех, кому мало [README](../README.md): установка без installer'а и без интернета на роутере, что именно проверяет installer, архитектуры, пакеты, тесты и сборка.
+Для разработчиков и опытных пользователей. Как пользоваться Easy VLESS — в [README](../README.md); здесь — устройство, конфигурация, installer, ручная и офлайн-установка, пакеты, тесты и сборка.
 
 ## Содержание
 
+- [Устройство](#устройство)
+- [Конфигурация UCI](#конфигурация-uci)
+- [Структура репозитория](#структура-репозитория)
 - [Файлы релиза и SHA256SUMS](#файлы-релиза-и-sha256sums)
 - [Системные требования подробно](#системные-требования-подробно)
 - [Архитектуры](#архитектуры)
@@ -16,6 +19,54 @@
 - [Подготовленные ресурсы](#подготовленные-ресурсы)
 - [Тесты](#тесты)
 - [Сборка](#сборка)
+
+## Устройство
+
+Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до VLESS-клиента на sing-box, и собственный интерфейс LuCI.
+
+| Компонент | Файлы на роутере | Роль |
+|---|---|---|
+| служба | `/etc/init.d/easy_vless` → `/usr/share/easy_vless/app.sh` | запуск/остановка, генерация конфигурации, DNS (dnsmasq), ip rule/route |
+| nftables | `/usr/share/easy_vless/nftables.sh` | таблица `inet easy_vless` (fw4 include): TPROXY/REDIRECT, наборы адресов, DNS redirect |
+| конфигурация sing-box | `/usr/lib/lua/luci/easy_vless/util_sing-box.lua` (пакет `easy-vless-sing-box`) | outbounds VLESS, группы urltest, маршрутизация по правилам, DNS |
+| подписки | `/usr/share/easy_vless/subscribe.lua` | загрузка, разбор форматов, импорт VLESS-узлов, HAPP/HWID |
+| проверки | `/usr/share/easy_vless/test.sh`, `clash_api.lua` | Server Test / URL Test во временном экземпляре sing-box; результаты групп через Clash API |
+| интерфейс | `/www/luci-static/resources/view/easy_vless/*.js`, `easy_vless/common.js` | страницы LuCI (JavaScript) |
+| rpcd-плагин | `/usr/libexec/rpcd/luci.easy_vless` | ubus-объект `luci.easy_vless`: status, check, start, stop, import, subscribe, urltest_node, groups, group_test, resources, wizard_state, wizard |
+| ресурсы | `/usr/share/easy_vless/resources/` | манифест и списки доменов готовых правил |
+
+Рабочие файлы запущенной службы (конфигурация sing-box, журналы) лежат в `/tmp/etc/easy_vless/`. Запуск всегда начинается с `sing-box check`: неверная конфигурация не запускается и сетевые настройки не меняет. Трафик самого sing-box к серверу помечается `routing_mark` и в TPROXY не возвращается.
+
+## Конфигурация UCI
+
+`/etc/config/easy_vless` (схема PassWall2; значения по умолчанию — `files/0_default_config`):
+
+| Секция | Назначение |
+|---|---|
+| `global` | `enabled` (главный переключатель), `node` (что запускается: сервер, группа или `main_router`), `client_proxy`, `localhost_proxy`, DNS (`direct_dns_*`, `remote_dns_*`, `remote_fakedns`, `dns_redirect`, `dns_hosts`), журнал, `clash_api_port`, `wizard_completed` |
+| `global_forwarding` | порты (`tcp_redir_ports`, `udp_redir_ports`, `*_no_redir_ports`), `tcp_proxy_way`, `ipv6_tproxy`, `accept_icmp` |
+| `global_delay` | `start_delay` |
+| `nodes`, `protocol=vless` | VLESS-сервер (`address`, `port`, `uuid`, `transport`, `tls`, `reality`, …); узлы подписок — `add_mode=2`, `group=<имя подписки>` |
+| `nodes`, `protocol=_urltest` | группа URL-теста (`urltest_node` — список серверов, `urltest_url`, `urltest_interval`, `urltest_tolerance`) |
+| `nodes 'main_router'`, `protocol=_shunt` | «По правилам»: `default_node` — цель «По умолчанию», `option <id правила>` — цель правила |
+| `shunt_rules` | правило: только условия (`domain_resource`, `domain_list`, `ip_list`, `network`, `port`, `source`, `sourcePort`, `protocol`, `inbound`); порядок секций = приоритет |
+| `subscribe_list` | подписка (`remark`, `url`, `user_agent`, `hwid`, `auto_update`, `access_mode`, …) |
+
+Цели: `_direct` (напрямую), `_blackhole` (блокировка), `_default` (только в правилах: как «По умолчанию»), id сервера или группы. HWID подписок хранится отдельно, в `/etc/easy_vless/hwid` (сохраняется при sysupgrade).
+
+## Структура репозитория
+
+| Путь | Содержимое |
+|---|---|
+| `Makefile` | OpenWrt-пакеты `easy-vless`, `easy-vless-sing-box`, `easy-vless-xray`, `easy-vless-geodata`, `luci-app-easy-vless` |
+| `root/` | файлы пакета `easy-vless` и backend-пакетов (служба, скрипты, Lua, ресурсы) |
+| `files/` | конфигурация по умолчанию |
+| `luci/` | интерфейс: JavaScript-страницы, меню, ACL, rpcd-плагин, переводы (`luci/po`) |
+| `scripts/` | `install.sh` (installer, публикуется в релизе), `po2lmo.py`, `i18n-sync.py` |
+| `reference/domains/` | исходные списки доменов готовых правил |
+| `tests/` | статические проверки, тесты подписок, CI-сценарии (`tests/ci`) |
+| `docs/` | эта документация и скриншоты README |
+| `.github/workflows/build.yml` | CI: проверки, сборка, тесты, черновик релиза |
 
 ## Файлы релиза и SHA256SUMS
 
