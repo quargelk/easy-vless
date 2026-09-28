@@ -134,7 +134,7 @@ function testLine(r, url) {
 	if (r.ok)
 		return E('span', {}, [ ev.badge(_('PASS'), 'ok'), ' ', _('%d ms').format(r.delay), ' ',
 			E('small', { 'style': 'opacity:.7' }, 'HTTP ' + (r.http_code || '') + ' · ' + url) ]);
-	return E('span', {}, [ ev.badge(_('FAIL'), 'bad'), ' ', E('span', { 'class': 'ev-wiz-reason' }, r.error || _('failed')),
+	return E('span', {}, [ ev.badge(_('FAIL'), 'bad'), ' ', E('span', { 'class': 'ev-wiz-reason' }, ev.testError(r)),
 		E('br'), E('small', { 'style': 'opacity:.7' }, url) ]);
 }
 

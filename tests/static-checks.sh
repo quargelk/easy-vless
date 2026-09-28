@@ -3,7 +3,7 @@
 # the repository root: bash tests/static-checks.sh).
 #
 # Checks: git whitespace (git diff --check), shell / Lua / JS syntax, JSON
-# validity, prepared resources (presence, manifest, byte identity with the
+# validity, translations (luci/po), prepared resources (presence, manifest, byte identity with the
 # reference lists via tests/resources.sha256), screenshots, package metadata
 # and a scan for local paths, credentials and development leftovers.
 #
@@ -57,6 +57,16 @@ for f in $JS_FILES; do
 	node -e "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f" || bad "JS syntax $f"
 done
 ok "JS syntax ($(echo "$JS_FILES" | grep -c .) files)"
+
+echo "== translations"
+# luci/po: template current, every string translated, same placeholders
+# and HTML tags; every catalog compiles (scripts/po2lmo.py, as in the build)
+if out=$(python3 scripts/i18n-sync.py --check 2>&1); then ok "i18n catalogs: $(echo "$out" | tr '\n' ' ')"; else bad "i18n catalogs"; echo "$out"; fi
+for po in luci/po/*/easy-vless.po; do
+	lmo=$(mktemp)
+	if python3 scripts/po2lmo.py "$po" "$lmo" && [ -s "$lmo" ]; then ok "po2lmo $po ($(wc -c < "$lmo") bytes)"; else bad "po2lmo $po"; fi
+	rm -f "$lmo"
+done
 
 echo "== JSON"
 JSON_FILES=$(tracked '*.json')

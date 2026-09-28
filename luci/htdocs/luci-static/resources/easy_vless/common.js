@@ -763,6 +763,26 @@ return baseclass.extend({
 
 	testResults: {},
 
+	/* Reason of a failed Server Test / URL Test: rpcd's error_kind as a
+	 * translated sentence, curl's own message (error_detail) appended as is. */
+	testError: function(r) {
+		const d = r.error_detail || '';
+		const withDetail = function(s) { return d ? s + ' (' + d + ')' : s; };
+		switch (r.error_kind) {
+		case 'no_instance':
+			return _('The temporary sing-box instance for this server did not start (%s). Run Check config for details.').format(d || _('no SOCKS listener'));
+		case 'timeout':
+			return _('Connection timeout (%s).').format(d || _('no response within 5 s'));
+		case 'tls':
+			return withDetail(_('TLS handshake through the VLESS connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it.'));
+		case 'no_answer':
+			return withDetail(_('No answer through the VLESS connection: the server is unreachable or rejected the connection.'));
+		case 'probe':
+			return _('Probe failed (HTTP %s).').format(r.http_code || _('none'));
+		}
+		return r.error || _('failed');
+	},
+
 	testText: function(r) {
 		if (!r)
 			return '-';
@@ -771,7 +791,7 @@ return baseclass.extend({
 		if (r.ok)
 			return E('span', { 'title': '%s → HTTP %s'.format(r.url || SERVER_TEST_URL, r.http_code || '') },
 				[ this.badge(_('PASS'), 'ok'), ' ', _('%d ms').format(r.delay), E('br'), E('small', { 'style': 'opacity:.7' }, 'HTTP ' + (r.http_code || '')) ]);
-		const err = r.error || _('failed');
+		const err = this.testError(r);
 		return E('span', { 'title': err }, [ this.badge(_('FAIL'), 'bad'), E('br'),
 			E('small', {}, err.length > 60 ? err.substr(0, 57) + '…' : err) ]);
 	},

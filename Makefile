@@ -192,8 +192,9 @@ endef
 # --- LuCI UI sub-package ---
 # Kept in this Makefile (like the backend sub-packages) so the existing
 # standalone CI build keeps producing every .ipk from one source tree.
-# Plain package.mk (not feeds/luci/luci.mk): no translations/minification
-# yet, hence no luci-base/host build dependency. Files live under ./luci/.
+# Plain package.mk (not feeds/luci/luci.mk): no minification and no
+# luci-base/host build dependency; the Russian catalog is compiled by
+# scripts/po2lmo.py (see the install section). Files live under ./luci/.
 define Package/luci-app-easy-vless
   SECTION:=luci
   CATEGORY:=LuCI
@@ -347,6 +348,16 @@ define Package/luci-app-easy-vless/install
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./luci/root/usr/libexec/rpcd/luci.easy_vless $(1)/usr/libexec/rpcd/luci.easy_vless
+
+	# Translations (0.7.0): luci/po/<lang>/easy-vless.po compiled to the LuCI
+	# catalog /usr/lib/lua/luci/i18n/easy-vless.<lang>.lmo, which LuCI loads
+	# together with its own catalogs for the selected language. The English
+	# texts are the msgids in the views, so English needs no catalog.
+	# scripts/po2lmo.py is byte-identical to luci-base's po2lmo (this plain
+	# package.mk build has no luci-base host tools).
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+	$(foreach po,$(wildcard ./luci/po/*/easy-vless.po), \
+		python3 ./scripts/po2lmo.py $(po) $(1)/usr/lib/lua/luci/i18n/easy-vless.$(notdir $(patsubst %/,%,$(dir $(po)))).lmo || exit 1;)
 endef
 
 # Reload rpcd so the new ubus object luci.easy_vless and its ACL are known,
