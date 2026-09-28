@@ -9,9 +9,10 @@
 #                                          the same placeholders and HTML tags
 #
 # Strings are the literal arguments of _() in the LuCI JavaScript views and
-# the menu titles of menu.d. Whitespace is canonicalized exactly like LuCI
-# does at lookup time (cbi.js trimws / lmo_canon_hash): trimmed, runs of
-# whitespace -> one space.
+# the menu titles of menu.d; an optional second literal argument is the
+# translation context (msgctxt), _('Up', 'move row'). Whitespace is
+# canonicalized exactly like LuCI does at lookup time (cbi.js trimws /
+# lmo_canon_hash): trimmed, runs of whitespace -> one space.
 
 import glob
 import io
@@ -25,6 +26,11 @@ PO_DIR = os.path.join(ROOT, 'luci', 'po')
 POT = os.path.join(PO_DIR, 'templates', 'easy-vless.pot')
 JS_GLOB = os.path.join(ROOT, 'luci', 'htdocs', '**', '*.js')
 MENU_GLOB = os.path.join(ROOT, 'luci', 'root', 'usr', 'share', 'luci', 'menu.d', '*.json')
+
+# Generic words that LuCI's own catalogs (base.<lang>.lmo, loaded together
+# with ours and taking precedence) translate with another meaning: here they
+# are only allowed with a translation context, _('Up', 'move row').
+NEED_CONTEXT = {'OK', 'Up', 'Down', 'Target'}
 
 ESC = {'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f', 'v': '\v', '0': '\0'}
 
@@ -86,16 +92,29 @@ def scan():
 			rest = src[j:].lstrip()
 			if rest[:1] == '+':
 				errors.append('%s:%d: concatenated string in _()' % (rel, line))
+			# optional second argument: the translation context _(s, 'ctx')
+			ctx = None
+			if rest[:1] == ',':
+				k = j + src[j:].index(',') + 1
+				while src[k].isspace():
+					k += 1
+				if src[k] in '\'"`':
+					ctx, _ = js_string(src, k)
+					ctx = canon(ctx)
+				else:
+					errors.append('%s:%d: translation context is not a string literal' % (rel, line))
 			s = canon(s)
+			if s and ctx is None and s in NEED_CONTEXT:
+				errors.append('%s:%d: _(%r) needs a context: LuCI\'s own catalogs translate this word differently' % (rel, line, s))
 			if s:
-				refs = found.setdefault(s, [])
+				refs = found.setdefault((ctx, s), [])
 				if rel not in refs:
 					refs.append(rel)
 	for path in sorted(glob.glob(MENU_GLOB)):
 		rel = os.path.relpath(path, ROOT).replace(os.sep, '/')
 		for node in json.load(io.open(path, encoding='utf-8')).values():
 			if node.get('title'):
-				refs = found.setdefault(canon(node['title']), [])
+				refs = found.setdefault((None, canon(node['title'])), [])
 				if rel not in refs:
 					refs.append(rel)
 	return found, errors
@@ -112,27 +131,31 @@ def po_unquote(s):
 
 
 def read_po(path):
-	"""[(msgid, msgstr, fuzzy)] of a PO file (header included as msgid '')."""
+	"""[{ctx, id, str, fuzzy}] of a PO file (header included as msgid '')."""
 	entries = []
 	cur = None
 	field = None
 	fuzzy = False
+	ctx = None
 	for line in io.open(path, encoding='utf-8').read().splitlines():
 		if line.startswith('#,') and 'fuzzy' in line:
 			fuzzy = True
+		elif line.startswith('msgctxt '):
+			ctx = po_unquote(line[8:])
 		elif line.startswith('msgid '):
 			if cur:
 				entries.append(cur)
-			cur = {'id': po_unquote(line[6:]), 'str': '', 'fuzzy': fuzzy}
+			cur = {'ctx': ctx, 'id': po_unquote(line[6:]), 'str': '', 'fuzzy': fuzzy}
 			fuzzy = False
+			ctx = None
 			field = 'id'
 		elif line.startswith('msgstr '):
 			cur['str'] = po_unquote(line[7:])
 			field = 'str'
 		elif line.startswith('"') and cur:
 			cur[field] += po_unquote(line)
-		elif line.startswith('msgctxt') or line.startswith('msgid_plural') or line.startswith('msgstr['):
-			raise SystemExit('%s: msgctxt/plural forms are not used by this project' % path)
+		elif line.startswith('msgid_plural') or line.startswith('msgstr['):
+			raise SystemExit('%s: plural forms are not used by this project' % path)
 	if cur:
 		entries.append(cur)
 	return entries
@@ -142,17 +165,19 @@ HEADER = ('msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n'
           '"Project-Id-Version: luci-app-easy-vless\\n"\n')
 
 
+def render_entry(key, refs, msgstr):
+	ctx, s = key
+	return '\n#: %s\n%smsgid %s\nmsgstr %s\n' % (' '.join(refs), ('msgctxt %s\n' % po_quote(ctx)) if ctx is not None else '',
+	                                               po_quote(s), po_quote(msgstr))
+
+
 def render_pot(found):
-	out = [HEADER]
-	for s, refs in found.items():
-		out.append('\n#: %s\nmsgid %s\nmsgstr ""\n' % (' '.join(refs), po_quote(s)))
-	return ''.join(out)
+	return HEADER + ''.join(render_entry(k, refs, '') for k, refs in found.items())
 
 
 def render_po(found, lang, old):
 	out = [HEADER.rstrip('\n') + '\n"Language: %s\\n"\n' % lang]
-	for s, refs in found.items():
-		out.append('\n#: %s\nmsgid %s\nmsgstr %s\n' % (' '.join(refs), po_quote(s), po_quote(old.get(s, ''))))
+	out += [render_entry(k, refs, old.get(k, '')) for k, refs in found.items()]
 	return ''.join(out)
 
 
@@ -194,13 +219,13 @@ def main():
 	for lang in langs:
 		path = os.path.join(PO_DIR, lang, 'easy-vless.po')
 		entries = read_po(path) if os.path.exists(path) else []
-		old = {e['id']: e['str'] for e in entries if e['id'] and not e['fuzzy']}
-		missing = [s for s in found if not old.get(s)]
-		obsolete = [s for s in old if s not in found]
+		old = {(e['ctx'], e['id']): e['str'] for e in entries if e['id'] and not e['fuzzy']}
+		missing = [k for k in found if not old.get(k)]
+		obsolete = [k for k in old if k not in found]
 		bad = []
-		for s in found:
-			if old.get(s):
-				bad += ['%r: %s' % (s[:60], p) for p in check_translation(s, old[s])]
+		for k in found:
+			if old.get(k):
+				bad += ['%r: %s' % (k[1][:60], p) for p in check_translation(k[1], old[k])]
 		if check:
 			rendered = render_po(found, lang, old)
 			if missing or obsolete or (os.path.exists(path) and io.open(path, encoding='utf-8').read() != rendered):
@@ -210,10 +235,10 @@ def main():
 		fail = fail or bool(bad)
 		print('%s: %d strings, %d translated, %d missing, %d obsolete, %d problems'
 		      % (lang, len(found), len(found) - len(missing), len(missing), len(obsolete), len(bad)))
-		for s in missing[:20]:
-			print('  missing: %r' % s[:100])
-		for s in obsolete[:20]:
-			print('  obsolete: %r' % s[:100])
+		for k in missing[:20]:
+			print('  missing: %r' % (k,))
+		for k in obsolete[:20]:
+			print('  obsolete: %r' % (k,))
 		for b in bad:
 			print('  problem: ' + b)
 	print('%d strings in %s' % (len(found), os.path.relpath(POT, ROOT).replace(os.sep, '/')))

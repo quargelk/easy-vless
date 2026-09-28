@@ -10,7 +10,7 @@ msgstr "Ошибка RPC: %s"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "none"
-msgstr "нет"
+msgstr "отсутствует"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Direct"
@@ -98,11 +98,11 @@ msgstr "Сохранить"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Configuration saved. The running service is not changed; use Save & Apply to apply it."
-msgstr "Конфигурация сохранена. Работающая служба не изменена; чтобы применить изменения, нажмите «Сохранить и применить»."
+msgstr "Конфигурация сохранена. Работающая служба не изменена; чтобы применить изменения, нажмите «Применить»."
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Save & Apply"
-msgstr "Сохранить и применить"
+msgstr "Применить"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Saved, but the service state is unknown"
@@ -142,7 +142,7 @@ msgstr "Остановить"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Start"
-msgstr "Запуск"
+msgstr "Запустить"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Checking the configuration with sing-box…"
@@ -258,15 +258,15 @@ msgstr "Главный переключатель"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Enabled"
-msgstr "Включён"
+msgstr "Включено"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Disabled"
-msgstr "Выключен"
+msgstr "Отключено"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Active"
-msgstr "Активен"
+msgstr "Активно"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Status unavailable: %s"
@@ -334,7 +334,7 @@ msgstr "%s: сохранено."
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Changes of a running service apply with Save & Apply on Main."
-msgstr "Изменения для работающей службы применяются кнопкой «Сохранить и применить» на Главной."
+msgstr "Изменения для работающей службы применяются кнопкой «Применить» на Главной."
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "None yet."
@@ -457,6 +457,7 @@ msgid "No node selected yet: choose one above in Node, or add a server in Node L
 msgstr "Узел ещё не выбран: выберите его выше в поле «Узел» или добавьте сервер в «Списке узлов»."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgctxt "routing target"
 msgid "Target"
 msgstr "Цель"
 
@@ -506,7 +507,7 @@ msgstr "Главная"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "On: Save & Apply checks the configuration with sing-box and starts Easy VLESS (also after every reboot). Off: Save & Apply stops it."
-msgstr "Вкл.: «Сохранить и применить» проверяет конфигурацию в sing-box и запускает Easy VLESS (также после каждой перезагрузки). Выкл.: «Сохранить и применить» останавливает его."
+msgstr "Вкл.: «Применить» проверяет конфигурацию в sing-box и запускает Easy VLESS (также после каждой перезагрузки). Выкл.: «Применить» останавливает его."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "Node"
@@ -829,10 +830,12 @@ msgid "Rule deleted."
 msgstr "Правило удалено."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgctxt "move row"
 msgid "Down"
 msgstr "Вниз"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgctxt "move row"
 msgid "Up"
 msgstr "Вверх"
 
@@ -1646,7 +1649,7 @@ msgstr "<b>singbox</b>: весь перенаправленный трафик �
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Log level"
-msgstr "Уровень журнала"
+msgstr "Уровень журналирования"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "sing-box log"
@@ -1694,7 +1697,7 @@ msgstr "Настройки"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "DNS and forwarding of Easy VLESS. The defaults work for most setups. Changes apply with Save & Apply (the service restarts)."
-msgstr "DNS и перенаправление трафика Easy VLESS. Значения по умолчанию подходят для большинства случаев. Изменения применяются кнопкой «Сохранить и применить» (служба перезапускается)."
+msgstr "DNS и перенаправление трафика Easy VLESS. Значения по умолчанию подходят для большинства случаев. Изменения применяются кнопкой «Применить» (служба перезапускается)."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Welcome"
@@ -1834,7 +1837,7 @@ msgstr "Начать настройку"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Restore"
-msgstr "Восстановление"
+msgstr "Восстановить"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Restoring the configuration saved before the unfinished Apply…"
@@ -1958,7 +1961,7 @@ msgstr "вкл."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "off"
-msgstr "выкл."
+msgstr "выкл"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Check the settings. Apply saves them, checks the configuration with sing-box and starts Easy VLESS."
@@ -2125,6 +2128,7 @@ msgid "Apply failed: %s"
 msgstr "Не удалось применить: %s"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgctxt "connection check result"
 msgid "OK"
 msgstr "ОК"
 
@@ -2170,7 +2174,7 @@ msgstr "Открыть «Правила»"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Finish"
-msgstr "Готово"
+msgstr "Завершить"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Leave the setup?"

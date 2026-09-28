@@ -923,7 +923,7 @@ return view.extend({
 		if (c.rpc_error || c.http_code == null)
 			conn = ev.badge(_('unknown'), 'warn');
 		else if (c.ok)
-			conn = E('span', {}, [ ev.badge(_('OK'), 'ok'), ' ', E('small', {}, 'HTTP ' + c.http_code + ' · ' + (c.url || '')) ]);
+			conn = E('span', {}, [ ev.badge(_('OK', 'connection check result'), 'ok'), ' ', E('small', {}, 'HTTP ' + c.http_code + ' · ' + (c.url || '')) ]);
 		else
 			conn = E('span', {}, [ ev.badge(_('no answer'), 'warn'), ' ', E('small', {}, _('%s did not answer (HTTP %s). Check the Server Test on Main.').format(c.url || ev.SERVER_TEST_URL, c.http_code || '000')) ]);
 		const g = function(k, d) { return uci.get(CONFIG, 'global', k) || d; };

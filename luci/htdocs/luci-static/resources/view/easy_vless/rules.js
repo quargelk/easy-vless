@@ -384,8 +384,8 @@ return view.extend({
 		s.renderRowActions = function(section_id) {
 			const td = form.GridSection.prototype.renderRowActions.apply(this, [ section_id ]);
 			const box = td.lastElementChild;
-			box.insertBefore(ev.smallButton('↓', _('Down'), '', ui.createHandlerFn(view_, 'handleMove', section_id, false)), box.firstChild);
-			box.insertBefore(ev.smallButton('↑', _('Up'), '', ui.createHandlerFn(view_, 'handleMove', section_id, true)), box.firstChild);
+			box.insertBefore(ev.smallButton('↓', _('Down', 'move row'), '', ui.createHandlerFn(view_, 'handleMove', section_id, false)), box.firstChild);
+			box.insertBefore(ev.smallButton('↑', _('Up', 'move row'), '', ui.createHandlerFn(view_, 'handleMove', section_id, true)), box.firstChild);
 			return td;
 		};
 		s.renderSectionAdd = function(extra_class) {
@@ -420,7 +420,7 @@ return view.extend({
 		o = s.option(ConditionsValue, '_cond', _('Conditions'));
 		o.modalonly = true;
 
-		o = s.option(form.ListValue, '_target', _('Target'),
+		o = s.option(form.ListValue, '_target', _('Target', 'routing target'),
 			_('Where matching traffic goes (also selectable on Main). Used while the Main Router is the main node.'));
 		o.value('', _('Not used (rule off)'));
 		ev.addTargetValues(o, true);

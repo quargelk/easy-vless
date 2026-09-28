@@ -446,8 +446,8 @@ return view.extend({
 				sb(_('Test'), _('Server Test: HTTPS request to %s through this server (temporary sing-box instance)').format(ev.SERVER_TEST_URL), '', 'handleTest', [ section_id ]),
 				sb(_('URL Test'), _('URL Test of this server: request to %s through it (temporary sing-box instance)').format(ev.URL_TEST_URL), '', 'handleUrlTest', [ section_id ]),
 				ev.smallButton(_('Copy'), _('Copy the VLESS URL of this server'), 'cbi-button-action', ui.createHandlerFn(ev, 'showVlessUrl', section_id)),
-				sb('↑', _('Up'), '', 'handleMove', [ section_id, true ]),
-				sb('↓', _('Down'), '', 'handleMove', [ section_id, false ])
+				sb('↑', _('Up', 'move row'), '', 'handleMove', [ section_id, true ]),
+				sb('↓', _('Down', 'move row'), '', 'handleMove', [ section_id, false ])
 			].reverse().forEach(function(b) { box.insertBefore(b, box.firstChild); });
 			return td;
 		};

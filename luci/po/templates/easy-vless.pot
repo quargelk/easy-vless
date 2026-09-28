@@ -456,6 +456,7 @@ msgid "No node selected yet: choose one above in Node, or add a server in Node L
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgctxt "routing target"
 msgid "Target"
 msgstr ""
 
@@ -828,10 +829,12 @@ msgid "Rule deleted."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgctxt "move row"
 msgid "Down"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgctxt "move row"
 msgid "Up"
 msgstr ""
 
@@ -2124,6 +2127,7 @@ msgid "Apply failed: %s"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgctxt "connection check result"
 msgid "OK"
 msgstr ""
 

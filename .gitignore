@@ -3,3 +3,5 @@
 /dist/
 # Local-only material, never part of the public tree.
 /prototype/
+# Python bytecode (tests import scripts/po2lmo.py)
+__pycache__/

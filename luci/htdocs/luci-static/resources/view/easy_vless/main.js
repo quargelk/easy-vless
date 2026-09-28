@@ -67,7 +67,7 @@ return view.extend({
 		const th = function(t) { return E('th', { 'class': 'th' }, t); };
 		return E('table', { 'class': 'table' }, [
 			E('tr', { 'class': 'tr table-titles' }, [
-				th(_('Target')), th(_('Used by')), th(_('Result')), th(_('Latency')), th(_('Response / error')), th('')
+				th(_('Target', 'routing target')), th(_('Used by')), th(_('Result')), th(_('Latency')), th(_('Response / error')), th('')
 			])
 		].concat(Object.keys(byTarget).map(L.bind(function(t) {
 			const r = ev.testResults[t];

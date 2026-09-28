@@ -12,15 +12,22 @@ container prepared by tests/ci/wizard-tests.sh; router state is read with
   BAD_LINK       vless:// link to a closed port
 """
 
+import base64
 import json
 import os
 import re
 import shlex
+import struct
 import subprocess
 import sys
 import time
+import urllib.request
 
 from playwright.sync_api import sync_playwright
+
+REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import po2lmo  # noqa: E402  (SuperFastHash keys of the LuCI catalogs)
 
 BASE = os.environ["EV_BASE"].rstrip("/")
 PASSWORD = os.environ["EV_PASSWORD"]
@@ -145,6 +152,54 @@ def overflow(page):
         });
         return out.slice(0, 8);
     }""")
+
+
+def lmo_entries(data):
+    """key -> translation of a compiled LuCI catalog (.lmo)."""
+    idx = struct.unpack(">I", data[-4:])[0]
+    out = {}
+    for o in range(idx, len(data) - 4, 16):
+        key, _, off, length = struct.unpack(">IIII", data[o:o + 16])
+        out[key] = data[off:off + length].decode("utf-8")
+    return out
+
+
+def russian_catalog():
+    """Russian interface next to LuCI's own Russian catalog (0.7.1 regression:
+    base.ru.lmo is loaded together with easy-vless.ru.lmo and wins for a
+    shared key - "OK" became "Принять"). Every entry of luci/po/ru must be
+    served by LuCI's translation endpoint with exactly our text: a generic
+    word shared with base.ru.lmo needs LuCI's translation or a context."""
+    out = sh("opkg install luci-i18n-base-ru >/tmp/opkg-i18n.log 2>&1 && echo ok || tail -5 /tmp/opkg-i18n.log")
+    if not check("luci-i18n-base-ru installed (%s)" % out.replace("\n", " | "), out == "ok"):
+        return
+    check("easy-vless.ru.lmo installed", sh("[ -s /usr/lib/lua/luci/i18n/easy-vless.ru.lmo ] && echo y") == "y")
+    base = lmo_entries(base64.b64decode(sh("base64 /usr/lib/lua/luci/i18n/base.ru.lmo")))
+    body = urllib.request.urlopen(LUCI + "/admin/translations/ru", timeout=60).read().decode("utf-8")
+    served = {}
+    for key, val in re.findall(r'"([0-9a-f]{8})":("(?:[^"\\]|\\.)*")', body):
+        served[int(key, 16)] = json.loads(val)   # a later duplicate wins, as in the browser
+    po = open(os.path.join(REPO, "luci", "po", "ru", "easy-vless.po"), encoding="utf-8").read()
+    total, wrong, shared = 0, [], 0   # shared: keys also in base.ru.lmo
+    for ctx, msgid, msgstr in re.findall(r'(?:^msgctxt (".*")\n)?^msgid (".*")\nmsgstr (".*")$', po, re.M):
+        msgid, msgstr = json.loads(msgid), json.loads(msgstr)
+        if not msgid:
+            continue
+        key = (json.loads(ctx) + "\1" + msgid) if ctx else msgid
+        h = po2lmo.sfh_hash(key.encode("utf-8"), len(key.encode("utf-8")))
+        if h not in served and msgstr == msgid:
+            continue   # identical translation: po2lmo stores nothing, the English text is shown
+        total += 1
+        shared += h in base
+        got = served.get(h)
+        if got != msgstr:
+            wrong.append("%r%s -> %r, expected %r%s" % (msgid, " [%s]" % json.loads(ctx) if ctx else "", got, msgstr,
+                                                        " (key shared with LuCI's catalog)" if h in base else ""))
+    check("Russian interface: all %d translated strings served by LuCI with luci-i18n-base-ru installed (%d keys shared with LuCI)%s"
+          % (total, shared, "" if not wrong else ": " + "; ".join(wrong[:10])), not wrong and total > 500)
+    ok_key = "connection check result\1OK".encode("utf-8")
+    check("wizard Done: connection badge is 'ОК', not LuCI's 'Принять' (%r)" % served.get(po2lmo.sfh_hash(ok_key, len(ok_key))),
+          served.get(po2lmo.sfh_hash(ok_key, len(ok_key))) == "ОК")
 
 
 def main():
@@ -463,6 +518,8 @@ def main():
         ctx2.close()
 
         browser.close()
+
+    russian_catalog()
 
     print("\n===== LuCI wizard end-to-end: %d passed, %d failed =====" % (PASS, FAIL))
     return 0 if FAIL == 0 else 1
