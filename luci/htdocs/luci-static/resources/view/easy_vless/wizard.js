@@ -292,7 +292,10 @@ return view.extend({
 			'.ev-wiz-choice input { margin-right: .5em; }',
 			'.ev-wiz-error { color: #c62828; font-weight: bold; white-space: pre-wrap; }',
 			'.ev-wiz-reason { white-space: pre-wrap; }',
-			'.ev-wiz-kv .td { padding: .25em .45em; }',
+			'.ev-wiz-kv { width: 100%; table-layout: fixed; }',
+			'.ev-wiz-kv .td { padding: .25em .45em; overflow-wrap: anywhere; word-break: break-word; }',
+			'.ev-wiz-descr { margin: .3em 0 0 1.6em; font-size: 95%; }',
+			'.ev-wiz pre, .ev-wiz-error, .ev-wiz-reason { overflow-wrap: anywhere; }',
 			'.ev-wiz-check li { margin: .25em 0; list-style: none; }',
 			'.ev-wiz textarea { width: 100%; box-sizing: border-box; }',
 			'@media (max-width: 600px) { .ev-wiz-steps li:not(.current) { display: none; } .ev-wiz-nav button { flex: 1 1 auto; } }'
@@ -467,6 +470,9 @@ return view.extend({
 			if (err) err.textContent = '';
 			const next = document.getElementById('ev-wiz-next');
 			if (next) next.textContent = self.importedCurrent() ? _('Next') : _('Add server');
+			/* the "Added" box belongs to the previous link only */
+			const box = document.getElementById('ev-wiz-imported');
+			if (box) box.style.display = self.importedCurrent() ? '' : 'none';
 		});
 
 		const importBox = E('div', { 'style': 'margin-top:.5em' }, [ ta ]);
@@ -663,7 +669,7 @@ return view.extend({
 				'checked': st.routing == value ? '' : null, 'disabled': disabled ? '' : null });
 			input.addEventListener('change', function() { st.routing = value; self.save(); self.redraw(); });
 			return E('label', { 'class': 'ev-wiz-choice' + (st.routing == value ? ' selected' : ''), 'id': 'ev-wiz-routing-' + value }, [
-				input, E('strong', {}, label), E('div', { 'class': 'cbi-value-description' }, descr)
+				input, E('strong', {}, label), E('div', { 'class': 'ev-wiz-descr' }, descr)
 			]);
 		};
 		const basicOk = TEMPLATES.length > 0;

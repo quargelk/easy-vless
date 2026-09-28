@@ -32,8 +32,17 @@ SKIP_TESTS=1 W="$W" DIST="$DIST" sh "$W/tests/ci/openwrt-runtime-tests.sh"
 
 [ "$(uci -q get easy_vless.@global[0].enabled)" = "0" ] || die "fresh installation: main switch is not off"
 [ -z "$(uci -q get easy_vless.@global[0].node)" ] || die "fresh installation: a node is already selected"
-nft list tables >/dev/null 2>&1 || die "nftables does not work in this container (NET_ADMIN missing?)"
-say "nftables usable: $(nft list tables | tr '\n' ' ')"
+# nftables (netlink) works natively; under QEMU user emulation (ARM, MIPS
+# targets) nft cannot talk to the kernel: the service start is then not
+# testable there and the backend tests say so (SKIP with the reason).
+if nft add table inet ev_probe 2>/tmp/nft-probe.log && nft delete table inet ev_probe; then
+	echo 1 >/tmp/ev-nft-ok
+	say "nftables usable in this container"
+else
+	rm -f /tmp/ev-nft-ok
+	[ "$(uname -m)" != "x86_64" ] || { cat /tmp/nft-probe.log; die "nftables does not work in this x86-64 container (NET_ADMIN missing?)"; }
+	say "nftables NOT usable here ($(uname -m) under QEMU user emulation: $(head -n1 /tmp/nft-probe.log))"
+fi
 
 [ "${WITH_LUCI:-0}" = "1" ] || { say "done (without LuCI)"; exit 0; }
 

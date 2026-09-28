@@ -126,12 +126,24 @@ def apply_and_wait(page):
     return page.query_selector("#ev-wiz-done") is not None
 
 
-def no_overflow(page):
+def wait_imported(page, port):
+    """The "Added" box of the link just imported (not of an earlier one)."""
+    page.wait_for_function(
+        "(p) => { const b = document.getElementById('ev-wiz-imported'); return b && b.offsetParent !== null && b.textContent.indexOf(':' + p) > -1; }",
+        arg=port, timeout=60000)
+
+
+def overflow(page):
+    """Elements of the wizard wider than the viewport (empty = fits)."""
     return page.evaluate("""() => {
-        const w = document.getElementById('ev-wizard');
-        if (!w) return false;
-        const r = w.getBoundingClientRect();
-        return r.right <= window.innerWidth + 1 && w.scrollWidth <= w.clientWidth + 1;
+        const out = [];
+        const vw = document.documentElement.clientWidth;
+        document.querySelectorAll('#ev-wizard, #ev-wizard *').forEach(e => {
+            const r = e.getBoundingClientRect();
+            if (r.width > 0 && (r.right > vw + 1 || r.left < -1))
+                out.push(e.tagName + (e.id ? '#' + e.id : '') + '.' + (e.className || '') + ' ' + Math.round(r.left) + '..' + Math.round(r.right));
+        });
+        return out.slice(0, 8);
     }""")
 
 
@@ -184,7 +196,7 @@ def main():
         # ---------------------------------------------------------- failing server
         page.fill("#ev-wiz-url", BAD)
         click(page, "#ev-wiz-next")
-        page.wait_for_selector("#ev-wiz-imported", timeout=60000)
+        wait_imported(page, "20444")
         imp = page.inner_text("#ev-wiz-imported")
         check("closed-port server imported, parameters shown (%s)" % imp.replace("\n", " | "), "20444" in imp)
         bad_id = vless_servers()
@@ -211,8 +223,10 @@ def main():
 
         # ---------------------------------------------------------- working server
         page.fill("#ev-wiz-url", GOOD)
+        check("editing the link hides the 'Added' box of the previous link",
+              page.query_selector("#ev-wiz-imported") is None or not page.is_visible("#ev-wiz-imported"))
         click(page, "#ev-wiz-next")
-        page.wait_for_selector("#ev-wiz-imported", timeout=60000)
+        wait_imported(page, "20443")
         ids = vless_servers()
         check("replacing the link removes the server imported before (one server left)", len(ids) == 1 and ids != bad_id)
         good_id = ids[0] if ids else ""
@@ -331,7 +345,8 @@ def main():
         page.set_viewport_size({"width": 375, "height": 812})
         time.sleep(1)
         shot(page, "11-done-mobile")
-        check("mobile width: wizard fits 375 px", no_overflow(page))
+        o = overflow(page)
+        check("mobile width: nothing of the Done page wider than 375 px %s" % o, o == [])
         page.set_viewport_size({"width": 1280, "height": 900})
 
         click(page, "#ev-wiz-open-main")
@@ -398,8 +413,10 @@ def main():
         page.wait_for_url(re.compile(r".*/easy_vless/main$"), timeout=60000)
 
         # ---------------------------------------------------------- manually configured router
-        sh("/etc/init.d/easy_vless stop >/dev/null 2>&1; cp /usr/share/easy_vless/0_default_config /etc/config/easy_vless")
-        check("reset to defaults: wizard needed again", wizard_state().get("needed") is True)
+        sh("/bin/ash /w/tests/ci/wizard-backend-tests.sh reset >/dev/null 2>&1")
+        ws = wizard_state()
+        if not check("reset to defaults: wizard needed again", ws.get("needed") is True):
+            print("    wizard_state: %s\n    %s" % (ws, sh("uci show easy_vless.global; ls -la /tmp/.uci")))
         # a new browser session (the Cancel above hid the wizard for this one)
         page.evaluate("window.sessionStorage.clear()")
         page.goto(EV)
@@ -411,7 +428,7 @@ def main():
         step(page, 1)
         page.fill("#ev-wiz-url", GOOD)
         click(page, "#ev-wiz-next")
-        page.wait_for_selector("#ev-wiz-imported", timeout=60000)
+        wait_imported(page, "20443")
         check("imported before cancel", len(vless_servers()) == 1)
         click(page, "#ev-wiz-cancel")
         page.wait_for_selector("#ev-wiz-cancel-yes", timeout=10000)
