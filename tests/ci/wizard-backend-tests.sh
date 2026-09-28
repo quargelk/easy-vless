@@ -116,6 +116,18 @@ check "servers added, no node selected: wizard still needed" '[ "$(jget "$st" @.
 echo "== Server Test / URL Test"
 r=$(call urltest_node "{\"node\":\"$GOOD\"}")
 echo "$r"
+if [ "$(jget "$r" @.ok)" != true ]; then
+	# diagnostics: the same temporary instance, with a debug log
+	echo "---- diagnostics of the failed Server Test"
+	uci set $CONFIG.@global[0].loglevel='debug'; uci commit $CONFIG
+	NO_REC_PROCESS=1 /usr/share/easy_vless/app.sh run_socks flag=diag node="$GOOD" bind=127.0.0.1 socks_port=48999 config_file=diag.json log_file=/tmp/diag-sb.log
+	sleep 5
+	curl -sv --max-time 8 -o /dev/null -x socks5h://127.0.0.1:48999 https://www.gstatic.com/generate_204 2>&1 | tail -n 8
+	echo "-- sing-box log"; cat /tmp/diag-sb.log 2>/dev/null | tail -n 40
+	echo "-- generated config"; cat "$(find /tmp/etc -name 'diag*.json' | head -n1)" 2>/dev/null | head -n 80
+	busybox pgrep -af "diag" | awk '!/wizard-backend/{print $1}' | xargs -r kill -9
+	uci set $CONFIG.@global[0].loglevel='warn'; uci commit $CONFIG
+fi
 check "Server Test of the working server passes" '[ "$(jget "$r" @.ok)" = true ]'
 check "Server Test: HTTP 204/200 from generate_204" 'case "$(jget "$r" @.http_code)" in 200|204) true ;; *) false ;; esac'
 r=$(call urltest_node "{\"node\":\"$GOOD\",\"url\":\"https://x.com\"}")

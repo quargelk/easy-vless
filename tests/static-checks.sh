@@ -96,7 +96,7 @@ for f in proxy.txt russia.txt; do
 done
 
 echo "== screenshots"
-for img in rule-manage node-list add-subscription main connection-test settings-dns settings-forwarding; do
+for img in rule-manage node-list add-subscription main connection-test settings-dns settings-forwarding wizard-server-test wizard-done; do
 	f="docs/images/${img}.png"
 	if [ -s "$f" ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
 		ok "screenshot $f"

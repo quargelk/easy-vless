@@ -777,7 +777,7 @@ return view.extend({
 				E('p', {}, a.restored
 					? _('The configuration from before Apply was restored; Easy VLESS was not left half-configured.')
 					: _('Restoring the previous configuration failed: %s').format(a.restoreError || '?')),
-				a.output ? E('pre', { 'style': 'white-space:pre-wrap;max-height:18em;overflow:auto;font-size:90%' }, a.output) : ''
+				a.output ? E('pre', { 'style': 'white-space:pre-wrap;max-height:18em;overflow:auto;font-size:90%;background:rgba(0,0,0,.25);padding:.4em' }, a.output) : ''
 			]));
 			body.push(E('p', {}, _('Go back to change the server or the routing, or try Apply again.')));
 		}
@@ -823,7 +823,8 @@ return view.extend({
 			return (stage == 'backup' ? Promise.resolve({ ok: true, skipped: true }) : this.restore()).then(L.bind(function(r) {
 				st.apply.failed = true;
 				st.apply.title = title;
-				st.apply.output = output || '';
+				/* the reason is at the end of a start log: keep its last lines */
+				st.apply.output = (output || '').split(/\n/).slice(-30).join('\n');
 				st.apply.restored = !!r.ok;
 				st.apply.restoreError = r.error;
 				return this.reloadUci();
