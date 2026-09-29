@@ -199,6 +199,7 @@ echo "== concurrent operations: check / Server Test while the service is stopped
 # not depend on timing; it continues after a few seconds.
 RACE=/tmp/ev-race
 LOGF=/tmp/log/$CONFIG.log
+mkdir -p /tmp/log   # the "stop complete" line is the evidence that the competing stop ran
 stops() { grep -c "Clearing and closing related programs and cache complete" "$LOGF" 2>/dev/null || echo 0; }
 race_check() { # race_check <label> <competing command> [seconds]: the command runs while the generator is frozen
 	try=0; gen=""
