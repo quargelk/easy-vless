@@ -1,10 +1,12 @@
 name: Build easy-vless packages
 
-# Events: a pull request, a push to main and workflow_dispatch run the full
-# CI (all jobs below except release). A v* tag push is the release pipeline
-# only: checks, build and release - the tagged commit has already passed the
-# full CI, which release requires (tests/ci/workflow-events.py checks this
-# separation).
+# Events (tests/ci/workflow-events.py checks this separation):
+#   pull request, workflow_dispatch  full CI: all jobs below except release
+#   push to main                     checks and build (post-merge build; the
+#                                    merged tree passed the full CI in its PR)
+#   push of a v* tag                 release pipeline: checks, build, release;
+#                                    release requires a successful full CI
+#                                    run for the same tree
 #
 # Jobs:
 #   checks         static checks (tests/static-checks.sh): shell/Lua/JS/JSON
@@ -21,14 +23,15 @@ name: Build easy-vless packages
 #                  system requirement and bootstrap scenarios
 #                  (tests/ci/installer-tests.sh); First Run Wizard backend
 #                  (ubus) on every target and the LuCI wizard in headless
-#                  Chromium on x86-64 (tests/ci/wizard-tests.sh); not on tags
+#                  Chromium on x86-64 (tests/ci/wizard-tests.sh); pull
+#                  requests and workflow_dispatch only
 #   ubifs          real kernel flash stack (nandsim NAND, UBI, UBIFS) with
 #                  the TR3000 v1 layout: flash detection, UBIFS compression
 #                  of a worst-case installation (tests/ci/ubifs-tests.sh);
-#                  not on tags
+#                  pull requests and workflow_dispatch only
 #   release        only for tags v*: requires a successful full CI run of
-#                  this workflow for the tagged commit (checks, build, every
-#                  runtime-tests job, ubifs), then the draft GitHub Release
+#                  this workflow for the tree of the tagged commit (checks,
+#                  build, every runtime-tests job, ubifs), then the draft GitHub Release
 #                  with the dist/ files of this run's build (the tag/version
 #                  check is in build; the only job with contents: write)
 #
@@ -154,7 +157,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends lua5.1 python3-yaml
 
-      - name: CI event separation (pull request / main = full CI, tag = release only)
+      - name: CI event separation (pull request = full CI, main = build, tag = release only)
         run: python3 tests/ci/workflow-events.py .github/workflows/build.yml
 
       - name: Static checks
@@ -815,9 +818,9 @@ jobs:
   # renamed or faked. The Easy VLESS packages are the same "all" packages
   # built above for every target.
   runtime-tests:
-    # not for tags: the tagged commit already passed this matrix (release
-    # checks that)
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    # full CI only: pull requests and workflow_dispatch (not a push to main,
+    # not a tag: that tree already passed this matrix, release checks it)
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')) }}
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: ${{ matrix.target.platform == '' && 60 || 150 }}
@@ -947,7 +950,7 @@ jobs:
   # Real flash: the runner kernel simulates NAND chips (nandsim) with the
   # TR3000 v1 partition layout, UBI and a real UBIFS overlay.
   ubifs:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')) }}
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 40
@@ -985,19 +988,21 @@ jobs:
         uses: actions/checkout@v4
 
       # runtime-tests and ubifs do not run for tags: a release is only drafted
-      # for a commit whose full CI already passed in another run of this
-      # workflow (the post-merge push to main, a pull request head or
-      # workflow_dispatch) - every one of its checks, build, runtime-tests
-      # (the whole matrix, Wizard e2e included) and ubifs jobs successful.
+      # for a tree that already passed the full CI in another run of this
+      # workflow (its pull request head - the merge commit of an up-to-date
+      # PR has the same tree - or workflow_dispatch) - every one of its
+      # checks, build, runtime-tests (the whole matrix, Wizard e2e included)
+      # and ubifs jobs successful.
       - name: Require a successful full CI run of the tagged commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           api="repos/${GITHUB_REPOSITORY}/actions"
+          tree="$(git rev-parse HEAD^{tree})"
           found=""
-          for id in $(gh api "${api}/workflows/build.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" \
-                        --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | .id"); do
+          for id in $(gh api "${api}/workflows/build.yml/runs?status=success&per_page=100" \
+                        --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID} and .head_commit.tree_id == \"${tree}\") | .id"); do
             # <jobs> <successful jobs> <runtime-tests jobs> <ubifs jobs>
             read -r n ok rt ub < <(gh api "${api}/runs/${id}/jobs?per_page=100" --jq '
               [.jobs[] | select(.name == "checks" or .name == "build" or .name == "ubifs" or (.name | startswith("runtime-tests ")))]
@@ -1009,10 +1014,10 @@ jobs:
             fi
           done
           if [ -z "${found}" ]; then
-            echo "::error::no successful full CI run of this workflow for ${GITHUB_SHA} (checks, build, all runtime-tests, ubifs): let the full CI pass for this commit (push to main, pull request or workflow_dispatch) before tagging"
+            echo "::error::no successful full CI run of this workflow for the tree ${tree} of ${GITHUB_SHA} (checks, build, all runtime-tests, ubifs): run the workflow (workflow_dispatch) on main for this commit before tagging"
             exit 1
           fi
-          echo "full CI of ${GITHUB_SHA}: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${found}"
+          echo "full CI of tree ${tree} (${GITHUB_SHA}): ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${found}"
 
       - name: Download dist artifact
         uses: actions/download-artifact@v4
