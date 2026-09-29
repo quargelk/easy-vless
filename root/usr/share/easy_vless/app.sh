@@ -165,7 +165,8 @@ check_main_alive() {
 start_rollback() {
 	local main_log="${TMP_ACL_PATH}/acl_default.log"
 	[ -s "$main_log" ] && tail -n 20 "$main_log" >> "$LOG_FILE"
-	${APP_PATH}/app.sh stop >/dev/null 2>&1
+	# part of this start: runs under its operation lock (op_lock)
+	EV_OP_LOCK_INHERITED=1 ${APP_PATH}/app.sh stop >/dev/null 2>&1
 	exit 1
 }
 
@@ -1392,15 +1393,21 @@ socks_node_switch)
 	socks_node_switch $@
 	;;
 start)
+	op_lock start || exit 1
+	trap op_unlock EXIT
 	start $@
 	;;
 check)
+	op_lock "the configuration check" || exit 1
+	trap op_unlock EXIT
 	check_config $@
 	;;
 status)
 	status_json
 	;;
 stop)
+	op_lock stop || exit 1
+	trap op_unlock EXIT
 	stop
 	;;
 esac

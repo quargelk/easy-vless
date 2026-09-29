@@ -31,6 +31,19 @@ EV_SINGBOX_MIN_VERSION="1.12.0"
 # "<port> <secret>" pair is published in EV_CLASH_API_FILE while running.
 EV_CLASH_API_FILE="${TMP_PATH}/clash_api"
 EV_CLASH_API_DEFAULT_PORT="9095"
+# One operation at a time (0.7.2): service start and stop (app.sh), the
+# configuration check (app.sh check) and the Server Test / URL Test instance
+# (test.sh url_test_node) all generate sing-box configs and start or kill
+# processes. stop() ends with a sweep that kills every leftover
+# "easy_vless/" process, which also hit the config generator
+# (luci/easy_vless/util_sing-box.lua) of a check running at that moment:
+# "Killed", an empty config.json, "decode config ...: EOF". They overlap in
+# practice because every uci commit from LuCI (Save, Save & Start, Check
+# config) also reloads the service in the background: ucitrack
+# (/usr/share/ucitrack/easy-vless.json) -> procd -> init.d reload. These
+# operations therefore take this lock and wait for each other.
+EV_OP_LOCK_FILE="${LOCK_PATH}/${CONFIG}_op.lock"
+EV_OP_LOCK_WAIT=90
 
 . /lib/functions/network.sh
 
@@ -414,7 +427,8 @@ ln_run() {
 		return
 	}
 
-	${file_func:-log 1 "${ln_name}"} "$@" >${output} 2>&1 &
+	# 7>&-: long-running processes do not keep the operation lock fd (op_lock)
+	${file_func:-log 1 "${ln_name}"} "$@" >${output} 2>&1 7>&- &
 
 	[ -n "$NO_REC_PROCESS" ] && return
 
@@ -431,7 +445,7 @@ run_process_queue() {
 			cmd_check=$(echo $cmd | awk -F '>' '{print $1}')
 			icount=$(busybox pgrep -f "$(echo $cmd_check)" | wc -l)
 			if [ $icount = 0 ]; then
-				eval $(echo "nohup ${cmd} 2>&1 &") >/dev/null 2>&1 &
+				eval $(echo "nohup ${cmd} 2>&1 &") >/dev/null 2>&1 7>&- &
 			fi
 			mv -f ${TMP_PROCESS_LIST_PATH}/${filename} ${TMP_SCRIPT_FUNC_PATH}/queued_${filename}
 		done
@@ -441,6 +455,35 @@ run_process_queue() {
 
 kill_all() {
 	kill -9 $(pidof "$@") >/dev/null 2>&1
+}
+
+# op_lock <operation>: take the operation lock (see EV_OP_LOCK_FILE) on fd 7,
+# waiting up to EV_OP_LOCK_WAIT seconds; the caller must op_unlock (an EXIT
+# trap) because processes started meanwhile inherit fd 7. A command started
+# by a locking operation for that same operation (start_rollback's
+# "app.sh stop") runs with EV_OP_LOCK_INHERITED=1 and does not lock again.
+op_lock() {
+	[ "$EV_OP_LOCK_INHERITED" = 1 ] && return 0
+	mkdir -p "$LOCK_PATH"
+	exec 7>>"$EV_OP_LOCK_FILE"
+	local waited=0
+	while ! flock -xn 7; do
+		if [ "$waited" -ge "$EV_OP_LOCK_WAIT" ]; then
+			exec 7>&-
+			echo "Easy VLESS: $1 was not run: another Easy VLESS operation (start, stop, configuration check or Server Test) is still running after ${EV_OP_LOCK_WAIT} s." >&2
+			return 1
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+	EV_OP_LOCK_OWNER=$$
+}
+
+op_unlock() {
+	[ "$EV_OP_LOCK_OWNER" = "$$" ] || return 0
+	flock -u 7
+	exec 7>&-
+	EV_OP_LOCK_OWNER=""
 }
 
 get_wan_ips() {
