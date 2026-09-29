@@ -199,8 +199,14 @@ echo "== concurrent operations: check / Server Test while the service is stopped
 # not depend on timing; it continues after a few seconds.
 RACE=/tmp/ev-race
 LOGF=/tmp/log/$CONFIG.log
-mkdir -p /tmp/log   # the "stop complete" line is the evidence that the competing stop ran
-stops() { grep -c "Clearing and closing related programs and cache complete" "$LOGF" 2>/dev/null || echo 0; }
+# the service log directory (normally created by a start): app.sh stop writes its
+# "complete" line there, which is how the tests see that a competing stop ran
+mkdir -p /tmp/log
+stops() { # number of "stop complete" log lines: always exactly one integer (0 without a match or a log)
+	_sn=$(grep -c "Clearing and closing related programs and cache complete" "$LOGF" 2>/dev/null)
+	case "$_sn" in ""|*[!0-9]*) _sn=0 ;; esac
+	echo "$_sn"
+}
 race_check() { # race_check <label> <competing command> [seconds]: the command runs while the generator is frozen
 	try=0; gen=""
 	while [ -z "$gen" ] && [ "$try" -lt 3 ]; do
