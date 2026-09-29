@@ -70,13 +70,13 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 
 ## Файлы релиза и SHA256SUMS
 
-Релиз `v0.7.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
+Релиз `v0.7.1` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.7.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.7.0-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.7.0-r1_all.ipk` | интерфейс LuCI и его переводы |
+| `easy-vless_0.7.1-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.7.1-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.7.1-r1_all.ipk` | интерфейс LuCI и его переводы |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 файлов релиза |
 
@@ -125,7 +125,7 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 ## Installer
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.7.0/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.7.1/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -181,8 +181,8 @@ Installer проверит подпись и SHA256, установит TLS-би
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_0.7.0-r1_all.ipk easy-vless-sing-box_0.7.0-r1_all.ipk luci-app-easy-vless_0.7.0-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.7.0/$f"
+for f in SHA256SUMS easy-vless_0.7.1-r1_all.ipk easy-vless-sing-box_0.7.1-r1_all.ipk luci-app-easy-vless_0.7.1-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.7.1/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -192,9 +192,9 @@ sha256sum -c SHA256SUMS
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.7.0-r1_all.ipk
-opkg install ./easy-vless-sing-box_0.7.0-r1_all.ipk
-opkg install ./luci-app-easy-vless_0.7.0-r1_all.ipk
+opkg install ./easy-vless_0.7.1-r1_all.ipk
+opkg install ./easy-vless-sing-box_0.7.1-r1_all.ipk
+opkg install ./luci-app-easy-vless_0.7.1-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 

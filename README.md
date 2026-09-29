@@ -4,7 +4,7 @@
 
 *A lightweight VLESS client for OpenWrt 24.10 with a LuCI web interface in Russian and English.*
 
-**Текущая версия: 0.7.0-r1** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only** · [Релизы](https://github.com/quargelk/easy-vless/releases)
+**Текущая версия: 0.7.1-r1** · OpenWrt **24.10.x** (opkg) · Лицензия **GPL-3.0-only** · [Релизы](https://github.com/quargelk/easy-vless/releases)
 
 Easy VLESS направляет трафик роутера и всех устройств домашней сети через ваш VLESS-сервер. На телефонах, компьютерах и телевизорах ничего настраивать не нужно: роутер сам перехватывает соединения (прозрачный прокси nftables TPROXY) и передаёт их в [sing-box](https://sing-box.sagernet.org/), который устанавливает VLESS-соединение с сервером. Правила решают, что идёт через сервер, а что напрямую: например, российские сайты — напрямую, остальное — через VLESS.
 
@@ -32,6 +32,7 @@ Easy VLESS направляет трафик роутера и всех устр
 - [Удаление](#удаление)
 - [FAQ](#faq)
 - [Ограничения](#ограничения)
+- [Структура проекта](#структура-проекта)
 - [Дополнительно](#дополнительно)
 
 ## Возможности
@@ -83,7 +84,7 @@ DNS: dnsmasq роутера → sing-box → прямой DNS или удалё�
 На роутере по SSH:
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.7.0/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.7.1/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -92,7 +93,7 @@ sh /tmp/install.sh
 - Без `--check` installer ставит `sing-box-tiny`, при необходимости заменяет `dnsmasq` на `dnsmasq-full` (сначала спросит), затем пакеты Easy VLESS. Каждый файл релиза проверяется по `SHA256SUMS`.
 - При ошибке installer останавливается и объясняет причину. Все параметры: `sh /tmp/install.sh --help`.
 
-Релиз `v0.7.0` содержит `easy-vless_0.7.0-r1_all.ipk`, `easy-vless-sing-box_0.7.0-r1_all.ipk`, `luci-app-easy-vless_0.7.0-r1_all.ipk`, `install.sh`, `SHA256SUMS` и два необязательных пакета. Ручная установка и установка без интернета на роутере описаны в [технической документации](docs/technical.md).
+Релиз `v0.7.1` содержит `easy-vless_0.7.1-r1_all.ipk`, `easy-vless-sing-box_0.7.1-r1_all.ipk`, `luci-app-easy-vless_0.7.1-r1_all.ipk`, `install.sh`, `SHA256SUMS` и два необязательных пакета. Ручная установка и установка без интернета на роутере описаны в [технической документации](docs/technical.md).
 
 ### HTTPS на новом роутере
 
@@ -315,6 +316,20 @@ opkg remove luci-app-easy-vless easy-vless-sing-box easy-vless
 - Условия `geoip:` / `geosite:` (кроме встроенного `geoip:private`) требуют необязательного пакета `easy-vless-geodata`, который зависит от стороннего репозитория.
 - IPv6 TProxy — экспериментально.
 - Экспорта и импорта всей конфигурации нет (ссылку отдельного сервера можно скопировать).
+
+## Структура проекта
+
+| Путь | Что там |
+|---|---|
+| [`root/`](root/) | сама служба Easy VLESS: init-скрипт, shell- и Lua-скрипты, генерация конфигурации sing-box, nftables, подписки, готовые списки доменов |
+| [`luci/`](luci/) | веб-интерфейс LuCI: страницы, меню, права доступа, rpcd-плагин, переводы ([`luci/po`](luci/po/)) |
+| [`files/`](files/) | конфигурация по умолчанию |
+| [`scripts/`](scripts/) | [`install.sh`](scripts/install.sh) (installer из релиза) и инструменты переводов |
+| [`reference/domains/`](reference/domains/) | исходные списки доменов готовых правил RUSSIA и PROXY |
+| [`tests/`](tests/) | статические проверки, тесты подписок и CI-сценарии |
+| [`docs/`](docs/) | [техническая документация](docs/technical.md) и скриншоты |
+| [`.github/workflows/build.yml`](.github/workflows/build.yml) | CI: проверки, сборка пакетов, тесты на OpenWrt, черновик релиза |
+| [`Makefile`](Makefile) | описание OpenWrt-пакетов для сборки в SDK |
 
 ## Дополнительно
 
