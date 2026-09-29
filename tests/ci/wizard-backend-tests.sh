@@ -187,6 +187,89 @@ EOF
 r=$(call check)
 echo "$r" | head -c 600; echo
 check "sing-box check of the wizard routing passes" '[ "$(jget "$r" @.ok)" = true ]'
+
+echo "== concurrent operations: check / Server Test while the service is stopped or reloaded"
+# 0.7.1 bug: LuCI commits the configuration (uci commit through rpcd) right
+# before Check config / Save & Start; ucitrack then reloads the service in
+# the background (procd -> /etc/init.d/easy_vless reload = app.sh stop +
+# start), and app.sh stop kills leftover "easy_vless/" processes - also the
+# config generator of the check running at that moment: "Killed",
+# "decode config ...: EOF", "sh: write error: Broken pipe". The generator is
+# frozen (SIGSTOP) while the competing operation runs, so the overlap does
+# not depend on timing; it continues after a few seconds.
+RACE=/tmp/ev-race
+LOGF=/tmp/log/$CONFIG.log
+# the service log directory (normally created by a start): app.sh stop writes its
+# "complete" line there, which is how the tests see that a competing stop ran
+mkdir -p /tmp/log
+stops() { # number of "stop complete" log lines: always exactly one integer (0 without a match or a log)
+	_sn=$(grep -c "Clearing and closing related programs and cache complete" "$LOGF" 2>/dev/null)
+	case "$_sn" in ""|*[!0-9]*) _sn=0 ;; esac
+	echo "$_sn"
+}
+race_check() { # race_check <label> <competing command> [seconds]: the command runs while the generator is frozen
+	try=0; gen=""
+	while [ -z "$gen" ] && [ "$try" -lt 3 ]; do
+		try=$((try + 1))
+		rm -f $RACE.out $RACE.rc
+		( /usr/share/easy_vless/app.sh check >$RACE.out 2>&1; echo $? >$RACE.rc ) &
+		i=0
+		while [ -z "$gen" ] && [ ! -s $RACE.rc ] && [ "$i" -lt 5000 ]; do
+			gen=$(busybox pgrep -f 'util_sing-box\.lua gen_config' | head -n1); i=$((i + 1))
+		done
+		[ -z "$gen" ] && { i=0; while [ ! -s $RACE.rc ] && [ "$i" -lt 120 ]; do sleep 1; i=$((i + 1)); done; }
+	done
+	check "$1: the config generator of the check was caught running" '[ -n "$gen" ]'
+	[ -n "$gen" ] || return
+	kill -STOP "$gen"
+	sh -c "$2" >/dev/null 2>&1 &
+	comp=$!
+	sleep "${3:-3}"
+	kill -CONT "$gen" 2>/dev/null
+	i=0; while [ ! -s $RACE.rc ] && [ "$i" -lt 120 ]; do sleep 1; i=$((i + 1)); done
+	wait "$comp" 2>/dev/null
+	out=$(cat $RACE.out 2>/dev/null)
+	echo "$out" | tail -n 4
+	check "$1: the check passes" '[ "$(cat $RACE.rc 2>/dev/null)" = 0 ] && echo "$out" | grep -q "^OK: sing-box"'
+	check "$1: generator not killed (no Killed / decode config / Broken pipe)" '! echo "$out" | grep -qE "Killed|decode config|Broken pipe"'
+}
+n0=$(stops)
+race_check "check during app.sh stop" "/usr/share/easy_vless/app.sh stop"
+check "the competing stop did run" '[ "$(stops)" -gt "$n0" ]'
+
+# The same through the real trigger: rpcd uci commit (as LuCI's Save) ->
+# config.change -> procd/ucitrack -> /etc/init.d/easy_vless reload.
+if ubus -t 2 list service >/dev/null 2>&1 && [ -x /etc/init.d/ucitrack ]; then
+	/etc/init.d/easy_vless enabled || /etc/init.d/easy_vless enable
+	/etc/init.d/ucitrack restart >/dev/null 2>&1
+	sleep 1
+	check "ucitrack registered the easy_vless reload trigger" 'ubus call service list "{\"name\":\"ucitrack\",\"verbose\":true}" | grep -q "easy_vless"'
+	n0=$(stops)
+	race_check "check during the reload after a LuCI commit" "ubus call uci commit '{\"config\":\"$CONFIG\"}'" 8
+	i=0; while [ "$(stops)" -le "$n0" ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i + 1)); done
+	check "the commit reloaded the service (ucitrack), after the check" '[ "$(stops)" -gt "$n0" ]'
+	status_wait stopped 60 || true
+	# later tests (and the LuCI end-to-end test) commit through rpcd: no
+	# background reloads there
+	/etc/init.d/ucitrack stop >/dev/null 2>&1
+elif [ "$NFT" = 0 ]; then
+	SKIP=$((SKIP + 1))
+	echo "SKIP: check during the reload after a LuCI commit - procd (ucitrack triggers) does not run under QEMU user emulation ($(uname -m)); tested on x86-64 (the app.sh stop case above runs here)"
+else
+	bad "procd service object or /etc/init.d/ucitrack missing: the commit -> reload path cannot be tested"
+fi
+
+# Server Test while the service is stopped: its temporary instance was
+# killed by the stop in 0.7.1.
+if [ "$SOMARK" = 1 ]; then
+	( call urltest_node "{\"node\":\"$GOOD\"}" >$RACE.ut ) &
+	utp=$!
+	i=0; until busybox pgrep -f "url_test_${GOOD}" >/dev/null || [ "$i" -ge 5000 ]; do i=$((i + 1)); done
+	/usr/share/easy_vless/app.sh stop >/dev/null 2>&1
+	wait "$utp"
+	cat $RACE.ut
+	check "Server Test during app.sh stop still passes" '[ "$(jget "$(cat $RACE.ut)" @.ok)" = true ]'
+fi
 if [ "$NFT" = 1 ]; then
 	r=$(call start)
 	check "start accepted" '[ "$(jget "$r" @.ok)" = true ]'

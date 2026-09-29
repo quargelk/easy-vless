@@ -40,6 +40,12 @@ url_test_node() {
 	result=0
 	local node_id=$1
 	local _type=$(echo $(config_n_get ${node_id} type) | tr 'A-Z' 'a-z')
+	# 0.7.2: the temporary instance must not run while the service is
+	# started or stopped (stop() kills it) or a check runs (see op_lock).
+	if [ -n "${_type}" ] && ! op_lock "the Server Test" 2>/dev/null; then
+		echo "000:0:0:another Easy VLESS operation (start, stop, configuration check or Server Test) is still running after ${EV_OP_LOCK_WAIT} s"
+		return
+	fi
 	[ -n "${_type}" ] && {
 		local _tmp_port=$(get_new_port 48900 tcp,udp)
 		NO_REC_PROCESS=1 /usr/share/${CONFIG}/app.sh run_socks flag="url_test_${node_id}" node=${node_id} bind=127.0.0.1 socks_port=${_tmp_port} config_file=url_test_${node_id}.json
@@ -64,6 +70,7 @@ url_test_node() {
 		[ -s "$pid_file" ] && kill -9 "$(head -n 1 "$pid_file")" >/dev/null 2>&1
 		busybox pgrep -af "url_test_${node_id}" | awk '! /test\.sh/{print $1}' | xargs kill -9 >/dev/null 2>&1
 		rm -rf ${TMP_PATH}/*url_test_${node_id}*.*
+		op_unlock
 	}
 	echo $result
 }
@@ -75,6 +82,7 @@ test_url)
 	test_url $@
 	;;
 url_test_node)
+	trap op_unlock EXIT
 	url_test_node "$@"
 	;;
 esac

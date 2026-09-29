@@ -7,7 +7,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.7.1
+PKG_VERSION:=0.7.2
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
