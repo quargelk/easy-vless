@@ -1,12 +1,12 @@
 name: Build easy-vless packages
 
-# Jobs:
 # Events: a pull request, a push to main and workflow_dispatch run the full
 # CI (all jobs below except release). A v* tag push is the release pipeline
 # only: checks, build and release - the tagged commit has already passed the
 # full CI, which release requires (tests/ci/workflow-events.py checks this
 # separation).
 #
+# Jobs:
 #   checks         static checks (tests/static-checks.sh): shell/Lua/JS/JSON
 #                  syntax, git whitespace, resources, screenshots, package
 #                  metadata, local-path/credential scan; the event separation
