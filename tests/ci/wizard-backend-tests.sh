@@ -153,6 +153,84 @@ r=$(call urltest_node "{\"node\":\"nosuchnode\"}")
 check "Server Test of an unknown server is refused" '[ "$(jget "$r" @.ok)" = false ]'
 pgrep -f "url_test_" >/dev/null && bad "test instances left running: $(pgrep -af url_test_)" || ok "no temporary test instance left running"
 
+echo "== Server Test queue (0.8.0): Test All, repeated click, stored results, cancel"
+# rpcd "test": LuCI queues tests and polls "state"; one test at a time, a
+# server that is already queued or running is not queued again, the last
+# result of every server stays on the router (tmpfs).
+tstate() { call test '{"action":"state"}'; }
+tadd() { call test "{\"action\":\"add\",\"kind\":\"$1\",\"nodes\":\"$2\"}"; }
+pending() { # queued + running tests in a state answer
+	echo $(( $(jget "$1" '@.queue[*].node' | grep -c .) + $([ -n "$(jget "$1" '@.current.node')" ] && echo 1 || echo 0) ))
+}
+tresult() { # tresult <state> <node> <kind> <field>: of the stored result
+	jget "$1" '@.results[*]' | grep "\"node\": *\"$2\"" | grep "\"kind\": *\"$3\"" | head -n 1 | {
+		read -r line; [ -n "$line" ] && jsonfilter -s "$line" -e "@.result.$4" 2>/dev/null; }
+}
+twait() { # twait [seconds]: until the runner is idle; prints the last state
+	i=0; tw=$(tstate)
+	while [ "$(jget "$tw" @.running)" = true ] && [ "$i" -lt "${1:-120}" ]; do sleep 1; i=$((i + 1)); tw=$(tstate); done
+	echo "$tw"
+}
+st=$(tstate)
+check "test state answers (no test running)" '[ "$(jget "$st" @.ok)" = true ] && [ "$(jget "$st" @.running)" = false ]'
+check "the Server Test above stored its result (sync urltest_node)" '[ -n "$(tresult "$st" "$BADN" server time)" ] && [ "$(tresult "$st" "$BADN" server ok)" = false ]'
+r=$(tadd server "$GOOD $BADN nosuchnode")
+echo "$r" | head -c 400; echo
+check "Test All: queued, unknown server ignored" '[ "$(jget "$r" @.ok)" = true ] && [ "$(pending "$r")" = 2 ] && [ "$(jget "$r" @.total)" = 2 ]'
+check "Test All: the runner is running (Testing state)" '[ "$(jget "$r" @.running)" = true ]'
+r=$(tadd server "$GOOD $BADN")
+check "repeated click: no duplicate test (still 2, total 2)" '[ "$(pending "$r")" -le 2 ] && [ "$(jget "$r" @.total)" = 2 ]'
+i=0; while [ "$i" -lt 100 ]; do n=$(busybox pgrep -f 'url_test_' | grep -c .); [ "$n" -gt 1 ] && break; i=$((i + 1)); done
+check "never more than one test instance at a time" '[ "$(busybox pgrep -f "sing-box run -c .*url_test_" | grep -c .)" -le 1 ]'
+st=$(twait 120)
+echo "$st" | head -c 600; echo
+check "Test All finished: runner idle, queue empty, 2 of 2 done" '[ "$(jget "$st" @.running)" = false ] && [ "$(pending "$st")" = 0 ] && [ "$(jget "$st" @.done)" = 2 ]'
+check "closed port: stored result failed, with a reason" '[ "$(tresult "$st" "$BADN" server ok)" = false ] && [ -n "$(tresult "$st" "$BADN" server error_kind)" ]'
+check "results carry the tested address and port" '[ "$(tresult "$st" "$BADN" server port)" = 20444 ]'
+if [ "$SOMARK" = 1 ]; then
+	check "working server: stored result passed with a latency" '[ "$(tresult "$st" "$GOOD" server ok)" = true ] && [ "$(tresult "$st" "$GOOD" server delay)" -gt 0 ]'
+else
+	check "working server: a stored result exists (SO_MARK not emulated here)" '[ -n "$(tresult "$st" "$GOOD" server time)" ]'
+fi
+busybox pgrep -f "url_test_" >/dev/null && bad "test instances left running after Test All: $(busybox pgrep -af url_test_)" || ok "no test instance left after Test All"
+r=$(tadd url "$GOOD")
+st=$(twait 60)
+check "URL Test through the queue stored a url result for https://x.com" '[ "$(tresult "$st" "$GOOD" url url)" = "https://x.com" ]'
+[ "$SOMARK" = 1 ] && check "URL Test through the queue passed" '[ "$(tresult "$st" "$GOOD" url ok)" = true ]'
+r=$(tadd server "$BADN $GOOD")
+r=$(call test '{"action":"cancel"}')
+check "cancel: the queued tests are dropped" '[ "$(jget "$r" "@.queue[*].node" | grep -c .)" = 0 ]'
+st=$(twait 60)
+check "cancel: the running test finished, nothing left" '[ "$(jget "$st" @.running)" = false ] && [ "$(pending "$st")" = 0 ] && [ "$(jget "$st" @.done)" -le 1 ]'
+# a killed runner never leaves a hanging "Testing" state
+r=$(tadd server "$BADN $GOOD")
+kill -9 "$(cat /var/run/easy_vless_test/runner.pid)" 2>/dev/null
+st=$(tstate)
+check "killed runner: no test shown as running or queued" '[ "$(jget "$st" @.running)" = false ] && [ "$(pending "$st")" = 0 ]'
+i=0; while busybox pgrep -f "url_test_" >/dev/null && [ "$i" -lt 30 ]; do sleep 1; i=$((i + 1)); done
+check "killed runner: its last test instance ends by itself" '! busybox pgrep -f "url_test_" >/dev/null'
+r=$(call test '{"action":"clear","nodes":"'"$BADN"'"}')
+check "clear: stored results of an edited server are dropped" '[ -z "$(tresult "$r" "$BADN" server time)" ]'
+r=$(call test '{"action":"add","kind":"nonsense","nodes":"'"$GOOD"'"}')
+check "unknown test kind refused" '[ "$(jget "$r" @.ok)" = false ]'
+# Test All while the service is stopped: the stop does not kill the runner
+# (0.7.2 sweep of "easy_vless/" processes) and goes first (op_lock waiters)
+r=$(tadd server "$GOOD $BADN")
+r=$(tadd url "$GOOD $BADN")
+i=0; until [ -n "$(jget "$(tstate)" @.current.node)" ] || [ "$i" -ge 20 ]; do sleep 1; i=$((i + 1)); done
+/usr/share/easy_vless/app.sh stop >/dev/null 2>&1
+st=$(tstate)
+check "stop during Test All: finished before the queue (a service operation goes first)" '[ "$(jget "$st" @.running)" = true ] && [ "$(pending "$st")" -ge 1 ]'
+st=$(twait 180)
+check "stop during Test All: the runner survived and finished all 4 tests" '[ "$(jget "$st" @.running)" = false ] && [ "$(jget "$st" @.done)" = 4 ]'
+check "stop during Test All: every test has a result" '[ -n "$(tresult "$st" "$GOOD" url time)" ] && [ -n "$(tresult "$st" "$BADN" url time)" ]'
+[ "$SOMARK" = 1 ] && check "stop during Test All: the working server still passed" '[ "$(tresult "$st" "$GOOD" server ok)" = true ]'
+# configuration check while tests run: waits for the lock, not killed
+r=$(tadd server "$GOOD $BADN")
+out=$(/usr/share/easy_vless/app.sh check 2>&1); rc=$?
+check "check during Test All passes (no Killed / decode config / Broken pipe)" '[ "$rc" = 0 ] && ! echo "$out" | grep -qE "Killed|decode config|Broken pipe"'
+twait 120 >/dev/null
+
 echo "== Apply: backup, routing, check, start, finish"
 cp /etc/config/$CONFIG /tmp/wiz-before
 r=$(call wizard '{"action":"backup"}')
@@ -353,6 +431,126 @@ uci set $CONFIG.@global[0].wizard_completed='1'; uci commit $CONFIG
 st=$(call wizard_state)
 check "completed once: never needed again" '[ "$(jget "$st" @.needed)" = false ]'
 reset_config
+
+echo "== subscriptions (0.8.0): formats, failures keep the nodes, request strategy, repeated update"
+# SUB_URL: tests/ci/sub-server.py (its own container); it records every
+# request (User-Agent, X-HWID, X-Device-*), GET $SUB_URL/_log
+if [ -n "${SUB_URL:-}" ]; then
+	sub() { call subscribe "{\"action\":\"$1\",\"id\":\"${2:-}\"}"; }
+	subset() { # subset <id> <path> [user_agent] [hwid]
+		uci -q delete $CONFIG.$1
+		uci set $CONFIG.$1=subscribe_list
+		uci set $CONFIG.$1.remark="$1"
+		uci set $CONFIG.$1.url="$SUB_URL/$2"
+		[ -n "${3:-}" ] && uci set $CONFIG.$1.user_agent="$3"
+		[ -n "${4:-}" ] && uci set $CONFIG.$1.hwid="$4"
+		uci commit $CONFIG
+	}
+	subwait() { # subwait: until no update runs; prints the last state
+		i=0; sw=$(sub state)
+		while [ "$(jget "$sw" @.busy)" = true ] && [ "$i" -lt 90 ]; do sleep 1; i=$((i + 1)); sw=$(sub state); done
+		echo "$sw"
+	}
+	subrun() { # subrun <id>: update it, wait; prints its result record
+		r=$(sub update "$1")
+		[ "$(jget "$r" @.code)" = 0 ] || { echo "{\"status\":\"refused\",\"output\":\"$(jget "$r" @.output)\"}"; return; }
+		subwait >/dev/null
+		# subscribe.lua restarts the service in the background after an update
+		i=0; while [ -f /var/lock/$CONFIG.lock ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i + 1)); done
+		jget "$(sub state)" "@.results.$1"
+	}
+	rec() { jsonfilter -s "$1" -e "@.$2" 2>/dev/null; }
+	group() { uci -q show $CONFIG | grep -c "\.group='$1'$"; }
+	slog() { curl -s --max-time 10 "$SUB_URL/_log"; }
+	sreset() { curl -s --max-time 10 -o /dev/null "$SUB_URL/_reset"; }
+	nreq() { slog | jsonfilter -e '@[*].path' | grep -c .; }
+	req() { slog | jsonfilter -e "@[$1].$2"; }   # req <index> <field>
+
+	for fmt in "plain:URL list" "b64:base64 URL list" "clash:Clash YAML" "singbox:sing-box JSON"; do
+		p=${fmt%%:*}; f=${fmt#*:}
+		subset "s_$p" "$p"
+		r=$(subrun "s_$p")
+		echo "$p: $r"
+		check "subscription $f: 2 VLESS servers received, the unsupported one skipped" '[ "$(rec "$r" status)" = ok ] && [ "$(rec "$r" found)" = 2 ] && [ "$(rec "$r" format)" = "$f" ]'
+		check "subscription $f: 2 servers of this subscription in the node list" '[ "$(group "s_$p")" = 2 ] && [ "$(rec "$r" after)" = 2 ]'
+	done
+	r=$(subrun s_plain)
+	check "repeated update: servers replaced, not duplicated (before 2, now 2)" '[ "$(rec "$r" status)" = ok ] && [ "$(rec "$r" before)" = 2 ] && [ "$(rec "$r" after)" = 2 ] && [ "$(group s_plain)" = 2 ]'
+	check "a successful update records its time in UCI" '[ -n "$(uci -q get $CONFIG.s_plain.update_time)" ]'
+	for bad in "html:no_nodes" "empty:empty" "unsupported:no_nodes" "status/500:download" "status/404:download"; do
+		p=${bad%%:*}; want=${bad#*:}
+		uci set $CONFIG.s_plain.url="$SUB_URL/$p"; uci commit $CONFIG
+		r=$(subrun s_plain)
+		echo "$p: $r"
+		check "invalid answer ($p): status $want, the 2 existing servers are kept" '[ "$(rec "$r" status)" = "$want" ] && [ "$(group s_plain)" = 2 ] && [ "$(rec "$r" before)" = 2 ] && [ "$(rec "$r" after)" = 2 ]'
+	done
+	check "HTTP status of a failed download is recorded" '[ "$(rec "$r" http_code)" = 404 ]'
+
+	echo "-- request strategy (User-Agent / HWID)"
+	subset s_ua happ-403
+	sreset; r=$(subrun s_ua)
+	check "default request (curl) to a HAPP-only provider: refused (403), one request, curl User-Agent" '[ "$(rec "$r" status)" = download ] && [ "$(nreq)" = 1 ] && req 0 ua | grep -q "^curl/"'
+	subset s_ua happ-403 HAPP
+	sreset; r=$(subrun s_ua)
+	check "User-Agent HAPP: accepted, one request with User-Agent HAPP" '[ "$(rec "$r" status)" = ok ] && [ "$(nreq)" = 1 ] && [ "$(req 0 ua)" = HAPP ] && [ "$(rec "$r" request)" = HAPP ]'
+	subset s_ua happ-403 auto
+	sreset; r=$(subrun s_ua)
+	check "Auto, HTTP 403 for curl: exactly one more request as HAPP, accepted" '[ "$(rec "$r" status)" = ok ] && [ "$(nreq)" = 2 ] && req 0 ua | grep -q "^curl/" && [ "$(req 1 ua)" = HAPP ] && [ "$(rec "$r" fallback)" = true ]'
+	subset s_ua happ-200 auto
+	sreset; r=$(subrun s_ua)
+	check "Auto, placeholder without servers for curl: one more request as HAPP, accepted" '[ "$(rec "$r" status)" = ok ] && [ "$(nreq)" = 2 ] && [ "$(req 1 ua)" = HAPP ]'
+	subset s_ua plain auto
+	sreset; r=$(subrun s_ua)
+	check "Auto, normal provider: one request only (no HAPP request)" '[ "$(rec "$r" status)" = ok ] && [ "$(nreq)" = 1 ] && [ "$(rec "$r" fallback)" != true ]'
+	subset s_ua status/500 auto
+	sreset; r=$(subrun s_ua)
+	check "Auto, server error 500: no second request" '[ "$(rec "$r" status)" = download ] && [ "$(nreq)" = 1 ]'
+	subset s_ua html auto
+	sreset; r=$(subrun s_ua)
+	check "Auto, no servers for both requests: two requests, nothing more; existing nodes kept" '[ "$(rec "$r" status)" = no_nodes ] && [ "$(nreq)" = 2 ] && [ "$(group s_ua)" -ge 2 ]'
+	subset s_ua plain "EasyTest/1.0 (router)"
+	sreset; r=$(subrun s_ua)
+	check "custom User-Agent sent as is" '[ "$(req 0 ua)" = "EasyTest/1.0 (router)" ] && [ "$(rec "$r" request)" = custom ]'
+	subset s_hw hwid
+	sreset; r=$(subrun s_hw)
+	check "HWID off: no X-HWID sent, the HWID-only provider refuses (404)" '[ "$(rec "$r" status)" = download ] && [ -z "$(req 0 hwid)" ]'
+	subset s_hw hwid "" 1
+	sreset; r=$(subrun s_hw)
+	check "HWID on: accepted, X-HWID = /etc/easy_vless/hwid, X-Device-OS OpenWrt" '[ "$(rec "$r" status)" = ok ] && [ "$(req 0 hwid)" = "$(cat /etc/easy_vless/hwid)" ] && [ "$(req 0 os)" = OpenWrt ]'
+	. /etc/openwrt_release
+	check "HWID on: X-Ver-OS = the OpenWrt release" '[ "$(req 0 ver)" = "$DISTRIB_RELEASE" ]'
+	[ -s /tmp/sysinfo/model ] && check "HWID on: X-Device-Model = the router model" '[ "$(req 0 model)" = "$(cat /tmp/sysinfo/model)" ]'
+	h1=$(cat /etc/easy_vless/hwid)
+	subset s_hw hwid auto 1
+	sreset; r=$(subrun s_hw)
+	check "HWID + Auto: one request with X-HWID, the same stable HWID" '[ "$(rec "$r" status)" = ok ] && [ "$(nreq)" = 1 ] && [ "$(req 0 hwid)" = "$h1" ] && [ "$(cat /etc/easy_vless/hwid)" = "$h1" ]'
+
+	echo "-- repeated update, update vs service operations"
+	# a node of a subscription as the main node: the check has a configuration
+	nid=$(uci -q show $CONFIG | sed -n "s/^$CONFIG\.\([^.]*\)\.group='s_plain'$/\1/p" | head -n 1)
+	uci set $CONFIG.@global[0].node="$nid"; uci commit $CONFIG
+	subset s_slow slow
+	r1=$(sub update s_slow)
+	sleep 1
+	r2=$(sub update s_slow)
+	check "update started" '[ "$(jget "$r1" @.code)" = 0 ]'
+	check "second update while one runs: refused" '[ "$(jget "$r2" @.code)" = 1 ]'
+	check "state: busy while the update runs" '[ "$(jget "$(sub state)" @.busy)" = true ]'
+	out=$(/usr/share/easy_vless/app.sh check 2>&1); rc=$?
+	echo "$out" | tail -n 3
+	check "check during a subscription update passes (no Killed / decode config / Broken pipe)" '[ -n "$nid" ] && [ "$rc" = 0 ] && ! echo "$out" | grep -qE "Killed|decode config|Broken pipe"'
+	st=$(subwait)
+	check "update finished: not busy, 2 servers" '[ "$(jget "$st" @.busy)" = false ] && [ "$(group s_slow)" = 2 ]'
+	r=$(sub update nosuchsub)
+	check "unknown subscription refused" '[ "$(jget "$r" @.code)" = 1 ]'
+	uci -q delete $CONFIG.s_slow; uci commit $CONFIG
+	st=$(sub state)
+	check "a deleted subscription has no result any more" '[ -z "$(jget "$st" @.results.s_slow)" ]'
+	i=0; while [ -f /var/lock/$CONFIG.lock ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i + 1)); done
+	reset_config
+else
+	bad "SUB_URL (subscription test server) is not set"
+fi
 
 echo
 echo "===== wizard backend tests: $PASS passed, $FAIL failed, $SKIP skipped (QEMU emulation limits) ====="

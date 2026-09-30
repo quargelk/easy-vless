@@ -10,6 +10,7 @@ container prepared by tests/ci/wizard-tests.sh; router state is read with
   EV_SHOTS       screenshot directory
   GOOD_LINK      vless:// link of the working test server
   BAD_LINK       vless:// link to a closed port
+  SUB_URL        subscription test server (tests/ci/sub-server.py)
 """
 
 import base64
@@ -35,6 +36,9 @@ CT = os.environ["EV_CONTAINER"]
 SHOTS = os.environ.get("EV_SHOTS", "wizard-shots")
 GOOD = os.environ["GOOD_LINK"]
 BAD = os.environ["BAD_LINK"]
+SUB = os.environ["SUB_URL"].rstrip("/")
+# wizard steps (0.8.0: Link -> Server -> Test)
+S_WELCOME, S_LINK, S_SERVER, S_TEST, S_ROUTING, S_REVIEW, S_APPLY, S_DONE = range(8)
 LUCI = BASE + "/cgi-bin/luci"
 EV = LUCI + "/admin/services/easy_vless"
 PASS = 0
@@ -128,7 +132,7 @@ def wait_tests(page):
 
 def apply_and_wait(page):
     click(page, "#ev-wiz-next")
-    step(page, 5)
+    step(page, S_APPLY)
     page.wait_for_selector("#ev-wiz-apply-error, #ev-wiz-done", timeout=180000)
     return page.query_selector("#ev-wiz-done") is not None
 
@@ -202,6 +206,43 @@ def russian_catalog():
           served.get(po2lmo.sfh_hash(ok_key, len(ok_key))) == "ОК")
 
 
+def no_wait_notice(page):
+    """0.8.0: a repeated click never shows the old "... is still running;
+    wait until it has finished" notice."""
+    return "wait until it has finished" not in page.inner_text("body")
+
+
+def test_state():
+    try:
+        return json.loads(sh("ubus -t 10 call luci.easy_vless test '{\"action\":\"state\"}'"))
+    except ValueError:
+        return {}
+
+
+def wait_tests_idle(timeout=180):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        st = test_state()
+        if st.get("running") is False:
+            return st
+        time.sleep(1)
+    return test_state()
+
+
+def servers_of(group):
+    return [l.split(".")[1] for l in sh("uci -q show easy_vless | grep \"\\.group='%s'$\"" % group).splitlines() if l]
+
+
+def row_order(page):
+    return page.evaluate("""() => Array.from(document.querySelectorAll('tr.cbi-section-table-row[data-sid]'))
+        .filter(tr => document.getElementById('ev-lat-' + tr.getAttribute('data-sid')) && tr.style.display != 'none')
+        .map(tr => tr.getAttribute('data-sid'))""")
+
+
+def lat_text(page, sid):
+    return page.inner_text("#ev-lat-" + sid)
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -224,75 +265,88 @@ def main():
             bad("fresh install: wizard did not appear (%s, url %s)" % (e, page.url))
             shot(page, "fail-no-wizard")
             raise
-        step(page, 0)
+        step(page, S_WELCOME)
         shot(page, "01-welcome")
         check("welcome: no 'already set up' note on a fresh install", page.query_selector("#ev-wiz-configured") is None)
         click(page, "#ev-wiz-next")
-        step(page, 1)
+        step(page, S_LINK)
 
         # ---------------------------------------------------------- invalid links
         def link_error(text):
             page.fill("#ev-wiz-url", text)
             click(page, "#ev-wiz-next")
-            page.wait_for_function("document.getElementById('ev-wiz-error') && document.getElementById('ev-wiz-error').textContent.length > 0", timeout=60000)
+            page.wait_for_function("document.getElementById('ev-wiz-error') && document.getElementById('ev-wiz-error').textContent.length > 0", timeout=120000)
             return page.inner_text("#ev-wiz-error")
 
         e = link_error("ss://YWVzLTI1Ni1nY206cGFzcw@192.0.2.1:8388#ss")
         check("invalid link: ss:// is refused with a clear reason (%s)" % e, "not supported" in e and "VLESS" in e)
-        e = link_error("https://example.com/list.txt")
-        check("invalid link: a subscription URL is explained (%s)" % e, "subscription" in e.lower())
         e = link_error("vless://not-a-uuid@192.0.2.1:443?security=none#x")
         check("invalid link: bad UUID (%s)" % e, "UUID" in e)
         e = link_error("vless://00000000-0000-4000-8000-000000000001@192.0.2.1:443?type=kcp&security=none#kcp")
         check("invalid link: transport rejected by the router's parser (%s)" % e.replace("\n", " | "), "not accepted" in e)
         e = link_error(GOOD + "\n" + BAD)
         check("invalid link: two links at once (%s)" % e, "exactly one" in e)
+        e = link_error("just some text")
+        check("invalid input: not a link (%s)" % e, "not a link" in e)
+        # an http(s) link is only a subscription when the router finds servers in it
+        e = link_error(SUB + "/html")
+        check("http link without servers: not taken for a subscription (%s)" % e.replace("\n", " | "), "No VLESS server" in e)
+        check("http link without servers: the subscription was removed again", "subscribe_list" not in sh("uci -q show easy_vless"))
         check("invalid links: no server was added", vless_servers() == [])
         shot(page, "02-invalid-link")
-        check("step still 'Server' after errors", page.query_selector('.ev-wiz-body[data-step="1"]') is not None)
+        check("step still 'Link' after errors", page.query_selector('.ev-wiz-body[data-step="%d"]' % S_LINK) is not None)
+
+        # detection shown while typing
+        page.fill("#ev-wiz-url", BAD)
+        page.wait_for_selector('#ev-wiz-detect[data-kind="vless"]', timeout=10000)
+        ok("typing a vless:// link: detected as VLESS link")
+        check("VLESS link: the button says Add server", "Add server" in page.inner_text("#ev-wiz-next"))
 
         # ---------------------------------------------------------- failing server
-        page.fill("#ev-wiz-url", BAD)
         click(page, "#ev-wiz-next")
+        step(page, S_SERVER)
         wait_imported(page, "20444")
-        imp = page.inner_text("#ev-wiz-imported")
-        check("closed-port server imported, parameters shown (%s)" % imp.replace("\n", " | "), "20444" in imp)
+        imp = page.inner_text("#ev-wiz-body") if page.query_selector("#ev-wiz-body") else page.inner_text(".ev-wiz-body")
+        check("closed-port server imported, parameters shown (%s)" % imp.replace("\n", " | ")[:160], "20444" in imp)
         bad_id = vless_servers()
         check("closed-port server exists in UCI", len(bad_id) == 1)
         click(page, "#ev-wiz-next")
-        step(page, 2)
+        step(page, S_TEST)
         v = wait_tests(page)
         shot(page, "03-test-failed")
         check("Server Test of the closed port fails", v == "bad")
         check("failure reason shown", len(page.inner_text("#ev-wiz-servertest")) > 10)
+        check("failed Server Test: URL Test not run", "not run" in page.inner_text("#ev-wiz-urltest"))
         check("failure: 'Repeat test' offered", page.query_selector("#ev-wiz-retest") is not None)
         check("failure: 'Continue anyway' offered", "Continue anyway" in page.inner_text("#ev-wiz-next"))
         click(page, "#ev-wiz-retest")
         v = wait_tests(page)
         check("repeat test: fails again", v == "bad")
+        check("repeat test: no 'still running' notice", no_wait_notice(page))
         click(page, "#ev-wiz-next")  # continue anyway
-        step(page, 3)
+        step(page, S_ROUTING)
         ok("continue anyway with the failing server reaches Routing")
         click(page, "#ev-wiz-back")
-        step(page, 2)
+        step(page, S_TEST)
         click(page, "#ev-wiz-back")
-        step(page, 1)
+        step(page, S_SERVER)
+        click(page, "#ev-wiz-back")
+        step(page, S_LINK)
         check("back: the pasted link is kept", page.input_value("#ev-wiz-url").strip() == BAD)
 
         # ---------------------------------------------------------- working server
         page.fill("#ev-wiz-url", GOOD)
-        check("editing the link hides the 'Added' box of the previous link",
-              page.query_selector("#ev-wiz-imported") is None or not page.is_visible("#ev-wiz-imported"))
         click(page, "#ev-wiz-next")
+        step(page, S_SERVER)
         wait_imported(page, "20443")
         ids = vless_servers()
         check("replacing the link removes the server imported before (one server left)", len(ids) == 1 and ids != bad_id)
         good_id = ids[0] if ids else ""
-        imp = page.inner_text("#ev-wiz-imported")
-        check("working server imported, parameters shown (%s)" % imp.replace("\n", " | "), "20443" in imp and "Wizard Test" in imp)
+        imp = page.inner_text(".ev-wiz-body")
+        check("working server imported, parameters shown (%s)" % imp.replace("\n", " | ")[:160], "20443" in imp and "Wizard Test" in imp)
         shot(page, "04-server-added")
         click(page, "#ev-wiz-next")
-        step(page, 2)
+        step(page, S_TEST)
         v = wait_tests(page)
         shot(page, "05-test-ok")
         st_txt = page.inner_text("#ev-wiz-servertest")
@@ -300,18 +354,25 @@ def main():
         check("Server Test passes (%s)" % st_txt.replace("\n", " "), "PASS" in st_txt)
         check("URL Test (https://x.com) passes (%s)" % url_txt.replace("\n", " "), "PASS" in url_txt)
         check("verdict: the server works", v == "ok")
+        st = test_state()
+        check("wizard tests ran through the router's test queue (results stored)",
+              any(r.get("node") == good_id and r.get("result", {}).get("kind") == "url" for r in st.get("results", [])))
 
         # back / forward keep the values
         click(page, "#ev-wiz-back")
-        step(page, 1)
+        step(page, S_SERVER)
+        click(page, "#ev-wiz-back")
+        step(page, S_LINK)
         check("back: the link is kept", page.input_value("#ev-wiz-url").strip() == GOOD)
         check("back: the import is kept (button says Next)", page.inner_text("#ev-wiz-next").strip() == "Next")
         click(page, "#ev-wiz-next")
-        step(page, 2)
+        step(page, S_SERVER)
+        click(page, "#ev-wiz-next")
+        step(page, S_TEST)
         check("forward again: no second import", vless_servers() == [good_id])
         check("forward again: test results kept", "PASS" in page.inner_text("#ev-wiz-servertest"))
         click(page, "#ev-wiz-next")
-        step(page, 3)
+        step(page, S_ROUTING)
 
         # ---------------------------------------------------------- routing
         shot(page, "06-routing")
@@ -323,18 +384,18 @@ def main():
             check("routing scheme shows %s" % line, line in rt)
         page.check("#ev-wiz-routing-all input")
         click(page, "#ev-wiz-back")
-        step(page, 2)
+        step(page, S_TEST)
         click(page, "#ev-wiz-next")
-        step(page, 3)
+        step(page, S_ROUTING)
         check("back: the routing choice is kept", page.is_checked("#ev-wiz-routing-all input"))
         page.check("#ev-wiz-routing-basic input")
         click(page, "#ev-wiz-next")
-        step(page, 4)
+        step(page, S_REVIEW)
 
         # ---------------------------------------------------------- review
         shot(page, "07-review")
         rv = page.inner_text(".ev-wiz-body")
-        for s in ("Wizard Test", "RUSSIA", "DNS", "Forwarding", "TPROXY", "main switch"):
+        for s in ("Wizard Test", "RUSSIA", "DNS", "Forwarding", "TPROXY", "main switch", "URL Test", "20443"):
             check("review shows %s" % s, s in rv)
         check("review: nothing written yet (node empty, switch off, no rules)",
               uci("@global[0].node") == "" and uci("@global[0].enabled") == "0" and "shunt_rules" not in sh("uci -q show easy_vless"))
@@ -371,7 +432,7 @@ def main():
 
         # ---------------------------------------------------------- apply
         click(page, "#ev-wiz-back")
-        step(page, 4)
+        step(page, S_REVIEW)
         done = apply_and_wait(page)
         shot(page, "10-done")
         if not done:
@@ -430,17 +491,20 @@ def main():
         # ---------------------------------------------------------- repeated opening: keep, cancel
         cfg = export()
         open_wizard(page)
-        step(page, 0)
+        step(page, S_WELCOME)
         check("repeated opening: 'already set up' note", page.query_selector("#ev-wiz-configured") is not None)
         click(page, "#ev-wiz-next")
-        step(page, 1)
-        check("repeated opening: existing server offered", page.query_selector("#ev-wiz-existing") is not None)
+        step(page, S_LINK)
+        check("repeated opening: existing servers offered", page.query_selector("#ev-wiz-mode-existing") is not None)
         page.check("#ev-wiz-mode-existing input")
         click(page, "#ev-wiz-next")
-        step(page, 2)
+        step(page, S_SERVER)
+        check("repeated opening: the existing server is listed", page.query_selector('#ev-wiz-nodes tr[data-sid="%s"]' % good_id) is not None)
+        click(page, "#ev-wiz-next")
+        step(page, S_TEST)
         wait_tests(page)
         click(page, "#ev-wiz-next")
-        step(page, 3)
+        step(page, S_ROUTING)
         check("repeated opening: 'keep current routing' preselected", page.is_checked("#ev-wiz-routing-keep input"))
         shot(page, "13-rerun-routing")
         click(page, "#ev-wiz-cancel")
@@ -452,17 +516,19 @@ def main():
 
         # repeated opening, keep + Apply: nothing overwritten
         open_wizard(page)
-        step(page, 0)
+        step(page, S_WELCOME)
         click(page, "#ev-wiz-next")
-        step(page, 1)
+        step(page, S_LINK)
         page.check("#ev-wiz-mode-existing input")
         click(page, "#ev-wiz-next")
-        step(page, 2)
+        step(page, S_SERVER)
+        click(page, "#ev-wiz-next")
+        step(page, S_TEST)
         wait_tests(page)
         click(page, "#ev-wiz-next")
-        step(page, 3)
+        step(page, S_ROUTING)
         click(page, "#ev-wiz-next")
-        step(page, 4)
+        step(page, S_REVIEW)
         done = apply_and_wait(page)
         check("repeated opening, keep: Apply succeeds", done)
         check("repeated opening, keep: configuration not overwritten", export() == cfg)
@@ -483,9 +549,10 @@ def main():
         ok("defaults again: the wizard appears again")
         # cancel after importing: the imported server is removed, Main shows a note, no redirect loop
         click(page, "#ev-wiz-next")
-        step(page, 1)
+        step(page, S_LINK)
         page.fill("#ev-wiz-url", GOOD)
         click(page, "#ev-wiz-next")
+        step(page, S_SERVER)
         wait_imported(page, "20443")
         check("imported before cancel", len(vless_servers()) == 1)
         click(page, "#ev-wiz-cancel")
@@ -516,6 +583,150 @@ def main():
         check("manually configured (new browser session): no wizard", "/wizard" not in page2.url and page2.query_selector("#ev-setup-note") is None)
         check("manually configured: configuration untouched", export() == manual)
         ctx2.close()
+
+        # ---------------------------------------------------------- Wizard 2.0: subscription link
+        sh("/bin/ash /w/tests/ci/wizard-backend-tests.sh reset >/dev/null 2>&1")
+        page.evaluate("window.sessionStorage.clear()")
+        page.goto(EV)
+        page.wait_for_url(re.compile(r".*/easy_vless/wizard$"), timeout=60000)
+        step(page, S_WELCOME)
+        click(page, "#ev-wiz-next")
+        step(page, S_LINK)
+        # a provider that answers only to the HAPP app: Auto (default) asks again as HAPP
+        page.fill("#ev-wiz-url", SUB + "/happ-403")
+        page.wait_for_selector('#ev-wiz-detect[data-kind="sub"]', timeout=10000)
+        check("subscription link detected", "Subscription link" in page.inner_text("#ev-wiz-detect"))
+        check("subscription link: the button says Load subscription", "Load subscription" in page.inner_text("#ev-wiz-next"))
+        check("subscription options offered (HWID, User-Agent Auto)", page.query_selector("#ev-wiz-hwid") is not None and page.input_value("#ev-wiz-ua") == "auto")
+        shot(page, "14-sub-link")
+        click(page, "#ev-wiz-next")
+        step(page, S_SERVER, 180000)
+        page.wait_for_selector("#ev-wiz-subinfo", timeout=10000)
+        subs = [l.split(".")[1].split("=")[0] for l in sh("uci -q show easy_vless | grep '=subscribe_list$'").splitlines()]
+        check("subscription added to Node List (one URL Subscription)", len(subs) == 1)
+        sub_id = subs[0] if subs else ""
+        remark = uci(sub_id + ".remark")
+        check("subscription: link, Auto request strategy stored", uci(sub_id + ".url") == SUB + "/happ-403" and uci(sub_id + ".user_agent") == "auto")
+        members = servers_of(remark)
+        check("subscription: 2 VLESS servers of the list (ss skipped), they belong to the subscription (%s)" % members, len(members) == 2)
+        rows = page.query_selector_all("#ev-wiz-nodes tr[data-sid]")
+        check("server step: both servers listed with name and address", len(rows) == 2 and "Happ Good" in page.inner_text("#ev-wiz-nodes") and "20444" in page.inner_text("#ev-wiz-nodes"))
+        # Test All in the wizard: both servers tested one after another
+        click(page, "#ev-wiz-testall")
+        page.wait_for_function("() => Array.from(document.querySelectorAll('#ev-wiz-nodes [data-test-state]')).every(e => ['passed','failed'].includes(e.getAttribute('data-test-state')))", timeout=180000)
+        shot(page, "15-sub-servers")
+        good_sub = [s for s in members if uci(s + ".port") == "20443"]
+        bad_sub = [s for s in members if uci(s + ".port") == "20444"]
+        good_sub = good_sub[0] if good_sub else ""
+        bad_sub = bad_sub[0] if bad_sub else ""
+        check("wizard Test All: working server shows its latency", "ms" in page.inner_text("#ev-wiz-lat-" + good_sub))
+        check("wizard Test All: closed port shows Failed", "Failed" in page.inner_text("#ev-wiz-lat-" + bad_sub))
+        page.click('#ev-wiz-nodes tr[data-sid="%s"]' % good_sub)
+        click(page, "#ev-wiz-next")
+        step(page, S_TEST)
+        v = wait_tests(page)
+        check("subscription server: Server Test and URL Test pass", v == "ok")
+        click(page, "#ev-wiz-next")
+        step(page, S_ROUTING)
+        click(page, "#ev-wiz-next")
+        step(page, S_REVIEW)
+        rv = page.inner_text(".ev-wiz-body")
+        check("review: the subscription server and its source", "Happ Good" in rv and remark in rv)
+        done = apply_and_wait(page)
+        shot(page, "16-sub-done")
+        check("subscription wizard: Apply succeeds", done)
+        check("subscription wizard: Default -> the chosen subscription server", uci("main_router.default_node") == good_sub)
+        check("subscription wizard: the server stays a normal subscription node", uci(good_sub + ".group") == remark and uci(good_sub + ".add_mode") == "2")
+        check("subscription wizard: service running", status().get("running") is True)
+        click(page, "#ev-wiz-finish")
+        page.wait_for_url(re.compile(r".*/easy_vless/main$"), timeout=60000)
+
+        # ---------------------------------------------------------- Node List 0.8.0
+        page.goto(EV + "/servers")
+        page.wait_for_selector("#ev-nodelist", timeout=60000)
+        page.wait_for_selector("#ev-lat-" + good_sub, timeout=30000)
+        check("Node List: latency column with the wizard's results", "ms" in lat_text(page, good_sub) and "Failed" in lat_text(page, bad_sub))
+        check("Node List: source of a subscription server shown", ("Subscription: " + remark) in page.inner_text("#ev-state-" + good_sub))
+        sh("ubus -t 60 call luci.easy_vless import " + shlex.quote(json.dumps({"links": re.sub(r"#.*$", "#Zulu%20Manual", GOOD)})) + " >/dev/null")
+        page.reload()
+        page.wait_for_selector("#ev-nodelist", timeout=60000)
+        manual_id = [s for s in vless_servers() if uci(s + ".remarks") == "Zulu Manual"]
+        manual_id = manual_id[0] if manual_id else ""
+        page.wait_for_selector("#ev-lat-" + manual_id, timeout=30000)
+        check("Node List: a new server is 'Not tested' (never 0 ms)", "Not tested" in lat_text(page, manual_id) and "0 ms" not in lat_text(page, manual_id))
+        # sort by latency: passed first (fastest), then failed, then untested
+        page.select_option("#ev-sort", "latency")
+        order = row_order(page)
+        check("sort by latency: working server, then failed, then untested (%s)" % order,
+              order.index(good_sub) < order.index(bad_sub) < order.index(manual_id))
+        page.select_option("#ev-sort", "name")
+        order = row_order(page)
+        check("sort by name: Happ Closed, Happ Good, Zulu Manual (%s)" % order, order == [bad_sub, good_sub, manual_id])
+        page.select_option("#ev-filter-status", "failed")
+        check("filter Failed: only the closed port (%s)" % row_order(page), row_order(page) == [bad_sub])
+        page.select_option("#ev-filter-status", "all")
+        page.fill("#ev-search", "zulu")
+        check("search: only matching servers (%s)" % row_order(page), row_order(page) == [manual_id])
+        page.fill("#ev-search", "")
+        # Test All: Testing state, progress, results, no duplicate on repeated clicks
+        page.select_option("#ev-sort", "latency")
+        click(page, "#ev-testall-btn")
+        page.wait_for_selector("#ev-testall-cancel", timeout=20000)
+        check("Test All: progress shown (%s)" % page.inner_text("#ev-testall"), "Testing" in page.inner_text("#ev-testall"))
+        shot(page, "17-nodelist-testing")
+        # repeated clicks on a queued/running server: nothing new is queued
+        page.evaluate("(id) => { const b = document.getElementById('ev-btn-test-' + id); if (b) { b.disabled = false; b.click(); b.click(); } }", manual_id)
+        time.sleep(2)
+        st = test_state()
+        q = [x for x in st.get("queue", []) if x.get("node") == manual_id] + ([st["current"]] if st.get("current", {}).get("node") == manual_id else [])
+        check("repeated click: the server is queued once (%s)" % q, len(q) <= 1)
+        check("repeated click: no 'still running' notice", no_wait_notice(page))
+        # leave the page while testing and come back: state from the router
+        page.goto(EV + "/main")
+        page.wait_for_selector("#cbi-easy_vless", timeout=60000)
+        page.goto(EV + "/servers")
+        page.wait_for_selector("#ev-lat-" + manual_id, timeout=60000)
+        st_attr = page.get_attribute("#ev-lat-%s [data-test-state]" % manual_id, "data-test-state")
+        check("back in Node List: a queued/running test is still shown (%s)" % st_attr, st_attr in ("testing", "queued", "passed", "failed"))
+        page.wait_for_selector("#ev-testall-btn:not([disabled])", timeout=240000)
+        page.wait_for_function("(id) => { const e = document.querySelector('#ev-lat-' + id + ' [data-test-state]'); return e && e.getAttribute('data-test-state') == 'passed'; }",
+                               arg=manual_id, timeout=30000)
+        shot(page, "18-nodelist-latency")
+        st = wait_tests_idle()
+        check("Test All finished: 3 servers tested, nothing left running", st.get("running") is False and not st.get("queue"))
+        check("Test All: the manual server now has a latency", "ms" in lat_text(page, manual_id))
+        order = row_order(page)
+        check("sort by latency after Test All: the failed server is last (%s)" % order, order[-1] == bad_sub)
+        # URL Test and Server Test of the same server at once
+        page.click("#ev-btn-test-" + manual_id)
+        page.click("#ev-btn-urltest-" + manual_id)
+        wait_tests_idle()
+        page.wait_for_function("(id) => !document.getElementById('ev-btn-urltest-' + id).disabled", arg=manual_id, timeout=60000)
+        check("Server Test + URL Test of one server: both results shown", "URL Test" in page.inner_text("#ev-state-" + manual_id))
+        # subscription update in Node List: Updating…, then the result
+        page.wait_for_selector("#ev-sub-update-" + sub_id, timeout=10000)
+        page.click("#ev-sub-update-" + sub_id)
+        page.wait_for_selector('#ev-sub-%s [data-sub-state="busy"]' % sub_id, timeout=10000)
+        ok("subscription update: 'Updating…' shown")
+        check("subscription update: buttons disabled while it runs", page.is_disabled("#ev-sub-update-" + sub_id))
+        page.wait_for_selector('#ev-sub-%s [data-sub-state="ok"]' % sub_id, timeout=120000)
+        txt = page.inner_text("#ev-sub-" + sub_id)
+        check("subscription update: nodes received, before/now shown (%s)" % txt.replace("\n", " "), "2 nodes received" in txt and "before: 2, now: 2" in txt and "HAPP" in txt)
+        shot(page, "19-subscription-updated")
+        check("subscription update: no 'still running' notice", no_wait_notice(page))
+        # a failing update keeps the servers
+        sh("uci set easy_vless.%s.url=%s; uci commit easy_vless" % (sub_id, shlex.quote(SUB + "/status/500")))
+        page.reload()
+        page.wait_for_selector("#ev-sub-update-" + sub_id, timeout=60000)
+        page.click("#ev-sub-update-" + sub_id)
+        page.wait_for_selector('#ev-sub-%s [data-sub-state="bad"]' % sub_id, timeout=120000)
+        txt = page.inner_text("#ev-sub-" + sub_id)
+        check("failed update: reason and 'existing nodes kept' shown (%s)" % txt.replace("\n", " "), "500" in txt and "existing nodes kept" in txt)
+        check("failed update: the subscription servers are still there", len(servers_of(remark)) == 2)
+        # Main: target test through the same queue
+        page.goto(EV + "/main")
+        page.wait_for_selector("#ev-main-tests", timeout=60000)
+        check("Main: last Server Test result of the active target shown", "ms" in page.inner_text("#ev-main-tests"))
 
         browser.close()
 
