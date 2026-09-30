@@ -31,7 +31,8 @@ return view.extend({
 			return Promise.all([
 				uci.load(CONFIG),
 				ev.callStatus(),
-				ws
+				ws,
+				ev.refreshTests()
 			]);
 		});
 	},
@@ -70,21 +71,26 @@ return view.extend({
 				th(_('Target', 'routing target')), th(_('Used by')), th(_('Result')), th(_('Latency')), th(_('Response / error')), th('')
 			])
 		].concat(Object.keys(byTarget).map(L.bind(function(t) {
-			const r = ev.testResults[t];
 			let result = '-', latency = '-', detail = '', btn = '';
 			if (ev.isServer(t)) {
-				btn = ev.smallButton(_('Test'), _('Server Test of this server'), '', ui.createHandlerFn(this, 'handleTest', [ t ]));
-				if (r && r.pending)
-					result = E('em', {}, _('testing…'));
-				else if (r && r.ok) {
+				const info = ev.testInfo(t, 'server');
+				const r = info.result;
+				btn = ev.smallButton(_('Test'), _('Server Test of this server'), 'ev-test-btn', ui.createHandlerFn(this, 'handleTest', [ t ]));
+				btn.disabled = info.state == 'testing' || info.state == 'queued';
+				if (info.state == 'testing')
+					result = E('span', { 'style': 'white-space:nowrap' }, [ E('span', { 'class': 'spinning', 'style': 'display:inline-block;width:1em' }, ' '), ' ', _('Testing…') ]);
+				else if (info.state == 'queued')
+					result = E('em', {}, _('Queued'));
+				else if (r && r.ok)
 					result = ev.badge(_('PASS'), 'ok');
-					latency = _('%d ms').format(r.delay);
-					detail = 'HTTP ' + (r.http_code || '');
-				}
-				else if (r) {
+				else if (r)
 					result = ev.badge(_('FAIL'), 'bad');
-					detail = ev.testError(r);
+				if (r && r.ok) {
+					latency = _('%d ms').format(r.delay);
+					detail = E('span', {}, [ 'HTTP ' + (r.http_code || ''), ' · ', E('small', { 'style': 'opacity:.75' }, ev.agoText(r.time)) ]);
 				}
+				else if (r)
+					detail = E('span', {}, [ ev.testError(r), ' · ', E('small', { 'style': 'opacity:.75' }, ev.agoText(r.time)) ]);
 				else
 					detail = E('em', {}, _('not tested'));
 			}
@@ -109,18 +115,12 @@ return view.extend({
 			dom.content(box, this.renderTests());
 	},
 
+	/* Queued on the router (one test at a time; a server that is already
+	 * queued or being tested is not tested twice); the table follows the
+	 * test state. */
 	handleTest: function(targets) {
-		return ev.exclusive(_('Server Test'), L.bind(function() {
-			targets = targets || this.targetRows().map(function(r) { return r.target; }).filter(function(t, i, a) { return ev.isServer(t) && a.indexOf(t) == i; });
-			targets.forEach(function(t) { ev.testResults[t] = { pending: true }; });
-			this.refreshTests();
-			/* one after another: each test starts its own temporary sing-box */
-			return targets.reduce(L.bind(function(p, t) {
-				return p.then(L.bind(function() {
-					return ev.serverTest(t).then(L.bind(this.refreshTests, this));
-				}, this));
-			}, this), Promise.resolve());
-		}, this));
+		targets = targets || this.targetRows().map(function(r) { return r.target; }).filter(function(t, i, a) { return ev.isServer(t) && a.indexOf(t) == i; });
+		return ev.queueTests('server', targets.filter(function(t) { return !ev.testBusy(t, 'server'); }));
 	},
 
 	/* ---------- form ---------- */
@@ -197,6 +197,8 @@ return view.extend({
 
 		return m.render().then(L.bind(function(mapEl) {
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
+			poll.add(L.bind(ev.refreshTests, ev), 10);
+			ev.onTestUpdate(L.bind(this.refreshTests, this));
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Easy VLESS')),
