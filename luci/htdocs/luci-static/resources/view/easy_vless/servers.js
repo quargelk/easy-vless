@@ -1012,7 +1012,7 @@ return view.extend({
 			'.ev-toolbar, .ev-viewbar { display: flex; flex-wrap: wrap; gap: .4em; align-items: center; margin: .5em 0; }',
 			'.ev-viewbar label { display: inline-flex; align-items: center; gap: .3em; white-space: nowrap; }',
 			'.ev-viewbar select, .ev-viewbar input { width: auto; min-width: 0; max-width: 100%; }',
-			'.ev-viewbar input[type=search] { width: 14em; }',
+			'.ev-viewbar input[type=search] { width: 14em; height: auto; box-sizing: border-box; }',
 			'.ev-sorted .ev-move { visibility: hidden; }',
 			'.ev-test-btn.ev-busy { opacity: .55; cursor: progress; }',
 			'#ev-shown { opacity: .7; font-size: 90%; }'
