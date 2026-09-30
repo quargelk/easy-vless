@@ -1,9 +1,18 @@
 name: Build easy-vless packages
 
+# Events (tests/ci/workflow-events.py checks this separation):
+#   pull request, workflow_dispatch  full CI: all jobs below except release
+#   push to main                     checks and build (post-merge build; the
+#                                    merged tree passed the full CI in its PR)
+#   push of a v* tag                 release pipeline: checks, build, release;
+#                                    release requires a successful full CI
+#                                    run for the same tree
+#
 # Jobs:
 #   checks         static checks (tests/static-checks.sh): shell/Lua/JS/JSON
 #                  syntax, git whitespace, resources, screenshots, package
-#                  metadata, local-path/credential scan
+#                  metadata, local-path/credential scan; the event separation
+#                  of this workflow (tests/ci/workflow-events.py)
 #   build          real OpenWrt 24.10.3 mediatek/filogic SDK build of all
 #                  packages, per-package content checks, dist/ + SHA256SUMS
 #   runtime-tests  matrix of real OpenWrt rootfs images (x86-64 24.10.3 and
@@ -14,12 +23,17 @@ name: Build easy-vless packages
 #                  system requirement and bootstrap scenarios
 #                  (tests/ci/installer-tests.sh); First Run Wizard backend
 #                  (ubus) on every target and the LuCI wizard in headless
-#                  Chromium on x86-64 (tests/ci/wizard-tests.sh)
+#                  Chromium on x86-64 (tests/ci/wizard-tests.sh); pull
+#                  requests and workflow_dispatch only
 #   ubifs          real kernel flash stack (nandsim NAND, UBI, UBIFS) with
 #                  the TR3000 v1 layout: flash detection, UBIFS compression
-#                  of a worst-case installation (tests/ci/ubifs-tests.sh)
-#   release        only for tags v*: tag/version check, draft GitHub Release
-#                  with the dist/ files (the only job with contents: write)
+#                  of a worst-case installation (tests/ci/ubifs-tests.sh);
+#                  pull requests and workflow_dispatch only
+#   release        only for tags v*: requires a successful full CI run of
+#                  this workflow for the tree of the tagged commit (checks,
+#                  build, every runtime-tests job, ubifs), then the draft GitHub Release
+#                  with the dist/ files of this run's build (the tag/version
+#                  check is in build; the only job with contents: write)
 #
 # Reproducible package build for the Easy VLESS runtime, split into OpenWrt
 # packages (backend-dependency split):
@@ -141,7 +155,10 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends lua5.1
+          sudo apt-get install -y --no-install-recommends lua5.1 python3-yaml
+
+      - name: CI event separation (pull request = full CI, main = build, tag = release only)
+        run: python3 tests/ci/workflow-events.py .github/workflows/build.yml
 
       - name: Static checks
         env:
@@ -801,6 +818,9 @@ jobs:
   # renamed or faked. The Easy VLESS packages are the same "all" packages
   # built above for every target.
   runtime-tests:
+    # full CI only: pull requests and workflow_dispatch (not a push to main,
+    # not a tag: that tree already passed this matrix, release checks it)
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')) }}
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: ${{ matrix.target.platform == '' && 60 || 150 }}
@@ -930,6 +950,7 @@ jobs:
   # Real flash: the runner kernel simulates NAND chips (nandsim) with the
   # TR3000 v1 partition layout, UBI and a real UBIFS overlay.
   ubifs:
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')) }}
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 40
@@ -956,14 +977,47 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [checks, build, runtime-tests, ubifs]
+    needs: [checks, build]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Checkout easy-vless
         uses: actions/checkout@v4
+
+      # runtime-tests and ubifs do not run for tags: a release is only drafted
+      # for a tree that already passed the full CI in another run of this
+      # workflow (its pull request head - the merge commit of an up-to-date
+      # PR has the same tree - or workflow_dispatch) - every one of its
+      # checks, build, runtime-tests (the whole matrix, Wizard e2e included)
+      # and ubifs jobs successful.
+      - name: Require a successful full CI run of the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="repos/${GITHUB_REPOSITORY}/actions"
+          tree="$(git rev-parse HEAD^{tree})"
+          found=""
+          for id in $(gh api "${api}/workflows/build.yml/runs?status=success&per_page=100" \
+                        --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID} and .head_commit.tree_id == \"${tree}\") | .id"); do
+            # <jobs> <successful jobs> <runtime-tests jobs> <ubifs jobs>
+            read -r n ok rt ub < <(gh api "${api}/runs/${id}/jobs?per_page=100" --jq '
+              [.jobs[] | select(.name == "checks" or .name == "build" or .name == "ubifs" or (.name | startswith("runtime-tests ")))]
+              | "\(length) \([.[] | select(.conclusion == "success")] | length) \([.[] | select(.name | startswith("runtime-tests "))] | length) \([.[] | select(.name == "ubifs")] | length)"')
+            echo "run ${id}: ${ok}/${n} jobs successful, runtime-tests: ${rt}, ubifs: ${ub}"
+            if [ "${n}" -gt 0 ] && [ "${ok}" = "${n}" ] && [ "${rt}" -gt 0 ] && [ "${ub}" = 1 ]; then
+              found="${id}"
+              break
+            fi
+          done
+          if [ -z "${found}" ]; then
+            echo "::error::no successful full CI run of this workflow for the tree ${tree} of ${GITHUB_SHA} (checks, build, all runtime-tests, ubifs): run the workflow (workflow_dispatch) on main for this commit before tagging"
+            exit 1
+          fi
+          echo "full CI of tree ${tree} (${GITHUB_SHA}): ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${found}"
 
       - name: Download dist artifact
         uses: actions/download-artifact@v4
