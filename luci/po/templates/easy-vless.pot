@@ -367,24 +367,136 @@ msgstr ""
 msgid "Probe failed (HTTP %s)."
 msgstr ""
 
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Not tested: another Easy VLESS operation (start, stop or configuration check) did not finish in time. Test again."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "This server no longer exists."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The sing-box backend is not installed (easy-vless-sing-box and a sing-box package are required)."
+msgstr ""
+
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "failed"
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "testing…"
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The test could not be started: %s"
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "PASS"
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The test ended without a result (it was cancelled, or the router stopped the test)."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "just now"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "%d min ago"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "%d h ago"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Testing…"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js
+msgid "Queued"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "%d ms"
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "FAIL"
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Passed"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Failed"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Not tested"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The update did not finish in time; check the log."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Updating…"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Updated"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Not updated yet"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "answered only to HAPP"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "%d nodes received"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "before: %d, now: %d"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "No changes"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "No supported VLESS node in the answer"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "existing nodes kept"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Empty answer"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "TLS certificate not verified"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "check the router time and the CA certificates (ca-bundle)"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Download failed (%s)"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "curl error %s"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Skipped: Easy VLESS is not running"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "Update failed"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "see the log on Main"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
@@ -476,12 +588,20 @@ msgstr ""
 msgid "Response / error"
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Test"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "Server Test of this server"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "PASS"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "FAIL"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -494,10 +614,6 @@ msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "not applicable"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Server Test"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
@@ -608,7 +724,7 @@ msgstr ""
 msgid "e.g. <code>443</code> or <code>80,443,1000:2000</code>"
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Source"
 msgstr ""
 
@@ -914,6 +1030,14 @@ msgstr ""
 msgid "URL Test"
 msgstr ""
 
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Subscription: %s"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Added manually"
+msgstr ""
+
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "no result (not tested yet or unreachable)"
 msgstr ""
@@ -923,11 +1047,31 @@ msgid "No data"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Use"
+msgid "Testing… %d of %d"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Test all servers"
+msgid "Drop the queued tests; the running test finishes"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Server Test of every server, one after another"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Test All"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d of %d servers shown"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d servers"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Use"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
@@ -979,35 +1123,23 @@ msgid "Import"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Update subscription"
+msgid "Subscription update failed: %s"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Subscription"
+msgid "Subscription update finished without a result; check the log on Main."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Downloading and parsing the subscription…"
+msgid "Subscription update: %s - %s. Existing nodes were kept."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Failed"
+msgid "Subscription updated (%s): %d nodes received."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "%s nodes imported, %s skipped"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Subscription update finished: %d nodes before, %d now."
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Still running, check the log later."
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Format: %s"
+msgid "Update all subscriptions"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
@@ -1016,6 +1148,10 @@ msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Delete all nodes of subscription \"%s\"? Nodes of other subscriptions and manual servers are not touched."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Subscription"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
@@ -1251,10 +1387,6 @@ msgid "Subscription deleted (its nodes are kept; use Delete nodes to remove them
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Update all subscriptions"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Delete the nodes of this subscription"
 msgstr ""
 
@@ -1283,14 +1415,6 @@ msgid "Nodes"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Updated"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Not updated yet"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Update only when connected"
 msgstr ""
 
@@ -1306,15 +1430,19 @@ msgstr ""
 msgid "Send this router's stable hardware ID as the <code>X-HWID</code> header (with X-Device-OS / X-Ver-OS / X-Device-Model), for providers that limit devices. The ID is generated once and kept in /etc/easy_vless/hwid."
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "User-Agent"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "HAPP sends \"User-Agent: HAPP\" (for providers that serve the node list only to the HAPP app); enable HWID Support as well if the provider requires it."
+msgid "Auto: a normal request first; only if the provider answers with an error or without a supported node, one more request as the HAPP app. HAPP sends \"User-Agent: HAPP\" (for providers that serve the node list only to the HAPP app). Enable HWID Support as well if the provider limits devices."
 msgstr ""
 
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Auto (curl, then HAPP if needed)"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Default (curl)"
 msgstr ""
 
@@ -1451,11 +1579,43 @@ msgid "Servers: your VLESS servers - add one by hand or import a vless:// link, 
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Filter servers…"
+msgid "Search servers…"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Filter by name, address or status"
+msgid "Search by name, address or status"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Show:"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "All"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Testing"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Source:"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Sort:"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "List order"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Test result"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Last test"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
@@ -1603,10 +1763,6 @@ msgid "Only connections to these ports enter Easy VLESS routing; other ports go 
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
-msgid "All"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Common ports"
 msgstr ""
 
@@ -1703,6 +1859,10 @@ msgid "Welcome"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Link"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Routing"
 msgstr ""
 
@@ -1712,26 +1872,6 @@ msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Done"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Paste the vless:// link of your server."
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Paste exactly one link. More servers can be added later in Node List."
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "This is not a link: a VLESS link starts with vless://"
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "This looks like a subscription address, not a server link. Subscriptions are added in Node List → URL Subscriptions; here paste one vless:// link."
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "\"%s://\" links are not supported: Easy VLESS works with VLESS servers only (vless://)."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1747,7 +1887,31 @@ msgid "The port in the link must be between 1 and 65535."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste the vless:// link of your server or the subscription link of your provider."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste exactly one link. More servers can be added later in Node List."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "This is not a link: a VLESS link starts with vless://, a subscription link with https://"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The subscription link is incomplete: expected https://address/path"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "\"%s://\" links are not supported: Easy VLESS works with VLESS servers only (vless://)."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "not tested yet"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not run: the Server Test failed"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1795,11 +1959,11 @@ msgid "This wizard sets it up in a few steps:"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "add your VLESS server (a vless:// link from your provider);"
+msgid "paste the vless:// link of your server or the subscription link of your provider;"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "check that the server works;"
+msgid "choose a server and check that it works;"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1811,11 +1975,11 @@ msgid "review and start Easy VLESS."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "You need the vless:// link of your server. Nothing on the router changes before the last step."
+msgid "Nothing on the router changes before the last step, except that the server or the subscription is added to Node List."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Easy VLESS is already set up on this router. The wizard does not replace your settings: it adds a server, changes the routing only if you choose so in step 4, and Review lists every change before anything is applied."
+msgid "Easy VLESS is already set up on this router. The wizard does not replace your settings: it adds a server or a subscription, changes the routing only if you choose so, and Review lists every change before anything is applied."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1851,7 +2015,27 @@ msgid "Restore failed"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Paste the vless:// link of your server. Your provider gives it to you (often as \"Copy link\" or as a QR code in the app)."
+msgid "Paste the vless:// link of your server or the subscription link (https://…) of your provider. Your provider gives it to you (often as \"Copy link\" or as a QR code in the app)."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "VLESS link"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "one server; it is added to Node List"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Subscription link"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "the list of servers is downloaded by the router and checked"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Load subscription"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1859,7 +2043,19 @@ msgid "Add server"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Paste a new VLESS link"
+msgid "Subscription options"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Send the device ID (HWID) - for providers that limit the number of devices"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Auto: a normal request first; only if the provider answers with an error or without a supported server, one more request as the HAPP app."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Paste a VLESS link or a subscription link"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1867,19 +2063,15 @@ msgid "Use a server that is already in Node List"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Added"
+msgid "%d servers; you choose one in the next step."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "The server was added to Node List with these settings:"
+msgid "Only VLESS is supported (TCP, WebSocket, gRPC, HTTPUpgrade; TLS or Reality). Subscriptions: plain or base64 lists of vless:// links, Clash YAML and sing-box JSON; other server types are skipped."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Only VLESS is supported (TCP, WebSocket, gRPC, HTTPUpgrade; TLS or Reality). A subscription URL can be added later in Node List."
-msgstr ""
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Select a server."
+msgid "There is no server in Node List yet."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1895,7 +2087,47 @@ msgid "The link was not accepted by the VLESS parser."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Easy VLESS now connects through the server with a temporary sing-box instance and opens two web addresses over HTTPS (a real request through the VLESS connection, not only a TCP connect)."
+msgid "Loading…"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Downloading the subscription on the router…"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "No VLESS server was found in this subscription: %s"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Check the link. If your provider limits devices, enable \"Send the device ID (HWID)\" in the subscription options; if it serves the list only to the HAPP app, choose User-Agent HAPP."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Added"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server was added to Node List with these settings:"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Subscription \"%s\": %d VLESS servers were added to Node List. Choose the server to use:"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Choose the server to use:"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Optional: a Server Test of every server here, one after another, to see which ones answer."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Easy VLESS now connects through the server with a temporary sing-box instance: first the Server Test, then the URL Test (real HTTPS requests through the VLESS connection, not only a TCP connect)."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Server Test"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1903,7 +2135,7 @@ msgid "The server works."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "The server works, but %s did not answer through it. You can continue."
+msgid "The server works, but %s did not answer through it. You can repeat the URL Test or continue."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1911,11 +2143,15 @@ msgid "The server did not work. Check the link (address, port, UUID, Reality key
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "You can repeat the test, go back and paste another link, or continue anyway (Easy VLESS then starts, but the traffic through this server will not work)."
+msgid "You can repeat the test, go back and choose another server, or continue anyway (Easy VLESS then starts, but the traffic through this server will not work)."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Repeat test"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Repeat URL Test"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -1960,6 +2196,26 @@ msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "off"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "not run"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The server was not tested."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The Server Test failed: Easy VLESS starts, but the traffic through this server will not work."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The URL Test failed: %s did not answer through the server."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Everything goes through the server, also Russian sites."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
@@ -2185,6 +2441,10 @@ msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "The server \"%s\" added in this setup is removed again."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The subscription \"%s\" added in this setup and its servers are removed again."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
