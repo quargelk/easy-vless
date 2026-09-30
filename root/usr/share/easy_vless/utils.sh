@@ -468,7 +468,11 @@ op_lock() {
 	exec 7>>"$EV_OP_LOCK_FILE"
 	local waited=0
 	while ! flock -xn 7; do
+		# 0.8.0: "<lock file>.wait.<pid>" while waiting: the Server Test
+		# queue (test.sh run_queue) lets a waiting operation go first
+		[ "$waited" = 0 ] && touch "${EV_OP_LOCK_FILE}.wait.$$"
 		if [ "$waited" -ge "$EV_OP_LOCK_WAIT" ]; then
+			rm -f "${EV_OP_LOCK_FILE}.wait.$$"
 			exec 7>&-
 			echo "Easy VLESS: $1 was not run: another Easy VLESS operation (start, stop, configuration check or Server Test) is still running after ${EV_OP_LOCK_WAIT} s." >&2
 			return 1
@@ -476,6 +480,7 @@ op_lock() {
 		sleep 1
 		waited=$((waited + 1))
 	done
+	rm -f "${EV_OP_LOCK_FILE}.wait.$$"
 	EV_OP_LOCK_OWNER=$$
 }
 

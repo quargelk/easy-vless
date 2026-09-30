@@ -4,7 +4,7 @@
 # https://github.com/quargelk/easy-vless
 #
 # A plain, readable shell script: download it, read it, then run it as root.
-#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.7.2/install.sh
+#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.8.0/install.sh
 #   sh /tmp/install.sh --check          # only check the router, install nothing
 #   sh /tmp/install.sh                  # install
 #
@@ -55,13 +55,13 @@
 
 set -u
 
-EV_VERSION="0.7.2-r1"
-EV_TAG="v0.7.2"
+EV_VERSION="0.8.0-r1"
+EV_TAG="v0.8.0"
 EV_REPO="quargelk/easy-vless"
 EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 # Release date of this installer: a system clock before this date is certainly
 # wrong, and TLS certificates cannot be verified with it.
-EV_MIN_DATE="2026-09-29"
+EV_MIN_DATE="2026-09-30"
 EV_PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
 SINGBOX_MIN="1.12.0"
 SUPPORTED_RELEASE="24.10"

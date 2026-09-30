@@ -1429,7 +1429,9 @@ local function update_node(manual)
 	end
 end
 
+-- Returns (Easy VLESS) the number of accepted nodes and the detected format.
 local function parse_link(raw, add_mode, group, sub_cfg)
+	local format_label
 	if raw and #raw > 0 then
 		local cfgid
 		if sub_cfg then
@@ -1445,22 +1447,26 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 			szType = "singbox"
 			singboxConf = json_data
 			nodes = {}
+			format_label = "sing-box JSON"
 			log(2, i18n.translatef("Subscription format: %s", "sing-box JSON"))
 		elseif json_kind == "json_invalid" then
 			szType = "json_invalid"
 			nodes = {}
+			format_label = "invalid JSON"
 			log(1, i18n.translatef("Subscription [%s]: invalid sing-box JSON (%s); existing nodes are kept.", group, json_data))
 		elseif yamlTable and type(yamlTable) == "table" then
 			-- clash
 			szType = "clash"
 			clashTable = yamlTable
+			format_label = "Clash YAML"
 			log(2, i18n.translatef("Subscription format: %s", "Clash YAML"))
 		else
 			-- Base64 or plain-text URI list
 			if add_mode == "1" then
 				nodes = split(raw, "\n")
 			else
-				log(2, i18n.translatef("Subscription format: %s", raw:find("://", 1, true) and "URL list" or "base64 URL list"))
+				format_label = raw:find("://", 1, true) and "URL list" or "base64 URL list"
+				log(2, i18n.translatef("Subscription format: %s", format_label))
 				nodes = split(base64Decode(raw):gsub("\r\n", "\n"), "\n")
 			end
 		end
@@ -1541,9 +1547,50 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 			end
 		end
 		log(2, i18n.translatef("Successfully resolved the [%s] node, number: %s", group, #node_list))
+		return #node_list, format_label
 	else
 		if add_mode == "2" then
 			log(2, i18n.translatef("Get subscription content for [%s] is empty. This may be due to an invalid subscription address or a network problem. Please diagnose the issue!", group))
+		end
+	end
+	return 0, format_label
+end
+
+-- Easy VLESS 0.8.0: the result of the last update of every subscription for
+-- LuCI (rpcd "subscribe state"), in tmpfs: /var/run/easy_vless_sub/<id>.json
+--   time, status (ok | unchanged | no_nodes | empty | download | tls |
+--   skipped | error), found (supported nodes in the downloaded list),
+--   before / after (nodes of this subscription in the node list), format,
+--   http_code, curl_code, request (the User-Agent that answered: curl, HAPP
+--   or custom), fallback (Auto: the HAPP request was needed).
+local SUB_STATE_DIR = "/var/run/" .. c_config .. "_sub"
+local sub_records = {}
+
+local function group_count(remark)
+	local n = 0
+	remark = (remark or ""):lower()
+	uci_foreach("nodes", function(node)
+		if node.add_mode == "2" and node.group and node.group:lower() == remark then
+			n = n + 1
+		end
+	end)
+	return n
+end
+
+local function write_sub_records()
+	if next(sub_records) == nil then return end
+	luci.sys.call("mkdir -p " .. SUB_STATE_DIR)
+	for cfgid, rec in pairs(sub_records) do
+		if rec.after == nil then
+			rec.after = group_count(rec.remark)
+		end
+		rec.status = rec.status or "error"
+		local path = SUB_STATE_DIR .. "/" .. cfgid .. ".json"
+		local f = io.open(path .. ".tmp", "w")
+		if f then
+			f:write(jsonStringify(rec))
+			f:close()
+			os.rename(path .. ".tmp", path)
 		end
 	end
 end
@@ -1573,38 +1620,57 @@ local execute = function()
 			local cfgid = value[".name"]
 			local remark = value.remark or ""
 			local url = value.url or ""
+			local rec = { time = os.time(), remark = remark, before = group_count(remark), found = 0 }
+			if cfgid then sub_records[cfgid] = rec end
 			-- "Update only when connected": automatic updates are skipped while
 			-- Easy VLESS is not running (the Update button always runs).
 			if cron_sub and value.update_connected == "1" and not service_running() then
 				log(1, i18n.translatef("[%s] Automatic update skipped: Easy VLESS is not connected (not running).", remark))
 				url = nil
+				rec.status = "skipped"
 			end
 			if url then
 
 			local url_is_local
-			if fs.access(url) then
-				-- debug, reads local files.
-				log(1, i18n.translatef("Start subscribing: %s", '【' .. remark .. '】' .. url))
-				url_is_local = true
-				tmp_file = url
-			else
-				local ua = value.user_agent
+			-- Request strategy (User-Agent option user_agent):
+			--   unset / "curl"  curl's own User-Agent (as before 0.8.0)
+			--   "HAPP"          User-Agent: HAPP
+			--   other text      that User-Agent
+			--   "auto" (0.8.0)  curl first; only when that answer is an HTTP
+			--                   4xx error or has no supported node, one more
+			--                   request as HAPP - never more than two requests
+			-- X-HWID / X-Device-* headers are sent in every request when HWID
+			-- Support is on (hwid = 1).
+			local ua_opt = value.user_agent
+			local auto = (ua_opt == "auto")
+			local function fetch(ua)
 				local access_mode = value.access_mode
 				local result = (not access_mode) and i18n.translatef("Auto") or (access_mode == "direct" and i18n.translatef("Direct") or (access_mode == "proxy" and i18n.translatef("Proxy") or i18n.translatef("Auto")))
 				log(1, i18n.translatef("Start subscribing: %s", '【' .. remark .. '】' .. url .. ' [' .. result .. ']'))
 				tmp_file = "/tmp/" .. cfgid
 				local return_code
 				return_code, value.http_code = curl(url, tmp_file, ua, access_mode, value.hwid)
+				rec.curl_code = return_code
+				rec.http_code = value.http_code
+				rec.request = (not ua or ua == "" or ua == "curl") and "curl" or ((ua == "HAPP") and "HAPP" or "custom")
 				if return_code ~= 0 then
-					fail_list[#fail_list + 1] = value
 					luci.sys.call("rm -f " .. tmp_file)
 					-- curl 35/51/60/77: TLS handshake / certificate / CA store
 					if return_code == 35 or return_code == 51 or return_code == 60 or return_code == 77 then
+						rec.status = "tls"
 						log(1, i18n.translatef("[%s] The TLS certificate of the subscription server could not be verified (curl error %s). Check the router time (date) and the CA certificates (package ca-bundle).", remark, tostring(return_code)))
+					else
+						rec.status = "download"
 					end
 				end
+				return return_code
 			end
-			if fs.access(tmp_file) then
+			-- the downloaded list: parse it (unless unchanged); false = no file
+			local function process()
+				if not fs.access(tmp_file) then
+					return false
+				end
+				local ok = true
 				if luci.sys.call("[ -f " .. tmp_file .. " ] && sed -i -e '/^[ \t]*$/d' -e '/^[ \t]*\r$/d' " .. tmp_file) == 0 then
 					local f = io.open(tmp_file, "r")
 					local stdout = f:read("*all")
@@ -1614,17 +1680,48 @@ local execute = function()
 					local new_md5 = luci.sys.exec("md5sum " .. tmp_file .. " 2>/dev/null | awk '{print $1}'"):gsub("\n", "")
 					if not manual_sub and old_md5 == new_md5 then
 						log(1, i18n.translatef("Subscription: [%s] No changes, no update required.", remark))
+						rec.status = "unchanged"
 					else
-						parse_link(raw_data, "2", remark, value)
-						uci_set(cfgid, "md5", new_md5)
+						rec.found, rec.format = parse_link(raw_data, "2", remark, value)
+						if rec.found > 0 then
+							rec.status = "ok"
+							uci_set(cfgid, "md5", new_md5)
+							uci_set(cfgid, "update_time", tostring(os.time()))
+						else
+							rec.status = (raw_data == "") and "empty" or "no_nodes"
+						end
 					end
 				else
-					fail_list[#fail_list + 1] = value
+					ok = false
 				end
 				if url_is_local then
 					value.http_code = 0
 				else
 					luci.sys.call("rm -f " .. tmp_file)
+				end
+				return ok
+			end
+			if fs.access(url) then
+				-- debug, reads local files.
+				log(1, i18n.translatef("Start subscribing: %s", '【' .. remark .. '】' .. url))
+				url_is_local = true
+				tmp_file = url
+				if not process() then fail_list[#fail_list + 1] = value end
+			else
+				-- Auto: the first request with curl's own User-Agent
+				local rc = fetch((not auto) and ua_opt or nil)
+				local processed = (rc == 0) and process()
+				local http = tonumber(value.http_code) or 0
+				if auto and ((rc == 22 and http >= 400 and http < 500) or (processed and rec.status ~= "ok" and rec.status ~= "unchanged")) then
+					log(1, i18n.translatef("[%s] No supported node with the default request (%s); requesting once more as HAPP (User-Agent: HAPP).", remark,
+						(rc ~= 0) and ("HTTP " .. tostring(value.http_code)) or tostring(rec.status)))
+					rec.fallback = true
+					rc = fetch("HAPP")
+					processed = (rc == 0) and process()
+				end
+				if rc ~= 0 or not processed then
+					if rc == 0 then rec.status = "error" end
+					fail_list[#fail_list + 1] = value
 				end
 			end
 			end
@@ -1676,6 +1773,7 @@ if arg[1] then
 			log(1, debug.traceback())
 			log(1, i18n.translatef("Error, restoring service."))
 		end)
+		write_sub_records()
 		log(0, i18n.translatef("Subscription complete...") .. "\n")
 	elseif arg[1] == "add" then
 		local f = assert(io.open("/tmp/links.conf", 'r'))

@@ -29,7 +29,9 @@ let lastGroupTest = {};     /* member tag -> result of the last manual group tes
 /* Status = real usage (not "configured"): Active = the service is running
  * and this server is the main node / Default target; Selected = same, but the
  * service is stopped; In active group / Used by = referenced elsewhere;
- * Inactive = not used. Below: last Server Test and URL Test results. */
+ * Inactive = not used. Below: the URL Test result and the source (manual or
+ * the subscription the server came from). The Server Test result has its own
+ * column (Latency). */
 function stateText(sid) {
 	const running = !!(ev.lastStatus && ev.lastStatus.running);
 	const target = ev.activeTarget();
@@ -45,23 +47,42 @@ function stateText(sid) {
 		usage = E('span', { 'style': 'opacity:.7' }, _('Inactive'));
 
 	const lines = [ usage ];
-	const t = ev.testResults[sid];
-	if (t)
-		lines.push(E('div', { 'style': 'font-size:90%' }, [ _('Test') + ': ', testShort(t) ]));
-	const u = ev.urlTestResults[sid];
+	const u = ev.testInfo(sid, 'url');
 	const g = urltestLive(sid);
-	if (u || g != null)
-		lines.push(E('div', { 'style': 'font-size:90%' }, [ _('URL Test') + ': ', u ? testShort(u) : (g > 0 ? _('%d ms').format(g) : E('span', { 'style': 'color:#c62828' }, _('failed'))) ]));
+	if (u.state != 'none')
+		lines.push(E('div', { 'style': 'font-size:90%' }, [ _('URL Test') + ': ', ev.testCell(sid, 'url') ]));
+	else if (g != null)
+		lines.push(E('div', { 'style': 'font-size:90%' }, [ _('URL Test') + ': ', g > 0 ? _('%d ms').format(g) : E('span', { 'style': 'color:#c62828' }, _('failed')) ]));
+	lines.push(E('div', { 'style': 'font-size:85%;opacity:.7' }, sourceText(sid)));
 	return E('div', {}, lines);
 }
 
-function testShort(r) {
-	if (r.pending)
-		return E('em', {}, _('testing…'));
-	if (r.ok)
-		return E('span', { 'title': '%s → HTTP %s'.format(r.url || '', r.http_code || '') }, [ ev.badge(_('PASS'), 'ok'), ' ', _('%d ms').format(r.delay) ]);
-	const err = ev.testError(r);
-	return E('span', { 'title': err }, [ ev.badge(_('FAIL'), 'bad'), ' ', E('small', {}, err.length > 50 ? err.substr(0, 47) + '…' : err) ]);
+/* Where a server came from: its subscription, or added by hand. */
+function sourceText(sid) {
+	const group = uci.get(CONFIG, sid, 'group');
+	return (uci.get(CONFIG, sid, 'add_mode') == '2' && group) ? _('Subscription: %s').format(group) : _('Added manually');
+}
+
+function sourceKey(sid) {
+	const group = uci.get(CONFIG, sid, 'group');
+	return (uci.get(CONFIG, sid, 'add_mode') == '2' && group) ? 'sub:' + group.toLowerCase() : 'manual';
+}
+
+/* Node List view settings (sort, filters) of this browser. */
+const VIEW_STORE = 'easy_vless.nodelist';
+
+function readView() {
+	try {
+		const v = JSON.parse(window.localStorage.getItem(VIEW_STORE) || 'null');
+		return (v && typeof(v) == 'object') ? v : {};
+	}
+	catch (e) {
+		return {};
+	}
+}
+
+function writeView(v) {
+	try { window.localStorage.setItem(VIEW_STORE, JSON.stringify(v)); } catch (e) {}
 }
 
 /* Last delay sing-box measured for this server in a running URL Test group
@@ -94,7 +115,9 @@ return view.extend({
 		return Promise.all([
 			uci.load(CONFIG),
 			ev.callStatus(),
-			ev.callGroups()
+			ev.callGroups(),
+			ev.refreshTests(),
+			ev.callSubscribe('state')
 		]);
 	},
 
@@ -112,26 +135,101 @@ return view.extend({
 	refreshRows: function() {
 		ev.servers().forEach(function(s) {
 			const sid = s['.name'];
-			const el = document.getElementById('ev-state-' + sid);
+			let el = document.getElementById('ev-state-' + sid);
 			if (el) dom.content(el, stateText(sid));
+			el = document.getElementById('ev-lat-' + sid);
+			if (el) dom.content(el, ev.testCell(sid, 'server', true));
+			[ [ 'server', 'ev-btn-test-' ], [ 'url', 'ev-btn-urltest-' ] ].forEach(function(k) {
+				const b = document.getElementById(k[1] + sid);
+				if (!b)
+					return;
+				const busy = ev.testBusy(sid, k[0]);
+				b.disabled = busy;
+				b.classList.toggle('ev-busy', busy);
+			});
 		});
 		const box = document.getElementById('ev-urltest-results');
 		if (box)
 			dom.content(box, this.renderGroupResults());
+		this.renderTestProgress();
+		this.applyView();
 	},
 
-	/* Client-side filter of the Servers table (name / address / status text);
-	 * display only, no UCI or backend involvement. */
-	applyFilter: function() {
-		const q = (this.filterText || '').trim().toLowerCase();
-		document.querySelectorAll('#cbi-' + CONFIG + '-nodes tr.cbi-section-table-row').forEach(function(tr) {
-			tr.style.display = (!q || tr.textContent.toLowerCase().indexOf(q) >= 0) ? '' : 'none';
+	/* Test All button: progress of the running tests, Cancel. */
+	renderTestProgress: function() {
+		const box = document.getElementById('ev-testall');
+		if (!box)
+			return;
+		const st = ev.testState;
+		const pending = st.queue.length + (st.current ? 1 : 0);
+		if (st.running && pending) {
+			const total = Math.max(st.total, st.done + pending);
+			dom.content(box, [
+				E('button', { 'class': 'btn cbi-button', 'disabled': '', 'id': 'ev-testall-btn' }, [
+					E('span', { 'class': 'spinning', 'style': 'display:inline-block;width:1em' }, ' '), ' ',
+					_('Testing… %d of %d').format(Math.min(st.done + 1, total), total) ]),
+				' ',
+				E('button', { 'class': 'btn cbi-button cbi-button-reset', 'id': 'ev-testall-cancel', 'title': _('Drop the queued tests; the running test finishes'),
+					'click': ui.createHandlerFn(this, 'handleCancelTests') }, _('Cancel'))
+			]);
+		}
+		else {
+			dom.content(box, E('button', { 'class': 'btn cbi-button cbi-button-action', 'id': 'ev-testall-btn',
+				'title': _('Server Test of every server, one after another'),
+				'click': ui.createHandlerFn(this, 'handleTestAll') }, _('Test All')));
+		}
+	},
+
+	/* Rows of the Servers table (not the URL Test groups, same section type). */
+	serverRows: function() {
+		return Array.prototype.filter.call(document.querySelectorAll('tr.cbi-section-table-row[data-sid]'), function(tr) {
+			return ev.isServer(tr.getAttribute('data-sid'));
 		});
+	},
+
+	/* Sort and filter the Servers table (display only: no UCI change; the
+	 * saved order stays the one of the Up / Down buttons). */
+	applyView: function() {
+		const v = this.viewState || {};
+		const q = (v.text || '').trim().toLowerCase();
+		const rows = this.serverRows();
+		if (!rows.length)
+			return;
+		const recs = rows.map(function(tr, i) {
+			const sid = tr.getAttribute('data-sid');
+			const r = ev.sortRecord(sid, ev.servers().findIndex(function(s) { return s['.name'] == sid; }));
+			r.tr = tr;
+			return r;
+		});
+		let shown = 0;
+		recs.forEach(function(r) {
+			const info = ev.testInfo(r.id, 'server');
+			let ok = !q || r.tr.textContent.toLowerCase().indexOf(q) >= 0;
+			if (ok && v.status && v.status != 'all')
+				ok = (v.status == 'testing') ? (info.state == 'testing' || info.state == 'queued') : (r.state == v.status);
+			if (ok && v.source && v.source != 'all')
+				ok = sourceKey(r.id) == v.source;
+			r.tr.style.display = ok ? '' : 'none';
+			if (ok) shown++;
+		});
+		const mode = v.sort || 'default';
+		const parent = rows[0].parentNode;
+		ev.sortRecords(recs, mode).forEach(function(r) { parent.appendChild(r.tr); });
+		parent.classList.toggle('ev-sorted', mode != 'default');
+		const cnt = document.getElementById('ev-shown');
+		if (cnt)
+			cnt.textContent = (shown < rows.length) ? _('%d of %d servers shown').format(shown, rows.length) : _('%d servers').format(rows.length);
+	},
+
+	setView: function(key, value) {
+		this.viewState[key] = value;
+		writeView({ sort: this.viewState.sort, status: this.viewState.status, source: this.viewState.source });
+		this.applyView();
 	},
 
 	refreshLive: function() {
 		ev.refreshStatus();
-		this.applyFilter();
+		ev.refreshTests();
 		return ev.callGroups().then(L.bind(function(res) {
 			this.setGroups(res);
 			this.refreshRows();
@@ -147,31 +245,32 @@ return view.extend({
 		}, this));
 	},
 
+	/* Tests are queued on the router (ev.queueTests): a click on a server
+	 * that is already queued or being tested changes nothing, the button
+	 * shows "Testing…" until the result is there. */
 	handleTest: function(sid) {
-		return ev.exclusive(_('Server Test'), L.bind(function() {
-			ev.testResults[sid] = { pending: true };
-			this.refreshRows();
-			return ev.serverTest(sid).then(L.bind(this.refreshRows, this));
-		}, this));
+		if (ev.testBusy(sid, 'server'))
+			return Promise.resolve();
+		return ev.queueTests('server', [ sid ]);
 	},
 
 	handleUrlTest: function(sid) {
-		return ev.exclusive(_('URL Test'), L.bind(function() {
-			ev.urlTestResults[sid] = { pending: true };
-			this.refreshRows();
-			return ev.nodeUrlTest(sid).then(L.bind(this.refreshRows, this));
-		}, this));
+		if (ev.testBusy(sid, 'url'))
+			return Promise.resolve();
+		return ev.queueTests('url', [ sid ]);
 	},
 
+	/* Test All: Server Test of every server, one after another (the router
+	 * never runs more than one temporary sing-box instance for tests). */
 	handleTestAll: function() {
-		return ev.exclusive(_('Test all servers'), L.bind(function() {
-			const ids = ev.servers().map(function(s) { return s['.name']; });
-			ids.forEach(function(sid) { ev.testResults[sid] = { pending: true }; });
-			this.refreshRows();
-			return ids.reduce(L.bind(function(p, sid) {
-				return p.then(L.bind(function() { return ev.serverTest(sid).then(L.bind(this.refreshRows, this)); }, this));
-			}, this), Promise.resolve());
-		}, this));
+		const ids = ev.servers().map(function(s) { return s['.name']; });
+		if (!ids.length)
+			return Promise.resolve();
+		return ev.queueTests('server', ids);
+	},
+
+	handleCancelTests: function() {
+		return ev.cancelTests();
 	},
 
 	handleMove: function(sid, up) {
@@ -238,64 +337,87 @@ return view.extend({
 
 	/* ---------- subscriptions ---------- */
 
+	/* Update: runs on the router (subscribe.lua, detached); the row shows
+	 * "Updating…" and then the result (nodes received, before/now, or the
+	 * reason of a failure - existing nodes are kept then). A second click
+	 * while an update runs changes nothing. */
 	handleSubscribe: function(id) {
-		return ev.exclusive(_('Update subscription'), L.bind(this.doSubscribe, this, id));
+		if (ev.subBusy(id) || ev.subBusy('all'))
+			return Promise.resolve();
+		const names = (id && id != 'all') ? [ uci.get(CONFIG, id, 'remark') || id ] : uci.sections(CONFIG, 'subscribe_list').map(function(s) { return s.remark || s['.name']; });
+		return ev.updateSubscription(id || 'all', L.bind(this.renderSubscriptionState, this)).then(L.bind(function(r) {
+			if (!r.ok && !r.results)
+				ev.notify(_('Subscription update failed: %s').format(r.error), 'error');
+			else if (r.timeout)
+				ev.notify(r.error, 'warning');
+			else {
+				const ids = Object.keys(r.results);
+				const bad = ids.filter(function(k) { return [ 'ok', 'unchanged' ].indexOf(r.results[k].status) < 0; });
+				const got = ids.reduce(function(n, k) { return n + (r.results[k].status == 'ok' ? (r.results[k].found || 0) : 0); }, 0);
+				if (!ids.length)
+					ev.notify(_('Subscription update finished without a result; check the log on Main.'), 'warning');
+				else if (bad.length)
+					ev.notify(_('Subscription update: %s - %s. Existing nodes were kept.').format(
+						bad.map(function(k) { return r.results[k].remark || k; }).join(', '), ev.subResultText(bad[0]).text), 'warning');
+				else
+					ev.notify(_('Subscription updated (%s): %d nodes received.').format(names.join(', '), got));
+			}
+			return this.reloadNodes();
+		}, this));
 	},
 
-	doSubscribe: function(id) {
-		ev.showBusy(_('Subscription'), _('Downloading and parsing the subscription…'));
-		return ev.callSubscribe('update', id || 'all').then(function(res) {
-			if (res.code !== 0)
-				return ev.showResult(_('Subscription'), 'bad', res.output || res.error || _('Failed'));
-			const mark = res.log_mark || 0, before = res.nodes || 0;
-			return ev.waitFor(function(st, sawBusy, elapsed) {
-				if (st.subscribe_busy)
-					return null;
-				return (elapsed > 3000) ? true : null;
-			}, 120000, mark).then(function(r) {
-				const log = (r.status && r.status.log) || '';
-				uci.unload(CONFIG);
-				return uci.load(CONFIG).then(function() {
-					const now = uci.sections(CONFIG, 'nodes').length;
-					/* summary from subscribe.lua's log lines (format, imported/skipped) */
-					const fmts = [], parts = [];
-					let verdict = r.done ? 'ok' : 'warn', m, re = /Subscription format: ([^\n]+)/g;
-					while ((m = re.exec(log)) != null)
-						if (fmts.indexOf(m[1].trim()) < 0) fmts.push(m[1].trim());
-					re = /sing-box JSON: imported (\d+), skipped (\d+)(?:; skipped types: ([^\n]+))?/g;
-					while ((m = re.exec(log)) != null) {
-						parts.push(_('%s nodes imported, %s skipped').format(m[1], m[2]) + (m[3] ? ' (' + m[3].trim() + ')' : ''));
-						if (m[1] == '0') verdict = 'bad';
-					}
-					if (/No supported VLESS outbound|invalid sing-box JSON|Subscription failed|content for \[[^\]]*\] is empty/.test(log))
-						verdict = (verdict == 'ok' && parts.length && !/imported 0,/.test(log)) ? 'warn' : 'bad';
-					let head = r.done ? _('Subscription update finished: %d nodes before, %d now.').format(before, now) : _('Still running, check the log later.');
-					if (parts.length) head += ' ' + parts.join('; ') + '.';
-					if (fmts.length) head += ' ' + _('Format: %s').format(fmts.join(', '));
-					ev.showResult(_('Subscription'), verdict, head, log);
-					const btn = document.querySelector('.modal .btn');
-					if (btn)
-						btn.addEventListener('click', function() { window.location.reload(); });
-				});
+	/* The node list changed on the router: reload UCI and re-render. */
+	reloadNodes: function() {
+		uci.unload(CONFIG);
+		return this.map.load().then(L.bind(function() {
+			return this.map.renderContents();
+		}, this)).then(L.bind(function() {
+			const bar = document.getElementById('ev-viewbar');
+			if (bar)
+				bar.parentNode.replaceChild(this.renderViewBar(), bar);
+			return ev.refreshTests();
+		}, this)).then(L.bind(this.refreshRows, this));
+	},
+
+	refreshSubscriptions: function() {
+		return ev.refreshSubscriptions().then(L.bind(this.renderSubscriptionState, this));
+	},
+
+	/* Status column and buttons of the subscriptions (Updating… / result). */
+	renderSubscriptionState: function() {
+		const anyBusy = ev.subBusy(null);
+		uci.sections(CONFIG, 'subscribe_list').forEach(function(s) {
+			const id = s['.name'];
+			const el = document.getElementById('ev-sub-' + id);
+			if (el)
+				dom.content(el, ev.subResultCell(id));
+			[ 'ev-sub-update-', 'ev-sub-truncate-' ].forEach(function(p) {
+				const b = document.getElementById(p + id);
+				if (b) b.disabled = anyBusy;
 			});
 		});
+		const all = document.getElementById('ev-sub-update-all');
+		if (all) {
+			all.disabled = anyBusy;
+			all.textContent = anyBusy ? _('Updating…') : _('Update all subscriptions');
+		}
 	},
 
 	handleTruncate: function(id) {
 		const name = uci.get(CONFIG, id, 'remark') || id;
+		if (ev.subBusy(null))
+			return Promise.resolve();
 		return ev.confirm(_('Delete nodes'), _('Delete all nodes of subscription "%s"? Nodes of other subscriptions and manual servers are not touched.').format(name))
 			.then(function(ok) { if (ok) return this.doTruncate(id); }.bind(this));
 	},
 
 	doTruncate: function(id) {
-		return ev.exclusive(_('Delete nodes'), function() { return ev.callSubscribe('truncate', id).then(function(res) {
+		return ev.exclusive(_('Delete nodes'), L.bind(function() { return ev.callSubscribe('truncate', id).then(L.bind(function(res) {
 			if (res.code !== 0)
 				return ev.showResult(_('Subscription'), 'bad', res.output || res.error || _('Failed'));
-			ev.showResult(_('Subscription'), 'ok', _('%d subscribed nodes deleted.').format(res.removed || 0));
-			const btn = document.querySelector('.modal .btn');
-			if (btn)
-				btn.addEventListener('click', function() { window.location.reload(); });
-		}); });
+			ev.notify(_('%d subscribed nodes deleted.').format(res.removed || 0));
+			return this.reloadNodes();
+		}, this)); }, this));
 	},
 
 	/* ---------- URL Test groups ---------- */
@@ -383,6 +505,7 @@ return view.extend({
 	render: function(data) {
 		const status = data[1] || {};
 		this.setGroups(data[2]);
+		ev.setSubState(data[4]);
 		ev.lastStatus = status;
 		let m, s, o;
 		const view_ = this;
@@ -397,7 +520,8 @@ return view.extend({
 		s.nodescriptions = true;
 		s.addbtntitle = _('Add VLESS');
 		ev.compactWhenEmpty(s, _('No servers yet: paste a vless:// link with Import VLESS URL, or enter the settings by hand with Add VLESS.'));
-		ev.commitOnModalSave(s, _('VLESS server'));
+		/* an edited server gets tested again: its old results are dropped */
+		ev.commitOnModalSave(s, _('VLESS server'), function(sid) { return ev.clearTestResults([ sid ]); });
 		/* the add button lives in the page toolbar (Add VLESS) */
 		s.renderSectionAdd = function() { return E([]); };
 		s.modaltitle = function(section_id) {
@@ -441,13 +565,20 @@ return view.extend({
 			const sb = function(label, title, cls, fn, args) {
 				return ev.smallButton(label, title, cls, ui.createHandlerFn.apply(ui, [ view_, fn ].concat(args)));
 			};
+			const tb = function(label, title, fn, kind, id) {
+				const b = sb(label, title, 'ev-test-btn', fn, [ section_id ]);
+				b.id = id + section_id;
+				b.disabled = ev.testBusy(section_id, kind);
+				b.classList.toggle('ev-busy', b.disabled);
+				return b;
+			};
 			[
 				sb(_('Use'), _('Use this server (main node, or Default target while the Main Router is the main node)'), 'cbi-button-apply', 'handleUse', [ section_id ]),
-				sb(_('Test'), _('Server Test: HTTPS request to %s through this server (temporary sing-box instance)').format(ev.SERVER_TEST_URL), '', 'handleTest', [ section_id ]),
-				sb(_('URL Test'), _('URL Test of this server: request to %s through it (temporary sing-box instance)').format(ev.URL_TEST_URL), '', 'handleUrlTest', [ section_id ]),
+				tb(_('Test'), _('Server Test: HTTPS request to %s through this server (temporary sing-box instance)').format(ev.SERVER_TEST_URL), 'handleTest', 'server', 'ev-btn-test-'),
+				tb(_('URL Test'), _('URL Test of this server: request to %s through it (temporary sing-box instance)').format(ev.URL_TEST_URL), 'handleUrlTest', 'url', 'ev-btn-urltest-'),
 				ev.smallButton(_('Copy'), _('Copy the VLESS URL of this server'), 'cbi-button-action', ui.createHandlerFn(ev, 'showVlessUrl', section_id)),
-				sb('↑', _('Up', 'move row'), '', 'handleMove', [ section_id, true ]),
-				sb('↓', _('Down', 'move row'), '', 'handleMove', [ section_id, false ])
+				sb('↑', _('Up', 'move row'), 'ev-move', 'handleMove', [ section_id, true ]),
+				sb('↓', _('Down', 'move row'), 'ev-move', 'handleMove', [ section_id, false ])
 			].reverse().forEach(function(b) { box.insertBefore(b, box.firstChild); });
 			return td;
 		};
@@ -572,6 +703,13 @@ return view.extend({
 		o.modalonly = true;
 		o.depends({ tls: '1', reality: '0' });
 
+		/* Last Server Test: latency, Testing… / Queued, Failed, Not tested */
+		o = s.option(form.DummyValue, '_latency', _('Latency'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			return E('span', { 'id': 'ev-lat-' + section_id }, ev.testCell(section_id, 'server', true));
+		};
+
 		o = s.option(form.DummyValue, '_state', _('Status'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
@@ -606,6 +744,7 @@ return view.extend({
 				el.appendChild(E('button', {
 					'class': 'btn cbi-button cbi-button-action',
 					'style': 'margin-left:.5em',
+					'id': 'ev-sub-update-all',
 					'click': ui.createHandlerFn(view_, 'handleSubscribe', 'all')
 				}, _('Update all subscriptions')));
 			return el;
@@ -613,11 +752,23 @@ return view.extend({
 		s.renderRowActions = function(section_id) {
 			const td = form.GridSection.prototype.renderRowActions.apply(this, [ section_id ]);
 			const box = td.lastElementChild;
-			box.insertBefore(ev.smallButton(_('Delete nodes'), _('Delete the nodes of this subscription'), 'cbi-button-remove',
-				ui.createHandlerFn(view_, 'handleTruncate', section_id)), box.firstChild);
-			box.insertBefore(ev.smallButton(_('Update'), _('Download and import this subscription now'), 'cbi-button-action',
-				ui.createHandlerFn(view_, 'handleSubscribe', section_id)), box.firstChild);
+			const del = ev.smallButton(_('Delete nodes'), _('Delete the nodes of this subscription'), 'cbi-button-remove',
+				ui.createHandlerFn(view_, 'handleTruncate', section_id));
+			del.id = 'ev-sub-truncate-' + section_id;
+			const upd = ev.smallButton(_('Update'), _('Download and import this subscription now'), 'cbi-button-action',
+				ui.createHandlerFn(view_, 'handleSubscribe', section_id));
+			upd.id = 'ev-sub-update-' + section_id;
+			del.disabled = upd.disabled = ev.subBusy(null);
+			box.insertBefore(del, box.firstChild);
+			box.insertBefore(upd, box.firstChild);
 			return td;
+		};
+		/* new subscriptions: Auto request (curl, HAPP only when needed) */
+		s.handleAdd = function(ev_, name) {
+			const section_id = this.map.data.add(CONFIG, this.sectiontype);
+			this.map.data.set(CONFIG, section_id, 'user_agent', 'auto');
+			this.map.addedSection = section_id;
+			return this.renderMoreOptionsModal(section_id);
 		};
 
 		o = s.option(form.Value, 'remark', _('Name'));
@@ -640,14 +791,12 @@ return view.extend({
 			return String(uci.sections(CONFIG, 'nodes').filter(function(n) { return n.add_mode == '2' && (n.group || '').toLowerCase() == remark; }).length);
 		};
 
-		/* Status: subscribe.lua stores the md5 of the last downloaded content
-		 * (option md5) after a successful update; nothing else is recorded. */
+		/* Status: the result of the last update (subscribe.lua, rpcd
+		 * "subscribe state"): Updating…, nodes received, or why it failed. */
 		o = s.option(form.DummyValue, '_status', _('Status'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
-			return uci.get(CONFIG, section_id, 'md5')
-				? ev.badge(_('Updated'), 'ok')
-				: ev.badge(_('Not updated yet'), 'idle');
+			return E('span', { 'id': 'ev-sub-' + section_id }, ev.subResultCell(section_id));
 		};
 
 		o = s.option(form.Flag, 'update_connected', _('Update only when connected'),
@@ -659,21 +808,25 @@ return view.extend({
 		o.modalonly = true;
 
 		/* User-Agent: subscribe.lua sends option user_agent as the HTTP
-		 * User-Agent header (unset/"curl" = curl's default, as before). */
+		 * User-Agent header (unset/"curl" = curl's default, as before);
+		 * "auto" (0.8.0): curl, and once more as HAPP only when the answer is
+		 * an HTTP 4xx error or contains no supported node. */
 		o = s.option(form.ListValue, '_ua_mode', _('User-Agent'),
-			_('HAPP sends "User-Agent: HAPP" (for providers that serve the node list only to the HAPP app); enable HWID Support as well if the provider requires it.'));
+			_('Auto: a normal request first; only if the provider answers with an error or without a supported node, one more request as the HAPP app. HAPP sends "User-Agent: HAPP" (for providers that serve the node list only to the HAPP app). Enable HWID Support as well if the provider limits devices.'));
 		o.modalonly = true;
+		o.value('auto', _('Auto (curl, then HAPP if needed)'));
 		o.value('', _('Default (curl)'));
 		o.value('HAPP', 'HAPP');
 		o.value('custom', _('Custom'));
 		o.cfgvalue = function(section_id) {
 			const ua = uci.get(CONFIG, section_id, 'user_agent');
 			if (!ua || ua == 'curl') return '';
+			if (ua == 'auto') return 'auto';
 			return ua == 'HAPP' ? 'HAPP' : 'custom';
 		};
 		o.write = function(section_id, value) {
-			if (value == 'HAPP')
-				uci.set(CONFIG, section_id, 'user_agent', 'HAPP');
+			if (value == 'HAPP' || value == 'auto')
+				uci.set(CONFIG, section_id, 'user_agent', value);
 		};
 		o.remove = function(section_id) {
 			if (this.isActive(section_id))
@@ -763,9 +916,15 @@ return view.extend({
 
 		o = s.option(form.MultiValue, 'urltest_node', _('Servers'));
 		o.rmempty = false;
-		ev.servers().forEach(function(srv) {
-			o.value(srv['.name'], srv.remarks || srv['.name']);
-		});
+		/* the server list may change without a page reload (subscription update) */
+		o.load = function(section_id) {
+			this.keylist = [];
+			this.vallist = [];
+			ev.servers().forEach(L.bind(function(srv) {
+				this.value(srv['.name'], srv.remarks || srv['.name']);
+			}, this));
+			return form.MultiValue.prototype.load.apply(this, arguments);
+		};
 		o.textvalue = function(section_id) {
 			return _('%d server(s)').format(L.toArray(this.cfgvalue(section_id)).length);
 		};
@@ -805,40 +964,92 @@ return view.extend({
 			return refs.length ? E('span', { 'title': refs.join(', ') }, _('Used by %d').format(refs.length)) : E('span', { 'style': 'opacity:.7' }, _('Inactive'));
 		};
 
+		this.viewState = Object.assign({ sort: 'default', status: 'all', source: 'all', text: '' }, readView());
+		this.viewState.text = '';
+
 		return m.render().then(L.bind(function(mapEl) {
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
 			poll.add(L.bind(this.refreshLive, this), 10);
+			poll.add(L.bind(this.refreshSubscriptions, this), 5);
+			ev.onTestUpdate(L.bind(this.refreshRows, this));
 			/* every save re-renders the map contents: keep the live URL Test
-			 * panel and the active filter after such a re-render */
+			 * panel, the sort order and the filters after such a re-render */
 			const view_ = this, renderContents = m.renderContents;
 			m.renderContents = function() {
 				return renderContents.apply(this, arguments).then(function(el) {
 					view_.placeLive(el);
-					view_.applyFilter();
+					view_.refreshRows();
+					view_.renderSubscriptionState();
 					return el;
 				});
 			};
-			return E('div', { 'id': 'ev-nodelist', 'class': 'ev-page' }, [
+			const page = E('div', { 'id': 'ev-nodelist', 'class': 'ev-page' }, [
 				ev.pageStyle(),
+				this.style(),
 				E('h2', {}, _('Node List')),
 				ev.renderHeader(m, status, null, true, false),
 				E('div', { 'class': 'cbi-map-descr' }, _('Servers: your VLESS servers - add one by hand or import a vless:// link, then Use it or test it. URL Subscriptions: a link from your provider that downloads the server list. URL Test Groups: several servers, sing-box uses the fastest one.')),
-				E('div', { 'style': 'margin:.6em 0' }, [
+				E('div', { 'class': 'ev-toolbar' }, [
 					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, 'handleImport') }, _('Import VLESS URL')),
-					' ',
 					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, function(ev_) {
 						return this.serversSection.handleAdd(ev_);
 					}) }, _('Add VLESS')),
-					' ',
-					E('button', { 'class': 'btn cbi-button', 'click': ui.createHandlerFn(this, 'handleTestAll') }, _('Test all servers')),
-					' ',
-					E('input', { 'type': 'search', 'class': 'cbi-input-text', 'style': 'width:14em;vertical-align:middle',
-						'placeholder': _('Filter servers…'), 'title': _('Filter by name, address or status'),
-						'input': L.bind(function(e) { this.filterText = e.target.value; this.applyFilter(); }, this) })
+					E('span', { 'id': 'ev-testall' })
 				]),
+				this.renderViewBar(),
 				this.placeLive(mapEl)
 			]);
+			window.setTimeout(L.bind(function() {
+				this.refreshRows();
+				this.renderSubscriptionState();
+			}, this), 0);
+			return page;
 		}, this));
+	},
+
+	style: function() {
+		return E('style', {}, [
+			'.ev-toolbar, .ev-viewbar { display: flex; flex-wrap: wrap; gap: .4em; align-items: center; margin: .5em 0; }',
+			'.ev-viewbar label { display: inline-flex; align-items: center; gap: .3em; white-space: nowrap; }',
+			'.ev-viewbar select, .ev-viewbar input { width: auto; min-width: 0; max-width: 100%; }',
+			'.ev-viewbar input[type=search] { width: 14em; height: auto; box-sizing: border-box; }',
+			'.ev-sorted .ev-move { visibility: hidden; }',
+			'.ev-test-btn.ev-busy { opacity: .55; cursor: progress; }',
+			'#ev-shown { opacity: .7; font-size: 90%; }'
+		].join('\n'));
+	},
+
+	/* Search, filters (test status, source) and sort order of the Servers
+	 * table; the choice is remembered in this browser. */
+	renderViewBar: function() {
+		const v = this.viewState;
+		const sel = function(id, label, value, options, onchange) {
+			const s = E('select', { 'class': 'cbi-input-select', 'id': id, 'change': function() { onchange(s.value); } },
+				options.map(function(o) { return E('option', { 'value': o[0], 'selected': o[0] == value ? '' : null }, o[1]); }));
+			return E('label', {}, [ label, s ]);
+		};
+		const groups = [];
+		ev.servers().forEach(function(s) {
+			if (s.add_mode == '2' && s.group && groups.indexOf(s.group) < 0)
+				groups.push(s.group);
+		});
+		if (v.source != 'all' && v.source != 'manual' && !groups.some(function(g) { return 'sub:' + g.toLowerCase() == v.source; }))
+			v.source = 'all';
+		return E('div', { 'class': 'ev-viewbar', 'id': 'ev-viewbar' }, [
+			E('input', { 'type': 'search', 'class': 'cbi-input-text', 'id': 'ev-search',
+				'placeholder': _('Search servers…'), 'title': _('Search by name, address or status'),
+				'input': L.bind(function(e) { this.viewState.text = e.target.value; this.applyView(); }, this) }),
+			sel('ev-filter-status', _('Show:'), v.status, [
+				[ 'all', _('All') ], [ 'passed', _('Passed') ], [ 'failed', _('Failed') ], [ 'none', _('Not tested') ], [ 'testing', _('Testing') ]
+			], L.bind(this.setView, this, 'status')),
+			groups.length ? sel('ev-filter-source', _('Source:'), v.source,
+				[ [ 'all', _('All') ], [ 'manual', _('Added manually') ] ].concat(groups.map(function(g) { return [ 'sub:' + g.toLowerCase(), g ]; })),
+				L.bind(this.setView, this, 'source')) : '',
+			sel('ev-sort', _('Sort:'), v.sort, [
+				[ 'default', _('List order') ], [ 'latency', _('Latency') ], [ 'name', _('Name') ], [ 'status', _('Test result') ], [ 'time', _('Last test') ]
+			], L.bind(this.setView, this, 'sort')),
+			E('span', { 'id': 'ev-shown' })
+		]);
 	},
 
 	handleSave: function() {

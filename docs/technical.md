@@ -6,6 +6,9 @@
 
 - [Устройство](#устройство)
 - [Конфигурация UCI](#конфигурация-uci)
+- [Проверки серверов и очередь операций](#проверки-серверов-и-очередь-операций)
+- [Подписки: результат обновления и стратегия запроса](#подписки-результат-обновления-и-стратегия-запроса)
+- [Мастер настройки](#мастер-настройки)
 - [Структура репозитория](#структура-репозитория)
 - [Файлы релиза и SHA256SUMS](#файлы-релиза-и-sha256sums)
 - [Системные требования подробно](#системные-требования-подробно)
@@ -30,9 +33,9 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 | nftables | `/usr/share/easy_vless/nftables.sh` | таблица `inet easy_vless` (fw4 include): TPROXY/REDIRECT, наборы адресов, DNS redirect |
 | конфигурация sing-box | `/usr/lib/lua/luci/easy_vless/util_sing-box.lua` (пакет `easy-vless-sing-box`) | outbounds VLESS, группы urltest, маршрутизация по правилам, DNS |
 | подписки | `/usr/share/easy_vless/subscribe.lua` | загрузка, разбор форматов, импорт VLESS-узлов, HAPP/HWID |
-| проверки | `/usr/share/easy_vless/test.sh`, `clash_api.lua` | Server Test / URL Test во временном экземпляре sing-box; результаты групп через Clash API |
+| проверки | `/usr/share/easy_vless/test.sh`, `clash_api.lua` | Server Test / URL Test во временном экземпляре sing-box, очередь проверок; результаты групп через Clash API |
 | интерфейс | `/www/luci-static/resources/view/easy_vless/*.js`, `easy_vless/common.js` | страницы LuCI (JavaScript) |
-| rpcd-плагин | `/usr/libexec/rpcd/luci.easy_vless` | ubus-объект `luci.easy_vless`: status, check, start, stop, import, subscribe, urltest_node, groups, group_test, resources, wizard_state, wizard |
+| rpcd-плагин | `/usr/libexec/rpcd/luci.easy_vless` | ubus-объект `luci.easy_vless`: status, check, start, stop, import, subscribe, urltest_node, test, groups, group_test, resources, wizard_state, wizard |
 | ресурсы | `/usr/share/easy_vless/resources/` | манифест и списки доменов готовых правил |
 
 Рабочие файлы запущенной службы (конфигурация sing-box, журналы) лежат в `/tmp/etc/easy_vless/`. Запуск всегда начинается с `sing-box check`: неверная конфигурация не запускается и сетевые настройки не меняет. Трафик самого sing-box к серверу помечается `routing_mark` и в TPROXY не возвращается.
@@ -54,6 +57,42 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 
 Цели: `_direct` (напрямую), `_blackhole` (блокировка), `_default` (только в правилах: как «По умолчанию»), id сервера или группы. HWID подписок хранится отдельно, в `/etc/easy_vless/hwid` (сохраняется при sysupgrade).
 
+## Проверки серверов и очередь операций
+
+Все операции, которые создают конфигурацию sing-box или запускают/останавливают процессы, — запуск и остановка службы (`app.sh start/stop`, в том числе перезапуск через ucitrack после `uci commit`), проверка конфигурации (`app.sh check`) и каждый Server Test / URL Test (`test.sh url_test_node`) — выполняются по одной под блокировкой `/var/lock/easy_vless_op.lock` (`op_lock` в `utils.sh`, ожидание до 90 с). Процесс, ждущий блокировку, создаёт маркер `/var/lock/easy_vless_op.lock.wait.<pid>`.
+
+Server Test и URL Test идут через очередь роутера (rpcd `test`, `test.sh`):
+
+| Действие | Что делает |
+|---|---|
+| `add` (kind `server`/`url`, nodes) | ставит проверки в очередь; проверка сервера, который уже в очереди или проверяется, второй раз не добавляется; при необходимости запускает обработчик `test.sh run_queue` |
+| `state` | очередь, текущая проверка, прогресс (`total`/`done`) и последний результат каждого сервера |
+| `cancel` | очищает очередь; текущая проверка завершается |
+| `clear` | удаляет результаты сервера (сервер изменён) |
+
+Обработчик выполняет проверки строго по одной — одновременно работает не больше одного временного экземпляра sing-box. Перед каждой проверкой он пропускает вперёд ожидающие запуск, остановку или проверку конфигурации (маркеры `op_lock`). Очистка процессов при остановке службы не трогает `test.sh`. Состояние хранится в tmpfs `/var/run/easy_vless_test/` (`r/<узел>.<kind>.json` — результат с временем, адресом и портом сервера; `queue`, `current`, `runner.pid`, `total`, `done`) и сбрасывается перезагрузкой; во flash ничего не пишется. Если обработчик завершился аварийно, `state` очищает очередь — «Проверка…» не зависает. Результат, сделанный для другого адреса или порта, LuCI не показывает; после сохранения сервера его результаты удаляются.
+
+LuCI опрашивает `state` раз в 1,5 с, пока идут проверки. Сортировка «Списка узлов» (`compareNodes` в `common.js`) использует последний завершённый Server Test: сначала работающие по задержке, затем с ошибкой, затем непроверенные; равные значения — по имени, затем по порядку UCI. Синхронный `urltest_node` сохранён (им пользуются тесты), его результат тоже записывается.
+
+## Подписки: результат обновления и стратегия запроса
+
+`subscribe.lua start <id|all> manual` (rpcd `subscribe update`, отдельным процессом) записывает результат каждой подписки в `/var/run/easy_vless_sub/<id>.json`: `time`, `status` (`ok`, `unchanged`, `no_nodes`, `empty`, `download`, `tls`, `skipped`, `error`), `found` (поддерживаемые узлы в ответе), `before`/`after` (узлы подписки в списке), `format`, `http_code`, `curl_code`, `request` (`curl`, `HAPP`, `custom`), `fallback`. rpcd `subscribe state` отдаёт `busy` (блокировка `/var/lock/easy_vless_subscribe.lock` или запуск меньше 5 с назад) и эти результаты. Успешное обновление записывает `update_time` в секцию подписки. Если в ответе нет поддерживаемых узлов (ошибка загрузки, пустой ответ, HTML, только неподдерживаемые типы), узлы подписки не удаляются.
+
+Стратегия запроса (`user_agent` подписки):
+
+| Значение | Запросы |
+|---|---|
+| не задано / `curl` | один запрос с User-Agent curl (как до 0.8.0) |
+| `HAPP` | один запрос с `User-Agent: HAPP` |
+| другой текст | один запрос с этим User-Agent |
+| `auto` (новые подписки) | запрос curl; только при ответе HTTP 4xx или без поддерживаемого узла — ещё один запрос с `User-Agent: HAPP`. Ошибки сети, TLS и 5xx повтора не вызывают; всего не больше двух запросов |
+
+`hwid = 1` добавляет к каждому запросу `X-HWID` (из `/etc/easy_vless/hwid`, создаётся один раз и сохраняется при sysupgrade), `X-Device-OS: OpenWrt`, `X-Ver-OS` и `X-Device-Model`. Сертификат сервера подписки всегда проверяется.
+
+## Мастер настройки
+
+Мастер (`view/easy_vless/wizard.js`) не хранит собственной конфигурации: ссылка `vless://` импортируется rpcd `import`; ссылка `http(s)://` становится обычной секцией `subscribe_list` (User-Agent `auto`, HWID по выбору), которая обновляется rpcd `subscribe update`; если роутер не нашёл в ней ни одного VLESS-сервера, секция удаляется. Серверы подписки — обычные узлы с `add_mode = 2` и `group` = имя подписки. Проверки идут через очередь `test`, маршрутизация — через готовые правила манифеста и цели `main_router`, применение — `wizard backup`, `uci commit`, `check`, `start`, `wizard finish`; при ошибке `wizard restore` возвращает сохранённую копию `/etc/config/easy_vless`. Отмена удаляет только сервер или подписку, добавленные в этом запуске мастера и нигде не используемые.
+
 ## Структура репозитория
 
 | Путь | Содержимое |
@@ -70,13 +109,13 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 
 ## Файлы релиза и SHA256SUMS
 
-Релиз `v0.7.2` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
+Релиз `v0.8.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.7.2-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.7.2-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.7.2-r1_all.ipk` | интерфейс LuCI и его переводы |
+| `easy-vless_0.8.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.8.0-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.8.0-r1_all.ipk` | интерфейс LuCI и его переводы |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 файлов релиза |
 
@@ -125,7 +164,7 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 ## Installer
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.7.2/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.8.0/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -181,8 +220,8 @@ Installer проверит подпись и SHA256, установит TLS-би
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_0.7.2-r1_all.ipk easy-vless-sing-box_0.7.2-r1_all.ipk luci-app-easy-vless_0.7.2-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.7.2/$f"
+for f in SHA256SUMS easy-vless_0.8.0-r1_all.ipk easy-vless-sing-box_0.8.0-r1_all.ipk luci-app-easy-vless_0.8.0-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.8.0/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -192,9 +231,9 @@ sha256sum -c SHA256SUMS
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.7.2-r1_all.ipk
-opkg install ./easy-vless-sing-box_0.7.2-r1_all.ipk
-opkg install ./luci-app-easy-vless_0.7.2-r1_all.ipk
+opkg install ./easy-vless_0.8.0-r1_all.ipk
+opkg install ./easy-vless-sing-box_0.8.0-r1_all.ipk
+opkg install ./luci-app-easy-vless_0.8.0-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
@@ -299,8 +338,10 @@ LuCI загружает `base.ru.lmo` вместе с нашим каталог�
 | [`tests/ci/openwrt-runtime-tests.sh`](../tests/ci/openwrt-runtime-tests.sh) | CI, каждая архитектура | установка собранных пакетов installer'ом в контейнере OpenWrt, затем тесты подписок |
 | [`tests/ci/installer-tests.sh`](../tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](../tests/ci/installer-scenarios.sh) | CI, каждая архитектура | сценарии installer'а: требования, время, HTTPS, архитектуры и репозитории, SHA256, офлайн-установка, откат `dnsmasq`, bootstrap `opkg`, обновление с прошлых версий, удаление |
 | [`tests/ci/ubifs-tests.sh`](../tests/ci/ubifs-tests.sh) | CI job `ubifs` | настоящий UBI/UBIFS (nandsim) с разметкой TR3000 v1 |
-| [`tests/ci/wizard-tests.sh`](../tests/ci/wizard-tests.sh), [`tests/ci/wizard-backend-tests.sh`](../tests/ci/wizard-backend-tests.sh) | CI, каждая архитектура | мастер настройки через ubus с настоящим VLESS-сервером |
-| [`tests/ci/luci_wizard_e2e.py`](../tests/ci/luci_wizard_e2e.py) | CI, x86-64 | настоящий LuCI в headless Chromium: мастер от начала до конца, ошибки, восстановление, страницы Easy VLESS, ширина 375 px |
+| [`tests/node-list-sort-test.js`](../tests/node-list-sort-test.js) | static checks | состояние проверок и сортировка «Списка узлов» (`common.js`, без браузера) |
+| [`tests/ci/workflow-events.py`](../tests/ci/workflow-events.py) | CI job `checks` | какие jobs запускаются для pull request, push в main, тега |
+| [`tests/ci/wizard-tests.sh`](../tests/ci/wizard-tests.sh), [`tests/ci/wizard-backend-tests.sh`](../tests/ci/wizard-backend-tests.sh), [`tests/ci/sub-server.py`](../tests/ci/sub-server.py) | CI, каждая архитектура | мастер настройки через ubus с настоящим VLESS-сервером; очередь проверок (Test All, повторное нажатие, отмена, аварийное завершение, остановка и проверка конфигурации во время проверок); подписки на тестовом HTTP-сервере: форматы, ошибки с сохранением узлов, User-Agent / HAPP / HWID и число запросов, повторное обновление |
+| [`tests/ci/luci_wizard_e2e.py`](../tests/ci/luci_wizard_e2e.py) | CI, x86-64 | настоящий LuCI в headless Chromium: мастер от начала до конца (ссылка VLESS и ссылка на подписку), ошибки, восстановление, «Список узлов» (задержка, сортировка, фильтры, Test All, повторные нажатия, обновление подписки), ширина 375 px, русский каталог рядом с каталогом LuCI |
 | [`tests/tr3000-slice-smoke.sh`](../tests/tr3000-slice-smoke.sh) | вручную на роутере | запуск/остановка службы, nftables, ip rule; с таймером отката |
 
 Локально: `bash tests/static-checks.sh`.
@@ -328,4 +369,12 @@ find bin -name '*easy-vless*.ipk'
 
 `make -C package/easy-vless` собирает только пакеты Easy VLESS; sing-box, xray-core и другие зависимости нужны только как метаданные для Depends. Для перевода нужен `python3` (он и так обязателен для OpenWrt SDK). `easy-vless-geodata` собирается, только если подключён репозиторий с `geoview`.
 
-Релиз создаётся только для тегов `v*` после успешных `checks`, `build`, `runtime-tests` и `ubifs` — как черновик (draft), который публикуется вручную.
+CI по событиям (проверяет `tests/ci/workflow-events.py`):
+
+| Событие | Jobs |
+|---|---|
+| pull request, workflow_dispatch | полный CI: `checks`, `build`, вся матрица `runtime-tests` (6 целей × 4 группы, с e2e в Chromium), `ubifs` |
+| push в main | `checks`, `build` — то же дерево уже прошло полный CI в своём pull request |
+| тег `v*` | `checks`, `build`, `release`: черновик релиза создаётся, только если есть успешный полный запуск CI для того же дерева (`tree_id`); матрица повторно не запускается |
+
+Черновик (draft) публикуется вручную.

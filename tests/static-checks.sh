@@ -62,6 +62,24 @@ echo "== translations"
 # luci/po: template current, every string translated, same placeholders
 # and HTML tags; every catalog compiles (scripts/po2lmo.py, as in the build)
 if out=$(python3 scripts/i18n-sync.py --check 2>&1); then ok "i18n catalogs: $(echo "$out" | tr '\n' ' ')"; else bad "i18n catalogs"; echo "$out"; fi
+# 0.8.0 interface strings: present in the template and really translated
+# (not left identical to the English text) in every catalog
+if python3 - <<'EOF'
+import json, re, sys, glob
+KEYS = ["Latency", "Test All", "Testing…", "Queued", "Passed", "Not tested", "Testing… %d of %d",
+        "Sort:", "List order", "Last test", "Test result", "Search servers…", "Updating…",
+        "%d nodes received", "No supported VLESS node in the answer", "existing nodes kept",
+        "Auto (curl, then HAPP if needed)", "Subscription link", "VLESS link", "Load subscription",
+        "Repeat URL Test", "Subscription options"]
+pot = open("luci/po/templates/easy-vless.pot", encoding="utf-8").read()
+bad = [k for k in KEYS if ('msgid %s' % json.dumps(k, ensure_ascii=False)) not in pot]
+for po in glob.glob("luci/po/*/easy-vless.po"):
+    ents = {json.loads(i): json.loads(s) for c, i, s in re.findall(r'(?:^msgctxt (".*")\n)?^msgid (".*")\nmsgstr (".*")$', open(po, encoding="utf-8").read(), re.M) if not c}
+    bad += ["%s: %s" % (po, k) for k in KEYS if not ents.get(k) or ents.get(k) == k]
+print("missing or untranslated: " + "; ".join(bad) if bad else "%d keys" % len(KEYS))
+sys.exit(1 if bad else 0)
+EOF
+then ok "0.8.0 interface strings translated"; else bad "0.8.0 interface strings"; fi
 for po in luci/po/*/easy-vless.po; do
 	lmo=$(mktemp)
 	if python3 scripts/po2lmo.py "$po" "$lmo" && [ -s "$lmo" ]; then ok "po2lmo $po ($(wc -c < "$lmo") bytes)"; else bad "po2lmo $po"; fi
@@ -133,6 +151,8 @@ echo "== tests"
 [ -s tests/subscription-formats-test.sh ] && [ -d tests/subscription ] && ok "subscription format test and fixtures present" || bad "subscription format test/fixtures missing"
 # (needs an OpenWrt runtime; CI runs it in the runtime-tests job)
 if sh tests/dnsmasq-nftset-test.sh >/dev/null 2>&1; then ok "dnsmasq nftset regression test"; else bad "dnsmasq nftset regression test"; sh tests/dnsmasq-nftset-test.sh; fi
+# Node List latency state and sorting (common.js, no browser needed)
+if out=$(node tests/node-list-sort-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Node List sorting test"; echo "$out" | grep -v '^PASS'; fi
 
 echo "== package metadata"
 PV=$(sed -n 's/^PKG_VERSION:=//p' Makefile); PR=$(sed -n 's/^PKG_RELEASE:=//p' Makefile)

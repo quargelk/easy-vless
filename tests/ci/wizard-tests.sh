@@ -8,6 +8,9 @@
 #           (tests/ci/wizard-setup.sh), NET_ADMIN for its own nftables
 #   evsrv   a real VLESS server: the router's own sing-box binary with a
 #           VLESS inbound (no TLS) and a direct outbound
+#   evsub   subscription test server (tests/ci/sub-server.py, Python image
+#           of the runner's architecture): subscription formats, failures,
+#           User-Agent / HWID request strategy; records every request
 # Then:
 #   tests/ci/wizard-backend-tests.sh   ubus/rpcd calls of the wizard
 #   WIZARD_E2E=1: tests/ci/luci_wizard_e2e.py, the LuCI wizard in headless
@@ -29,7 +32,9 @@ cleanup() {
 	docker exec evw sh -c 'tail -n 80 /tmp/log/easy_vless.log 2>/dev/null' || true
 	echo "---- VLESS test server log (last 40 lines)"
 	docker exec evsrv sh -c 'tail -n 40 /tmp/server.log 2>/dev/null' || true
-	docker rm -f evw evsrv >/dev/null 2>&1 || true
+	echo "---- subscription test server log (last 30 lines)"
+	docker logs --tail 30 evsub 2>&1 || true
+	docker rm -f evw evsrv evsub >/dev/null 2>&1 || true
 	rm -rf "$T"
 }
 trap cleanup EXIT
@@ -40,7 +45,7 @@ for m in nft_tproxy nft_socket nf_tproxy_ipv4 nf_tproxy_ipv6 nf_socket_ipv4 nf_s
 	sudo modprobe "$m" 2>/dev/null && echo "module $m loaded" || echo "module $m: not available (built in or missing)"
 done
 
-docker rm -f evw evsrv >/dev/null 2>&1 || true
+docker rm -f evw evsrv evsub >/dev/null 2>&1 || true
 docker run -d --name evsrv "${PLATFORM[@]}" "$IMAGE" /bin/ash -c 'while :; do sleep 3600; done' >/dev/null
 PORTS=()
 [ "$E2E" != "1" ] || PORTS=(-p 127.0.0.1:8080:80)
@@ -77,8 +82,20 @@ echo "VLESS test server: sing-box $(docker exec evsrv /usr/bin/sing-box version 
 GOOD_LINK="vless://00000000-0000-4000-8000-000000000001@${SRV_IP}:20443?type=tcp&encryption=none&security=none#Wizard%20Test"
 BAD_LINK="vless://00000000-0000-4000-8000-000000000002@${SRV_IP}:20444?type=tcp&encryption=none&security=none#Closed%20Port"
 
+echo "################ subscription test server"
+docker run -d --name evsub -e GOOD_LINK="$GOOD_LINK" -e BAD_LINK="$BAD_LINK" -e PYTHONUNBUFFERED=1 \
+	-v "$W/tests/ci:/t:ro" python:3.12-alpine python3 /t/sub-server.py 18080 >/dev/null
+SUB_IP="$(docker inspect -f '{{.NetworkSettings.IPAddress}}' evsub)"
+SUB_URL="http://${SUB_IP}:18080"
+for i in $(seq 1 30); do
+	docker exec evw sh -c "curl -s -o /dev/null --max-time 3 '$SUB_URL/_reset'" && break
+	sleep 1
+done
+docker exec evw sh -c "curl -s --max-time 3 '$SUB_URL/plain'" | grep -q "^vless://" || { docker logs evsub; echo "subscription test server does not answer"; exit 1; }
+echo "subscription test server: $SUB_URL"
+
 echo "################ wizard backend tests (ubus)"
-docker exec -e GOOD_LINK="$GOOD_LINK" -e BAD_LINK="$BAD_LINK" evw /bin/ash /w/tests/ci/wizard-backend-tests.sh
+docker exec -e GOOD_LINK="$GOOD_LINK" -e BAD_LINK="$BAD_LINK" -e SUB_URL="$SUB_URL" evw /bin/ash /w/tests/ci/wizard-backend-tests.sh
 
 [ "$E2E" = "1" ] || exit 0
 
@@ -89,5 +106,5 @@ PW="$(openssl rand -hex 12)"
 docker exec evw /bin/ash -c "printf '%s\n%s\n' '$PW' '$PW' | passwd root >/dev/null"
 mkdir -p "$SHOTS"
 EV_BASE="http://127.0.0.1:8080" EV_PASSWORD="$PW" EV_CONTAINER=evw EV_SHOTS="$SHOTS" \
-	GOOD_LINK="$GOOD_LINK" BAD_LINK="$BAD_LINK" \
+	GOOD_LINK="$GOOD_LINK" BAD_LINK="$BAD_LINK" SUB_URL="$SUB_URL" \
 	python3 "$W/tests/ci/luci_wizard_e2e.py"

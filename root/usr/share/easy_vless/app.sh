@@ -1136,7 +1136,9 @@ stop() {
 	done
 	busybox pgrep -af "${CONFIG}/monitor\.sh" | xargs -r kill -9 >/dev/null 2>&1
 	busybox pgrep -f "sleep.*(6s|9s|58s)" | xargs -r kill -9 >/dev/null 2>&1
-	busybox pgrep -af "${CONFIG}/" | awk '! /app\.sh|subscribe\.lua|tasks\.sh|server_app\.lua|ujail/{print $1}' | xargs -r kill -9 >/dev/null 2>&1
+	# test.sh (0.8.0): the Server Test queue runner and tests waiting for the
+	# operation lock; their sing-box instances never run during a stop (op_lock)
+	busybox pgrep -af "${CONFIG}/" | awk '! /app\.sh|test\.sh|subscribe\.lua|tasks\.sh|server_app\.lua|ujail/{print $1}' | xargs -r kill -9 >/dev/null 2>&1
 	unset V2RAY_LOCATION_ASSET
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN

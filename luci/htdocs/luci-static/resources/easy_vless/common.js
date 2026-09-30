@@ -45,6 +45,7 @@ const callResources = rpc.declare({ object: 'luci.easy_vless', method: 'resource
 const callGroups = rpc.declare({ object: 'luci.easy_vless', method: 'groups', expect: { '': {} } });
 const callGroupTest = rpc.declare({ object: 'luci.easy_vless', method: 'group_test', params: [ 'group' ], expect: { '': {} } });
 const callWizardState = rpc.declare({ object: 'luci.easy_vless', method: 'wizard_state', expect: { '': {} } });
+const callTest = rpc.declare({ object: 'luci.easy_vless', method: 'test', params: [ 'action', 'kind', 'nodes' ], expect: { '': {} } });
 const callWizard = rpc.declare({ object: 'luci.easy_vless', method: 'wizard', params: [ 'action' ], expect: { '': {} } });
 /* Requires "ubus": { "uci": [ "commit" ] } in the ACL (luci-base does not
  * grant it; without it every save silently failed - see current-state.md). */
@@ -62,6 +63,13 @@ function safe(promise) {
 	return Promise.resolve(promise).catch(function(e) {
 		return { ok: false, code: -1, rpc_error: true, error: (e && e.message) ? e.message : String(e), output: _('RPC error: %s').format((e && e.message) ? e.message : String(e)) };
 	});
+}
+
+/* Remove a listener from ev.testListeners. */
+function ev_remove(self, fn) {
+	const i = self.testListeners.indexOf(fn);
+	if (i > -1)
+		self.testListeners.splice(i, 1);
 }
 
 function lines(v) {
@@ -701,11 +709,12 @@ return baseclass.extend({
 	/* Modal "Save" of a GridSection (Add/Edit) commits the configuration
 	 * right away: the node/group/subscription/rule is saved, no second
 	 * footer Save needed. The running service is not restarted. */
-	commitOnModalSave: function(s, what) {
+	commitOnModalSave: function(s, what, onSaved) {
 		const Grid = s.constructor;
 		const self = this;
 		s.handleModalSave = function(modalMap, ev_) {
 			const map = this.map;
+			const sid = modalMap ? modalMap.section : null;
 			return Grid.prototype.handleModalSave.apply(this, arguments).then(function() {
 				/* the modal stays open when validation failed */
 				if (document.body.classList.contains('modal-overlay-active'))
@@ -713,6 +722,8 @@ return baseclass.extend({
 				return self.exclusive(_('Save'), function() {
 					return self.saveAndCommit(map).then(function() {
 						self.notify(_('%s saved.').format(what) + ' ' + _('Changes of a running service apply with Save & Apply on Main.'));
+						if (onSaved && sid)
+							return onSaved(sid);
 					});
 				});
 			});
@@ -759,9 +770,7 @@ return baseclass.extend({
 		};
 	},
 
-	/* ---------- Server Test ---------- */
-
-	testResults: {},
+	/* ---------- Server Test / URL Test ---------- */
 
 	/* Reason of a failed Server Test / URL Test: rpcd's error_kind as a
 	 * translated sentence, curl's own message (error_detail) appended as is. */
@@ -779,50 +788,376 @@ return baseclass.extend({
 			return withDetail(_('No answer through the VLESS connection: the server is unreachable or rejected the connection.'));
 		case 'probe':
 			return _('Probe failed (HTTP %s).').format(r.http_code || _('none'));
+		case 'busy':
+			return _('Not tested: another Easy VLESS operation (start, stop or configuration check) did not finish in time. Test again.');
+		case 'unknown_node':
+			return _('This server no longer exists.');
+		case 'no_backend':
+			return _('The sing-box backend is not installed (easy-vless-sing-box and a sing-box package are required).');
 		}
 		return r.error || _('failed');
 	},
 
-	testText: function(r) {
-		if (!r)
-			return '-';
-		if (r.pending)
-			return E('em', {}, _('testing…'));
-		if (r.ok)
-			return E('span', { 'title': '%s → HTTP %s'.format(r.url || SERVER_TEST_URL, r.http_code || '') },
-				[ this.badge(_('PASS'), 'ok'), ' ', _('%d ms').format(r.delay), E('br'), E('small', { 'style': 'opacity:.7' }, 'HTTP ' + (r.http_code || '')) ]);
-		const err = this.testError(r);
-		return E('span', { 'title': err }, [ this.badge(_('FAIL'), 'bad'), E('br'),
-			E('small', {}, err.length > 60 ? err.substr(0, 57) + '…' : err) ]);
+	/*
+	 * Tests run on the router (0.8.0, rpcd "test" -> test.sh queue): one
+	 * test at a time, a server that is already queued or being tested is not
+	 * queued again, and the last result of every server stays on the router
+	 * (tmpfs), so it is still there after changing the page. testState is
+	 * the last "state" answer; views register with onTestUpdate() and are
+	 * called after every refresh. While tests run, the state is polled.
+	 */
+	testState: { results: {}, queue: [], current: null, running: false, total: 0, done: 0 },
+	testSkew: 0,            /* browser clock - router clock, seconds */
+	testListeners: [],
+	testWaiters: 0,
+	testTimer: null,
+
+	onTestUpdate: function(fn) {
+		this.testListeners.push(fn);
+	},
+
+	setTestState: function(st) {
+		if (!st || st.rpc_error || !Array.isArray(st.results))
+			return this.testState;
+		const results = {};
+		st.results.forEach(function(e) {
+			if (e && e.node && e.result && e.result.kind)
+				(results[e.node] = results[e.node] || {})[e.result.kind] = e.result;
+		});
+		if (st.now)
+			this.testSkew = Date.now() / 1000 - st.now;
+		this.testState = {
+			results: results,
+			queue: L.toArray(st.queue),
+			current: st.current || null,
+			running: !!st.running,
+			total: +st.total || 0,
+			done: +st.done || 0,
+			error: st.ok === false ? st.error : null
+		};
+		this.testListeners.slice().forEach(function(fn) { try { fn(); } catch (e) { console.error(e); } });
+		this.scheduleTestPoll();
+		return this.testState;
+	},
+
+	scheduleTestPoll: function() {
+		if (this.testTimer || !(this.testState.running || this.testWaiters > 0))
+			return;
+		this.testTimer = window.setTimeout(L.bind(function() {
+			this.testTimer = null;
+			this.refreshTests();
+		}, this), 1500);
+	},
+
+	refreshTests: function() {
+		return safe(callTest('state', '', '')).then(L.bind(this.setTestState, this));
+	},
+
+	/* Queue tests of these servers (kind 'server' = Server Test, 'url' =
+	 * URL Test); resolves with the new state. */
+	queueTests: function(kind, ids) {
+		ids = L.toArray(ids).filter(L.bind(this.isServer, this));
+		if (!ids.length)
+			return Promise.resolve(this.testState);
+		return safe(callTest('add', kind, ids.join(' '))).then(L.bind(function(st) {
+			if (st.rpc_error)
+				this.notify(_('The test could not be started: %s').format(st.error), 'error');
+			return this.setTestState(st);
+		}, this));
+	},
+
+	cancelTests: function() {
+		return safe(callTest('cancel', '', '')).then(L.bind(this.setTestState, this));
+	},
+
+	clearTestResults: function(ids) {
+		return safe(callTest('clear', '', L.toArray(ids).join(' '))).then(L.bind(this.setTestState, this));
+	},
+
+	/* State of one server for one test kind:
+	 *   { state: 'testing' | 'queued' | 'passed' | 'failed' | 'none', result }
+	 * result = the last finished test (also while a new one is queued or
+	 * running); a result made for another address or port (the server was
+	 * edited since) does not count. */
+	testInfo: function(sid, kind) {
+		const st = this.testState;
+		let r = (st.results[sid] || {})[kind] || null;
+		if (r && (String(r.address || '') != String(uci.get(CONFIG, sid, 'address') || '') ||
+		          String(r.port || '') != String(uci.get(CONFIG, sid, 'port') || '')))
+			r = null;
+		let state = r ? (r.ok ? 'passed' : 'failed') : 'none';
+		if (st.current && st.current.node == sid && st.current.kind == kind)
+			state = 'testing';
+		else if (st.queue.some(function(q) { return q.node == sid && q.kind == kind; }))
+			state = 'queued';
+		return { state: state, result: r };
+	},
+
+	testBusy: function(sid, kind) {
+		const s = this.testInfo(sid, kind).state;
+		return s == 'testing' || s == 'queued';
+	},
+
+	/* Queue one test and wait for its result: resolves with the result
+	 * object (ok, delay, http_code, error...). A test of this server that is
+	 * already queued or running is waited for, not started again. */
+	runTest: function(sid, kind) {
+		const self = this;
+		const t0 = (Date.now() / 1000) - this.testSkew - 2;
+		this.testWaiters++;
+		const done = function(r) { self.testWaiters--; return r; };
+		return this.queueTests(kind, [ sid ]).then(function() {
+			return new Promise(function(resolve) {
+				const check = function() {
+					const info = self.testInfo(sid, kind);
+					if (info.state == 'testing' || info.state == 'queued')
+						return false;
+					const r = (self.testState.results[sid] || {})[kind];
+					if (r && r.time >= t0)
+						resolve(r);
+					else
+						resolve({ ok: false, error: self.testState.error || _('The test ended without a result (it was cancelled, or the router stopped the test).') });
+					return true;
+				};
+				if (check())
+					return;
+				const listener = function() {
+					if (check())
+						ev_remove(self, listener);
+				};
+				self.testListeners.push(listener);
+				self.scheduleTestPoll();
+			});
+		}).then(done, function(e) { done(); throw e; });
 	},
 
 	/* Real per-server test: temporary sing-box instance with the server's
 	 * VLESS outbound + HTTPS request to https://www.gstatic.com/generate_204. */
 	serverTest: function(sid) {
-		this.testResults[sid] = { pending: true, time: Date.now() };
-		return this.callUrltestNode(sid).then(L.bind(function(res) {
-			if (res.rpc_error)
-				res = { ok: false, error: res.error };
-			res.time = Date.now();
-			this.testResults[sid] = res;
-			return res;
-		}, this));
+		return this.runTest(sid, 'server');
 	},
 
 	/* Per-node URL Test: same temporary-instance mechanism as the Server
 	 * Test, but against the URL Test default https://x.com (any HTTP answer
 	 * counts, like sing-box's urltest). */
-	urlTestResults: {},
-
 	nodeUrlTest: function(sid) {
-		this.urlTestResults[sid] = { pending: true };
-		return this.callUrltestNode(sid, URL_TEST_URL).then(L.bind(function(res) {
-			if (res.rpc_error)
-				res = { ok: false, error: res.error };
-			res.time = Date.now();
-			this.urlTestResults[sid] = res;
-			return res;
+		return this.runTest(sid, 'url');
+	},
+
+	/* "just now", "5 min ago" ... of a router timestamp. */
+	agoText: function(t) {
+		const d = Math.max(0, Math.round(Date.now() / 1000 - this.testSkew - t));
+		if (d < 60)
+			return _('just now');
+		if (d < 3600)
+			return _('%d min ago').format(Math.floor(d / 60));
+		if (d < 86400)
+			return _('%d h ago').format(Math.floor(d / 3600));
+		return new Date((t + this.testSkew) * 1000).toLocaleString();
+	},
+
+	latencyKind: function(ms) {
+		return ms < 300 ? 'ok' : (ms < 800 ? 'warn' : 'bad');
+	},
+
+	shorten: function(s, n) {
+		s = String(s || '');
+		return s.length > n ? s.substr(0, n - 1) + '…' : s;
+	},
+
+	/* Test state of one server as a compact cell: Testing… / Queued /
+	 * <latency> Passed / Failed (reason as tooltip) / Not tested; the last
+	 * result stays visible (dimmed) while a new test is queued or running. */
+	testCell: function(sid, kind, withTime) {
+		const info = this.testInfo(sid, kind);
+		const r = info.result;
+		const small = function(t) { return E('small', { 'style': 'opacity:.75' }, t); };
+		let main = null;
+		if (info.state == 'testing')
+			main = E('span', { 'class': 'ev-testing', 'style': 'white-space:nowrap' }, [ E('span', { 'class': 'spinning', 'style': 'display:inline-block;width:1em' }, ' '), ' ', _('Testing…') ]);
+		else if (info.state == 'queued')
+			main = E('em', { 'class': 'ev-queued' }, _('Queued'));
+		let last = null;
+		if (r && r.ok)
+			last = E('span', { 'title': '%s → HTTP %s'.format(r.url || '', r.http_code || '') },
+				[ this.badge(_('%d ms').format(r.delay), this.latencyKind(r.delay)), ' ', small(_('Passed')) ]);
+		else if (r)
+			last = E('span', { 'title': this.testError(r) },
+				[ this.badge(_('Failed'), 'bad'), ' ', small(this.shorten(this.testError(r), 48)) ]);
+		const parts = [];
+		if (main)
+			parts.push(main);
+		if (last)
+			parts.push(main ? E('div', { 'style': 'opacity:.5' }, last) : last);
+		if (!main && !last)
+			parts.push(E('span', { 'style': 'opacity:.6' }, _('Not tested')));
+		if (withTime && r && r.time && !main)
+			parts.push(E('div', {}, small(this.agoText(r.time))));
+		return E('span', { 'data-test-state': info.state }, parts);
+	},
+
+	/* ---------- subscriptions ---------- */
+
+	/* Last "subscribe state" answer: busy, updating (id or 'all'), results
+	 * (subscription id -> result of its last update, see subscribe.lua). */
+	subState: { busy: false, updating: null, results: {} },
+
+	setSubState: function(st) {
+		if (!st || st.rpc_error || st.code !== 0)
+			return this.subState;
+		const results = {};
+		Object.keys(st.results || {}).forEach(function(id) {
+			try { results[id] = JSON.parse(st.results[id]); } catch (e) {}
+		});
+		this.subState = { busy: !!st.busy, updating: st.busy ? (st.updating || 'all') : null, results: results, now: st.now };
+		return this.subState;
+	},
+
+	refreshSubscriptions: function() {
+		return this.callSubscribe('state').then(L.bind(this.setSubState, this));
+	},
+
+	subBusy: function(id) {
+		const s = this.subState;
+		return !!s.busy && (s.updating == 'all' || s.updating == id || !id);
+	},
+
+	/* Download and import one subscription (id) or all ('all') and wait
+	 * until subscribe.lua has finished. Resolves { ok, error, results,
+	 * started }: results = the new result of every updated subscription. */
+	updateSubscription: function(id, onState) {
+		let started = 0;
+		return this.callSubscribe('update', id || 'all').then(L.bind(function(res) {
+			if (res.rpc_error || res.code !== 0)
+				return { ok: false, error: res.output || res.error || _('Failed') };
+			started = res.started || 0;
+			this.subState.busy = true;
+			this.subState.updating = id || 'all';
+			if (onState) onState(this.subState);
+			const t0 = Date.now();
+			const step = L.bind(function() {
+				return sleep(1500).then(L.bind(this.refreshSubscriptions, this)).then(L.bind(function(st) {
+					if (onState) onState(st);
+					if (st.busy && Date.now() - t0 < 180000)
+						return step();
+					const results = {};
+					Object.keys(st.results).forEach(function(k) {
+						if ((st.results[k].time || 0) >= started - 1)
+							results[k] = st.results[k];
+					});
+					return { ok: !st.busy, timeout: !!st.busy, error: st.busy ? _('The update did not finish in time; check the log.') : null, results: results, started: started };
+				}, this));
+			}, this);
+			return step();
 		}, this));
+	},
+
+	/* Result of the last update of a subscription for the Node List and the
+	 * wizard: { kind: ok | warn | bad | idle | busy, text, detail }. */
+	subResultText: function(id) {
+		if (this.subBusy(id))
+			return { kind: 'busy', text: _('Updating…') };
+		const r = this.subState.results[id];
+		const when = L.bind(function(t) { return t ? this.agoText(t) : ''; }, this);
+		if (!r) {
+			const t = +uci.get(CONFIG, id, 'update_time') || 0;
+			if (t)
+				return { kind: 'ok', text: _('Updated'), detail: when(t) };
+			return uci.get(CONFIG, id, 'md5') ? { kind: 'ok', text: _('Updated') } : { kind: 'idle', text: _('Not updated yet') };
+		}
+		const http = r.http_code ? 'HTTP ' + r.http_code : '';
+		const via = r.fallback ? ' · ' + _('answered only to HAPP') : '';
+		switch (r.status) {
+		case 'ok':
+			return { kind: 'ok', text: _('%d nodes received').format(r.found),
+				detail: _('before: %d, now: %d').format(r.before || 0, r.after || 0) + (r.format ? ' · ' + r.format : '') + via + ' · ' + when(r.time) };
+		case 'unchanged':
+			return { kind: 'ok', text: _('No changes'), detail: when(r.time) };
+		case 'no_nodes':
+			return { kind: 'bad', text: _('No supported VLESS node in the answer'),
+				detail: (r.format ? r.format + ' · ' : '') + _('existing nodes kept') + via + ' · ' + when(r.time) };
+		case 'empty':
+			return { kind: 'bad', text: _('Empty answer'), detail: _('existing nodes kept') + ' · ' + when(r.time) };
+		case 'tls':
+			return { kind: 'bad', text: _('TLS certificate not verified'),
+				detail: _('check the router time and the CA certificates (ca-bundle)') + ' · ' + when(r.time) };
+		case 'download':
+			return { kind: 'bad', text: _('Download failed (%s)').format(r.http_code && r.http_code != 0 ? http : _('curl error %s').format(r.curl_code)),
+				detail: _('existing nodes kept') + ' · ' + when(r.time) };
+		case 'skipped':
+			return { kind: 'idle', text: _('Skipped: Easy VLESS is not running'), detail: when(r.time) };
+		}
+		return { kind: 'bad', text: _('Update failed'), detail: _('see the log on Main') + ' · ' + when(r.time) };
+	},
+
+	subResultCell: function(id) {
+		const t = this.subResultText(id);
+		if (t.kind == 'busy')
+			return E('span', { 'data-sub-state': 'busy', 'style': 'white-space:nowrap' }, [ E('span', { 'class': 'spinning', 'style': 'display:inline-block;width:1em' }, ' '), ' ', t.text ]);
+		return E('span', { 'data-sub-state': t.kind }, [
+			this.badge(t.text, t.kind == 'idle' ? 'idle' : t.kind),
+			t.detail ? E('div', {}, E('small', { 'style': 'opacity:.75' }, t.detail)) : ''
+		]);
+	},
+
+	/* ---------- Node List sorting ---------- */
+
+	/* Sort record of a server: name, UCI position, last Server Test result. */
+	sortRecord: function(sid, order) {
+		const r = this.testInfo(sid, 'server').result;
+		return {
+			id: sid,
+			name: uci.get(CONFIG, sid, 'remarks') || sid,
+			order: order,
+			state: r ? (r.ok ? 'passed' : 'failed') : 'none',
+			delay: (r && r.ok) ? +r.delay : null,
+			time: r ? (+r.time || 0) : 0
+		};
+	},
+
+	/*
+	 * Order of two sort records (pure; tests/node-list-sort-test.js):
+	 *   default  UCI order (the order of the Up / Down buttons)
+	 *   name     by name
+	 *   latency  passed servers by latency (fastest first), then failed ones,
+	 *            then untested ones - a failed or missing result is never
+	 *            taken for "0 ms"
+	 *   status   passed, failed, not tested
+	 *   time     most recently tested first, untested last
+	 * Equal values: by name, then UCI order (always the same order).
+	 */
+	compareNodes: function(a, b, mode) {
+		const rank = { passed: 0, failed: 1, none: 2 };
+		const byName = function() {
+			const c = String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' });
+			return c || (a.order - b.order);
+		};
+		switch (mode) {
+		case 'name':
+			return byName();
+		case 'latency':
+			if (rank[a.state] != rank[b.state])
+				return rank[a.state] - rank[b.state];
+			if (a.state == 'passed' && a.delay != b.delay)
+				return a.delay - b.delay;
+			return byName();
+		case 'status':
+			if (rank[a.state] != rank[b.state])
+				return rank[a.state] - rank[b.state];
+			return byName();
+		case 'time':
+			if (!a.time != !b.time)
+				return a.time ? -1 : 1;
+			if (a.time != b.time)
+				return b.time - a.time;
+			return byName();
+		}
+		return a.order - b.order;
+	},
+
+	sortRecords: function(records, mode) {
+		const self = this;
+		return records.slice().sort(function(a, b) { return self.compareNodes(a, b, mode); });
 	},
 
 	/* ---------- VLESS URL export ---------- */
