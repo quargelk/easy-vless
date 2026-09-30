@@ -1708,7 +1708,8 @@ local execute = function()
 				tmp_file = url
 				if not process() then fail_list[#fail_list + 1] = value end
 			else
-				local rc = fetch(auto and nil or ua_opt)
+				-- Auto: the first request with curl's own User-Agent
+				local rc = fetch((not auto) and ua_opt or nil)
 				local processed = (rc == 0) and process()
 				local http = tonumber(value.http_code) or 0
 				if auto and ((rc == 22 and http >= 400 and http < 500) or (processed and rec.status ~= "ok" and rec.status ~= "unchanged")) then

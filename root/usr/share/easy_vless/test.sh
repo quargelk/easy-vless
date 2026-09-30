@@ -205,12 +205,11 @@ counter() { # counter <name>: value of a progress counter (0 when missing)
 }
 
 # Under q_lock: a queue without a live runner is left over from a runner that
-# was killed (or a reboot of tmpfs state): drop it, nothing is testing.
+# was killed: drop it, nothing is testing. The progress counters of the last
+# run stay (done / total of a finished Test All).
 q_clean_stale() {
 	runner_alive && return 0
 	rm -f "${EV_TEST_DIR}/queue" "${EV_TEST_DIR}/current" "${EV_TEST_DIR}/runner.pid"
-	echo 0 > "${EV_TEST_DIR}/total"
-	echo 0 > "${EV_TEST_DIR}/done"
 }
 
 is_server() {
@@ -225,6 +224,11 @@ queue_add() {
 	valid_kind "$kind" || { queue_state "Unknown test kind."; return; }
 	q_lock
 	q_clean_stale
+	# no runner: a new batch starts, its progress from 0
+	if ! runner_alive; then
+		echo 0 > "${EV_TEST_DIR}/total"
+		echo 0 > "${EV_TEST_DIR}/done"
+	fi
 	cur=$(cut -d' ' -f1,2 "${EV_TEST_DIR}/current" 2>/dev/null)
 	for node in "$@"; do
 		case "$node" in ""|*[!A-Za-z0-9_]*) continue ;; esac

@@ -54,7 +54,7 @@ method_status() {
 	st=$($APP status 2>/dev/null)
 	[ -n "$st" ] || st='{}'
 	json_load "$st"
-	json_add_boolean "subscribe_busy" "$([ -f /var/lock/${CONFIG}_subscribe.lock ] && echo 1 || echo 0)"
+	json_add_boolean "subscribe_busy" "$(sub_busy && echo 1 || echo 0)"
 	if [ -n "$from" ] && [ "$from" -gt 0 ] 2>/dev/null; then
 		json_add_string "log" "$(log_since "$from" | tail -n 60)"
 	else
@@ -359,6 +359,12 @@ method_import() {
 	json_dump
 }
 
+# An update runs: subscribe.lua holds its lock, or has just been started and
+# not taken it yet (it takes it after loading and a short random delay).
+sub_busy() {
+	[ -f /var/lock/${CONFIG}_subscribe.lock ] || busybox pgrep -f "subscribe\.lua start" >/dev/null 2>&1
+}
+
 # Subscriptions (config subscribe_list): "update" downloads and parses the
 # subscription(s) with subscribe.lua (detached, may take long; LuCI polls
 # status.subscribe_busy), "truncate" deletes the nodes of one subscription.
@@ -374,7 +380,7 @@ method_subscribe() {
 				json_dump
 				return
 			fi
-			if [ -f /var/lock/${CONFIG}_subscribe.lock ]; then
+			if sub_busy; then
 				json_add_int "code" 1
 				json_add_string "output" "A subscription update is already running."
 				json_dump
@@ -389,12 +395,8 @@ method_subscribe() {
 			run_detached lua $SUBSCRIBE start "$id" manual
 		;;
 		state)
-			# busy: subscribe.lua holds its lock (it takes it after a short
-			# random delay: an update started less than 5 s ago counts too)
-			local busy=0 since
-			[ -f /var/lock/${CONFIG}_subscribe.lock ] && busy=1
-			since=$(date -r "$SUB_STATE_DIR/updating" +%s 2>/dev/null)
-			[ -n "$since" ] && [ $(( $(date +%s) - since )) -lt 5 ] && busy=1
+			local busy=0
+			sub_busy && busy=1
 			json_add_int "code" 0
 			json_add_boolean "busy" "$busy"
 			json_add_int "now" "$(date +%s)"
@@ -421,7 +423,7 @@ method_subscribe() {
 				return
 			fi
 			# never race a running (detached) update: both rewrite the node list
-			if [ -f /var/lock/${CONFIG}_subscribe.lock ]; then
+			if sub_busy; then
 				json_add_int "code" 1
 				json_add_string "output" "A subscription update is running; try again when it has finished."
 				json_dump

@@ -227,7 +227,7 @@ check "stop during Test All: every test has a result" '[ -n "$(tresult "$st" "$G
 [ "$SOMARK" = 1 ] && check "stop during Test All: the working server still passed" '[ "$(tresult "$st" "$GOOD" server ok)" = true ]'
 # configuration check while tests run: waits for the lock, not killed
 r=$(tadd server "$GOOD $BADN")
-out=$(/usr/share/easy_vless/app.sh check 2>&1); rc=$?
+out=$(/usr/share/easy_vless/app.sh check "$GOOD" 2>&1); rc=$?
 check "check during Test All passes (no Killed / decode config / Broken pipe)" '[ "$rc" = 0 ] && ! echo "$out" | grep -qE "Killed|decode config|Broken pipe"'
 twait 120 >/dev/null
 
@@ -504,7 +504,8 @@ if [ -n "${SUB_URL:-}" ]; then
 	check "Auto, normal provider: one request only (no HAPP request)" '[ "$(rec "$r" status)" = ok ] && [ "$(nreq)" = 1 ] && [ "$(rec "$r" fallback)" != true ]'
 	subset s_ua status/500 auto
 	sreset; r=$(subrun s_ua)
-	check "Auto, server error 500: no second request" '[ "$(rec "$r" status)" = download ] && [ "$(nreq)" = 1 ]'
+	# curl's own --retry 3 repeats a 5xx answer; Auto adds no HAPP request
+	check "Auto, server error 500: no HAPP request (only curl's own retries)" '[ "$(rec "$r" status)" = download ] && [ "$(rec "$r" fallback)" != true ] && ! slog | jsonfilter -e "@[*].ua" | grep -qx HAPP'
 	subset s_ua html auto
 	sreset; r=$(subrun s_ua)
 	check "Auto, no servers for both requests: two requests, nothing more; existing nodes kept" '[ "$(rec "$r" status)" = no_nodes ] && [ "$(nreq)" = 2 ] && [ "$(group s_ua)" -ge 2 ]'
