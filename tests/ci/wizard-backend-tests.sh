@@ -474,7 +474,14 @@ if [ -n "${SUB_URL:-}" ]; then
 		check "subscription $f: 2 VLESS servers received, the unsupported one skipped" '[ "$(rec "$r" status)" = ok ] && [ "$(rec "$r" found)" = 2 ] && [ "$(rec "$r" format)" = "$f" ]'
 		check "subscription $f: 2 servers of this subscription in the node list" '[ "$(group "s_$p")" = 2 ] && [ "$(rec "$r" after)" = 2 ]'
 	done
+	# a Server Test result survives the update (the servers get new ids)
+	old=$(uci -q show $CONFIG | sed -n "s/^$CONFIG\.\([^.]*\)\.port='20444'$/\1/p" | while read -r n; do [ "$(uci -q get $CONFIG.$n.group)" = s_plain ] && echo "$n"; done | head -n 1)
+	call test "{\"action\":\"add\",\"kind\":\"server\",\"nodes\":\"$old\"}" >/dev/null
+	twait 60 >/dev/null
 	r=$(subrun s_plain)
+	new=$(uci -q show $CONFIG | sed -n "s/^$CONFIG\.\([^.]*\)\.port='20444'$/\1/p" | while read -r n; do [ "$(uci -q get $CONFIG.$n.group)" = s_plain ] && echo "$n"; done | head -n 1)
+	st=$(tstate)
+	check "subscription update: the tested server got a new id and keeps its last Server Test result" '[ -n "$old" ] && [ -n "$new" ] && [ "$new" != "$old" ] && [ -n "$(tresult "$st" "$new" server time)" ] && [ -z "$(tresult "$st" "$old" server time)" ]'
 	check "repeated update: servers replaced, not duplicated (before 2, now 2)" '[ "$(rec "$r" status)" = ok ] && [ "$(rec "$r" before)" = 2 ] && [ "$(rec "$r" after)" = 2 ] && [ "$(group s_plain)" = 2 ]'
 	check "a successful update records its time in UCI" '[ -n "$(uci -q get $CONFIG.s_plain.update_time)" ]'
 	for bad in "html:no_nodes" "empty:empty" "unsupported:no_nodes" "status/500:download" "status/404:download"; do

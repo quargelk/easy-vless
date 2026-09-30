@@ -170,6 +170,7 @@ test_store() {
 	json_add_int "time" "$(date +%s)"
 	json_add_string "address" "$(uci -q get ${CONFIG}.${node}.address)"
 	json_add_string "port" "$(uci -q get ${CONFIG}.${node}.port)"
+	json_add_string "remarks" "$(uci -q get ${CONFIG}.${node}.remarks)"
 	json_dump > "${f}.tmp" && mv -f "${f}.tmp" "$f"
 }
 
@@ -304,6 +305,42 @@ run_queue() {
 	done
 }
 
+# result_carry <result file of a deleted server>: move it to the only server
+# with the same address and port that has no result of this kind; prints the
+# new file, or removes it (no such server, or several) and fails.
+result_carry() {
+	local f="$1" base kind addr port ids id name
+	base=${f##*/}; kind=${base#*.}; kind=${kind%.json}
+	addr=$(jsonfilter -i "$f" -e '@.address' 2>/dev/null)
+	port=$(jsonfilter -i "$f" -e '@.port' 2>/dev/null)
+	if [ -n "$addr" ] && [ -n "$port" ]; then
+		ids=$(uci -q show ${CONFIG} | awk -F"[.=]" -v a="'$addr'" -v p="'$port'" -v c="$CONFIG" '
+			$1 == c && NF >= 3 { v = substr($0, index($0, "=") + 1) }
+			$1 == c && $3 == "address" && v == a { ad[$2] = 1 }
+			$1 == c && $3 == "port" && v == p { po[$2] = 1 }
+			$1 == c && $3 == "protocol" && v == "'"'"'vless'"'"'" { vl[$2] = 1 }
+			END { for (i in ad) if (po[i] && vl[i]) print i }')
+		set --
+		for id in $ids; do
+			[ -e "${EV_TEST_DIR}/r/${id}.${kind}.json" ] || set -- "$@" "$id"
+		done
+		# several: the one with the same name
+		if [ "$#" -gt 1 ]; then
+			name=$(jsonfilter -i "$f" -e '@.remarks' 2>/dev/null)
+			ids="$*"
+			set --
+			for id in $ids; do
+				[ -n "$name" ] && [ "$(uci -q get ${CONFIG}.${id}.remarks)" = "$name" ] && set -- "$@" "$id"
+			done
+		fi
+		if [ "$#" = 1 ]; then
+			mv -f "$f" "${EV_TEST_DIR}/r/$1.${kind}.json" && { echo "${EV_TEST_DIR}/r/$1.${kind}.json"; return 0; }
+		fi
+	fi
+	rm -f "$f"
+	return 1
+}
+
 # queue_state [error]: queue, running test, batch progress and the stored
 # results of all servers (results of deleted servers are removed here).
 queue_state() {
@@ -335,7 +372,13 @@ queue_state() {
 		base=${f##*/}; node=${base%%.*}
 		case "$nodes" in
 			*" $node "*) ;;
-			*) rm -f "$f"; continue ;;
+			*)
+				# the server is gone - a subscription update re-creates its
+				# servers with new ids: the result moves to the one new server
+				# with the same address and port (without a result yet)
+				f=$(result_carry "$f") || continue
+				base=${f##*/}; node=${base%%.*}
+			;;
 		esac
 		[ "$first" = 1 ] || printf ','
 		first=0

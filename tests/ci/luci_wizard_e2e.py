@@ -286,7 +286,7 @@ def main():
         check("invalid link: transport rejected by the router's parser (%s)" % e.replace("\n", " | "), "not accepted" in e)
         e = link_error(GOOD + "\n" + BAD)
         check("invalid link: two links at once (%s)" % e, "exactly one" in e)
-        e = link_error("just some text")
+        e = link_error("not-a-link-at-all")
         check("invalid input: not a link (%s)" % e, "not a link" in e)
         # an http(s) link is only a subscription when the router finds servers in it
         e = link_error(SUB + "/html")
