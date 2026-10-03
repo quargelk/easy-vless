@@ -98,7 +98,7 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 
 ## В разработке: 0.9 — маршрутизация и диагностика
 
-Ветка `feat/0.9-routing-diagnostics`. Раздел описывает то, что уже есть в ветке, для разработчиков; версия пакетов и README остаются прежними до релиза.
+Ветка `feat/0.9-routing-diagnostics`. Раздел описывает то, что уже есть в ветке, для разработчиков; пользовательское описание 0.9 в README появится к релизу.
 
 **Выбранный узел и «Выбрать» в «Списке узлов».** Цели правил хранятся в `main_router.<id правила>` как идентификаторы узлов: мастер и «Добавить готовое правило» подставляют туда сервер, выбранный на тот момент. Поэтому «Выбрать» (`ev.setActiveTarget` в `common.js`) при основном узле «По правилам» переносит на новый узел все записи `main_router`, указывавшие на прежний выбранный узел (цели правил и «По умолчанию»), а не только `default_node`. Выбранный узел (`ev.selectedNode`) — это `default_node`, если он сервер или группа, иначе цель первого по порядку правила, указывающая на сервер или группу. Записи с другой целью («Напрямую», «Блокировать», «Цель по умолчанию», другой сервер) не меняются.
 
@@ -142,13 +142,13 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 
 ## Файлы релиза и SHA256SUMS
 
-Релиз `v0.8.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
+Релиз `v0.9.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.8.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.8.0-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.8.0-r1_all.ipk` | интерфейс LuCI и его переводы |
+| `easy-vless_0.9.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.9.0-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.9.0-r1_all.ipk` | интерфейс LuCI и его переводы |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 файлов релиза |
 
@@ -197,7 +197,7 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 ## Installer
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.8.0/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.9.0/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -253,8 +253,8 @@ Installer проверит подпись и SHA256, установит TLS-би
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_0.8.0-r1_all.ipk easy-vless-sing-box_0.8.0-r1_all.ipk luci-app-easy-vless_0.8.0-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.8.0/$f"
+for f in SHA256SUMS easy-vless_0.9.0-r1_all.ipk easy-vless-sing-box_0.9.0-r1_all.ipk luci-app-easy-vless_0.9.0-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.9.0/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -264,9 +264,9 @@ sha256sum -c SHA256SUMS
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.8.0-r1_all.ipk
-opkg install ./easy-vless-sing-box_0.8.0-r1_all.ipk
-opkg install ./luci-app-easy-vless_0.8.0-r1_all.ipk
+opkg install ./easy-vless_0.9.0-r1_all.ipk
+opkg install ./easy-vless-sing-box_0.9.0-r1_all.ipk
+opkg install ./luci-app-easy-vless_0.9.0-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
