@@ -7,6 +7,7 @@ require 'luci.util'
 require 'luci.jsonc'
 require 'luci.sys'
 local api = require "luci.easy_vless.api"
+local node_state = require "luci.easy_vless.nodes"
 local c_config = api.c_config
 
 local datatypes = api.datatypes
@@ -1291,6 +1292,10 @@ local function select_node(nodes, config, parentConfig)
 	end
 end
 
+-- Easy VLESS 0.9.0: what an update did to the nodes of a subscription
+-- (cfgid -> { new, updated, unchanged, removed, excluded }), see nodes.lua.
+local sub_stats = {}
+
 local function update_node(manual)
 	if next(nodeResult) == nil then
 		log(1, i18n.translatef("No node information updates are available."))
@@ -1302,10 +1307,15 @@ local function update_node(manual)
 		group[v["remark"]:lower()] = true
 	end
 
+	-- the nodes of the updated subscriptions before the update, by group
+	local existing = {}
 	if manual == 0 and next(group) then
 		uci_foreach("nodes", function(node)
 			-- Do not delete nodes if no new nodes are found or nodes were manually imported...
 			if node.add_mode == "2" and (node.group and group[node.group:lower()] == true) then
+				local g = node.group:lower()
+				existing[g] = existing[g] or {}
+				table.insert(existing[g], node)
 				uci_del(node['.name'])
 			end
 		end)
@@ -1314,6 +1324,22 @@ local function update_node(manual)
 		local remark = v["remark"]
 		local list = v["list"]
 		local sub_cfg = v["sub_cfg"]
+		-- Easy VLESS 0.9.0 (nodes.lua): a node the user deleted is not
+		-- imported again; a node that was already there keeps its section id
+		-- (matched by identity, not by its position or name), so the main
+		-- node, rule targets and URL Test groups keep pointing to it.
+		local keep_ids = {}
+		if manual == 0 and sub_cfg then
+			local excluded, stats
+			list, excluded = node_state.filter_excluded(list, sub_cfg.excluded_node)
+			keep_ids, stats = node_state.merge(existing[remark:lower()], list)
+			existing[remark:lower()] = nil
+			stats.excluded = excluded
+			if sub_cfg[".name"] then sub_stats[sub_cfg[".name"]] = stats end
+			if excluded > 0 then
+				log(1, i18n.translatef("[%s] %s node(s) deleted by the user were not imported again.", remark, excluded))
+			end
+		end
 		local domain_resolver, domain_resolver_dns, domain_resolver_dns_https, domain_strategy
 		local preproxy_node_group, to_node_group, outbound_iface_group, chain_node_type = "", "", "", ""
 		-- Subscription Group Chain Agent
@@ -1338,8 +1364,8 @@ local function update_node(manual)
 			outbound_iface_group = (sub_cfg.chain_proxy == "3") and sub_cfg.outbound_iface or ""
 			chain_node_type = (outbound_iface_group ~= "") and "iface" or chain_node_type
 		end
-		for _, vv in ipairs(list) do
-			local cfgid = uci:section(c_config, "nodes", api.gen_random_char())
+		for i, vv in ipairs(list) do
+			local cfgid = uci:section(c_config, "nodes", keep_ids[i] or api.gen_random_char())
 			for kkk, vvv in pairs(vv) do
 				if type(vvv) == "table" and next(vvv) ~= nil then
 					uci_set(cfgid, kkk, vvv)
@@ -1584,6 +1610,10 @@ local function write_sub_records()
 		if rec.after == nil then
 			rec.after = group_count(rec.remark)
 		end
+		-- 0.9.0: new / updated / unchanged / removed / excluded (see update_node)
+		for k, n in pairs(sub_stats[cfgid] or {}) do
+			rec[k] = n
+		end
 		rec.status = rec.status or "error"
 		local path = SUB_STATE_DIR .. "/" .. cfgid .. ".json"
 		local f = io.open(path .. ".tmp", "w")
@@ -1736,6 +1766,78 @@ local execute = function()
 	end
 end
 
+-- Easy VLESS 0.9.0: node list actions of LuCI (rpcd "nodes"). They run here
+-- because they change the same node list as an update and therefore share
+-- its lock (check_instance). The decisions are made by nodes.lua; the answer
+-- is one JSON object on stdout.
+--   delete <id>          delete one server; a subscription node is remembered
+--                        in subscribe_list.excluded_node (not imported again)
+--   delete_all_plan      what "Delete all nodes" would do (nothing is changed)
+--   delete_all           delete every server, repair what pointed to them
+--   restore <sub> [key]  forget one / all deleted nodes of a subscription
+local function all_sections()
+	local t = {}
+	for _, stype in ipairs({ "global", "nodes", "shunt_rules", "subscribe_list" }) do
+		uci_foreach(stype, function(s) t[#t + 1] = s end)
+	end
+	return t
+end
+
+local function apply_plan(plan)
+	for _, id in ipairs(plan.remove or {}) do
+		uci_del(id)
+	end
+	for _, v in ipairs(plan.set or {}) do
+		if type(v[3]) == "table" and #v[3] == 0 then
+			uci_del(v[1], v[2])
+		else
+			uci_set(v[1], v[2], v[3])
+		end
+	end
+	for _, v in ipairs(plan.del or {}) do
+		uci_del(v[1], v[2])
+	end
+	uci_save(true)
+end
+
+local function node_action(action, a1, a2)
+	local sections = all_sections()
+	if action == "delete" then
+		local plan, err, refs = node_state.plan_delete(sections, a1 or "")
+		if not plan then
+			return { ok = false, error = err, references = refs }
+		end
+		apply_plan(plan)
+		return { ok = true, removed = 1, excluded = plan.excluded }
+	elseif action == "delete_all_plan" or action == "delete_all" then
+		local plan = node_state.plan_delete_all(sections)
+		local res = { ok = true, counts = plan.counts, changes = plan.changes, stop = plan.stop, removed = plan.remove }
+		if action == "delete_all" and #plan.remove > 0 then
+			apply_plan(plan)
+			local bad = node_state.dangling(all_sections())
+			if #bad > 0 then
+				res.ok = false
+				res.error = "dangling"
+				res.dangling = bad
+			end
+		end
+		return res
+	elseif action == "restore" then
+		local sub = uci_get(a1 or "")
+		if type(sub) ~= "table" or sub[".type"] ~= "subscribe_list" then
+			return { ok = false, error = "unknown" }
+		end
+		local key = (a2 and a2 ~= "") and a2 or nil
+		local list, n = node_state.restore(sub.excluded_node, key)
+		if n > 0 then
+			-- an unchanged subscription is imported again on the next update
+			apply_plan({ set = { { a1, "excluded_node", list } }, del = { { a1, "md5" } } })
+		end
+		return { ok = true, restored = n }
+	end
+	return { ok = false, error = "action" }
+end
+
 local function check_instance(action)
 	local sub_lock = api.LOCK_PREFIX .. "_subscribe.lock"
 	local rule_lock = api.LOCK_PREFIX .. "_rule_update.lock"
@@ -1784,6 +1886,13 @@ if arg[1] then
 		luci.sys.call("rm -f /tmp/links.conf")
 	elseif arg[1] == "truncate" then
 		truncate_nodes(arg[2])
+	elseif arg[1] == "delete" or arg[1] == "delete_all" or arg[1] == "delete_all_plan" or arg[1] == "restore" then
+		local ok, res = pcall(node_action, arg[1], arg[2], arg[3])
+		if not ok then
+			log(1, tostring(res))
+			res = { ok = false, error = "internal", detail = tostring(res) }
+		end
+		io.write(jsonStringify(res) .. "\n")
 	end
 
 	check_instance("end")

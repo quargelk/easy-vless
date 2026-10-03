@@ -1,1 +1,3 @@
 /etc/easy_vless/hwid
+/etc/easy_vless/restore-backup
+/etc/easy_vless/update-backup

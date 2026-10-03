@@ -38,12 +38,28 @@
 			"path": "easy_vless/rules"
 		}
 	},
+	"admin/services/easy_vless/diagnostics": {
+		"title": "Diagnostics",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/diagnostics"
+		}
+	},
 	"admin/services/easy_vless/settings": {
 		"title": "Settings",
 		"order": 40,
 		"action": {
 			"type": "view",
 			"path": "easy_vless/settings"
+		}
+	},
+	"admin/services/easy_vless/maintenance": {
+		"title": "Maintenance",
+		"order": 45,
+		"action": {
+			"type": "view",
+			"path": "easy_vless/maintenance"
 		}
 	},
 	"admin/services/easy_vless/wizard": {

@@ -8,23 +8,39 @@ msgstr ""
 msgid "RPC error: %s"
 msgstr "Ошибка RPC: %s"
 
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "A new version of Easy VLESS is available: %s"
+msgstr "Доступна новая версия Easy VLESS: %s"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "(installed: %s)"
+msgstr "(установлена: %s)"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Update"
+msgstr "Обновить"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Later"
+msgstr "Позже"
+
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "none"
 msgstr "отсутствует"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Direct"
 msgstr "Напрямую"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "Block"
 msgstr "Блокировать"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Default target"
 msgstr "Цель по умолчанию"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "URL Test group"
 msgstr "Группа URL-теста"
 
@@ -39,6 +55,10 @@ msgstr "Блокировать (blackhole)"
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "Main node"
 msgstr "Основной узел"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Default"
+msgstr "По умолчанию"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Main Router: Default"
@@ -72,7 +92,7 @@ msgstr "ПРЕДУПРЕЖДЕНИЕ"
 msgid "FAILED"
 msgstr "ОШИБКА"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Close"
 msgstr "Закрыть"
 
@@ -92,7 +112,7 @@ msgstr "%s: ошибка: %s"
 msgid "\"%s\" is still running; wait until it has finished."
 msgstr "«%s» ещё выполняется; дождитесь завершения."
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
 msgid "Save"
 msgstr "Сохранить"
 
@@ -232,7 +252,7 @@ msgstr "не выбран"
 msgid "Main Router"
 msgstr "По правилам"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "unknown"
 msgstr "неизвестно"
 
@@ -284,7 +304,7 @@ msgstr "запускается при загрузке"
 msgid "Default: %s"
 msgstr "По умолчанию: %s"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "sing-box"
 msgstr "sing-box"
 
@@ -392,15 +412,15 @@ msgstr "Не удалось запустить тест: %s"
 msgid "The test ended without a result (it was cancelled, or the router stopped the test)."
 msgstr "Тест завершился без результата (он был отменён, или роутер остановил тест)."
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "just now"
 msgstr "только что"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "%d min ago"
 msgstr "%d мин назад"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "%d h ago"
 msgstr "%d ч назад"
 
@@ -412,7 +432,7 @@ msgstr "Проверка…"
 msgid "Queued"
 msgstr "В очереди"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "%d ms"
 msgstr "%d мс"
 
@@ -484,7 +504,7 @@ msgstr "проверьте время роутера и сертификаты C
 msgid "Download failed (%s)"
 msgstr "Ошибка загрузки (%s)"
 
-#: luci/htdocs/luci-static/resources/easy_vless/common.js
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "curl error %s"
 msgstr "ошибка curl %s"
 
@@ -499,6 +519,42 @@ msgstr "Обновление не удалось"
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "see the log on Main"
 msgstr "см. журнал на странице Main"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "new: %d"
+msgstr "новых: %d"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "updated: %d"
+msgstr "обновлено: %d"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "gone: %d"
+msgstr "исчезло: %d"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "deleted by you: %d"
+msgstr "удалено вами: %d"
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "A subscription update is running; try again when it has finished."
+msgstr "Идёт обновление подписки; повторите, когда оно завершится."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The server is still used by the routing; select another target there first."
+msgstr "Сервер ещё используется в маршрутизации; сначала выберите там другую цель."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "It no longer exists on the router; reload the page."
+msgstr "На роутере этого уже нет; обновите страницу."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The servers were deleted, but some entries still point to a missing node: %s. Check Main and the URL Test groups."
+msgstr "Серверы удалены, но некоторые записи всё ещё ссылаются на отсутствующий узел: %s. Проверьте «Главную» и группы URL-теста."
+
+#: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgid "The router refused the request (%s); see the log on Main."
+msgstr "Роутер отклонил запрос (%s); смотрите журнал на «Главной»."
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
 msgid "Only VLESS servers can be exported."
@@ -560,18 +616,1106 @@ msgstr "Копировать"
 msgid "QR support unavailable. Install luci-lib-uqr to enable QR."
 msgstr "QR-код недоступен. Установите luci-lib-uqr, чтобы включить QR."
 
-#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Default"
-msgstr "По умолчанию"
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%d d ago"
+msgstr "%d дн. назад"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "now using %s"
+msgstr "сейчас используется %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "unknown outbound \"%s\" (not part of the configuration)"
+msgstr "неизвестный выход «%s» (его нет в конфигурации)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Direct DNS"
+msgstr "Прямой DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "Remote DNS"
+msgstr "Удалённый DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "FakeDNS (placeholder address %s)"
+msgstr "FakeDNS (подставной адрес %s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the router's system resolver"
+msgstr "системный резолвер роутера"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "fixed address (DNS hosts)"
+msgstr "фиксированный адрес (DNS hosts)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "unknown DNS server \"%s\""
+msgstr "неизвестный DNS-сервер «%s»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "directly, without the proxy"
+msgstr "напрямую, без прокси"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "through the proxy: %s"
+msgstr "через прокси: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "from the resource %s"
+msgstr "из ресурса %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "from the rule's own domain list"
+msgstr "из собственного списка доменов правила"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the domain is listed exactly: %s"
+msgstr "домен указан точно: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the domain belongs to %s (domain and subdomains)"
+msgstr "домен относится к %s (домен и поддомены)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the domain name contains \"%s\""
+msgstr "имя домена содержит «%s»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the domain matches the regular expression %s"
+msgstr "домен подходит под регулярное выражение %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the address %s is in %s"
+msgstr "адрес %s входит в %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the address %s is a private / local address"
+msgstr "адрес %s — частный / локальный"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "network is %s"
+msgstr "сеть — %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "destination port %s is in %s"
+msgstr "порт назначения %s входит в %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "sniffed protocol is %s"
+msgstr "распознанный протокол — %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "source address %s matches %s"
+msgstr "адрес источника %s подходит под %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "source port %s matches"
+msgstr "порт источника %s подходит"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "arrives on the inbound %s"
+msgstr "приходит на вход %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the rule is inverted and its conditions do not match"
+msgstr "правило инвертировано, а его условия не выполняются"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "its conditions do not match"
+msgstr "его условия не выполняются"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it matches domains, and for an IP address no domain name is known"
+msgstr "оно проверяет домены, а для IP-адреса имя домена неизвестно"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the domain is not in its lists"
+msgstr "домена нет в его списках"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the address is not in its IP list"
+msgstr "адреса нет в его списке IP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it is for %s, the connection is %s"
+msgstr "оно для %s, а соединение — %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it is for port %s, the connection uses port %s"
+msgstr "оно для порта %s, а соединение идёт на порт %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it is for the protocol %s, the connection is %s"
+msgstr "оно для протокола %s, а соединение — %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the source address %s is not in its source list"
+msgstr "адреса источника %s нет в его списке источников"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the source port %s is not in its list"
+msgstr "порта источника %s нет в его списке"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it is for the inbound %s"
+msgstr "оно для входа %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it is inverted and its conditions match"
+msgstr "оно инвертировано, а его условия выполняются"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it uses geodata (%s), which Route Explain cannot read"
+msgstr "оно использует геоданные (%s), которые «Объяснение маршрута» прочитать не может"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "its regular expression %s is too complex to evaluate here"
+msgstr "его регулярное выражение %s слишком сложное, чтобы вычислить его здесь"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it matches IP addresses, and the address of this domain could not be determined"
+msgstr "оно проверяет IP-адреса, а адрес этого домена определить не удалось"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it matches the sniffed protocol (%s), which is not known for this port"
+msgstr "оно проверяет распознанный протокол (%s), а для этого порта он неизвестен"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it matches a port and no port was given"
+msgstr "оно проверяет порт, а порт не указан"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it matches a source address and none was given (enter one under \"More\")"
+msgstr "оно проверяет адрес источника, а он не указан (введите его в разделе «Ещё»)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it matches a source port, which is not known in advance"
+msgstr "оно проверяет порт источника, а он заранее неизвестен"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not intercepted: Client Proxy and Localhost Proxy are both off (Main). The connection leaves the router directly; the rules are not applied."
+msgstr "Не перехватывается: «Проксировать устройства LAN» и «Проксировать сам роутер» выключены («Главная»). Соединение уходит с роутера напрямую; правила не применяются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not intercepted: port %s is in the \"no proxy\" ports (%s). The connection leaves the router directly; the rules are not applied."
+msgstr "Не перехватывается: порт %s входит в список портов «без прокси» (%s). Соединение уходит с роутера напрямую; правила не применяются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not intercepted: port %s is outside the redirected ports (%s, Settings → Forwarding). The connection leaves the router directly; the rules are not applied."
+msgstr "Не перехватывается: порт %s не входит в перенаправляемые порты (%s, «Настройки» → «Перенаправление»). Соединение уходит с роутера напрямую; правила не применяются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not intercepted: %s is a local / private address. It never reaches Easy VLESS."
+msgstr "Не перехватывается: %s — локальный / частный адрес. До Easy VLESS он не доходит."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not intercepted: the destination is IPv6 and IPv6 TProxy is off (Settings → Forwarding). The connection leaves the router directly."
+msgstr "Не перехватывается: адрес назначения — IPv6, а IPv6 TProxy выключен («Настройки» → «Перенаправление»). Соединение уходит с роутера напрямую."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not intercepted by the firewall."
+msgstr "Не перехватывается межсетевым экраном."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the device connects to a FakeDNS address, which is redirected on every port"
+msgstr "устройство подключается к адресу FakeDNS, а он перенаправляется на любом порту"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "only for the redirected ports (%s)"
+msgstr "только для перенаправляемых портов (%s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "only the router's own traffic (Client Proxy is off)"
+msgstr "только трафик самого роутера («Проксировать устройства LAN» выключено)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "only LAN devices (Localhost Proxy is off)"
+msgstr "только устройства LAN («Проксировать сам роутер» выключено)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Enter a domain, an IP address, host:port or a URL."
+msgstr "Введите домен, IP-адрес, хост:порт или URL."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The port must be between 1 and 65535."
+msgstr "Порт должен быть от 1 до 65535."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The source must be an IP address."
+msgstr "Источник должен быть IP-адресом."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Enter a domain name (DNS diagnostics is about names, not addresses)."
+msgstr "Введите имя домена (диагностика DNS проверяет имена, а не адреса)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "This is not a valid domain or IP address."
+msgstr "Это не домен и не IP-адрес."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "The router did not answer: %s"
+msgstr "Роутер не ответил: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS is busy with another operation (start, stop, check or a server test). Try again in a few seconds."
+msgstr "Easy VLESS занят другой операцией (запуск, остановка, проверка конфигурации или проверка сервера). Повторите через несколько секунд."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The sing-box configuration could not be generated from the saved settings: %s"
+msgstr "Не удалось сформировать конфигурацию sing-box из сохранённых настроек: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The diagnostic was interrupted (Easy VLESS was started or stopped meanwhile). Run it again."
+msgstr "Диагностика прервана (Easy VLESS в это время запускался или останавливался). Запустите её ещё раз."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The diagnostics are not installed on the router (update the easy-vless package)."
+msgstr "Диагностика не установлена на роутере (обновите пакет easy-vless)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The diagnostic failed on the router: %s"
+msgstr "Диагностика завершилась ошибкой на роутере: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "rule %d of the configuration"
+msgstr "правило %d конфигурации"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "domain"
+msgstr "домен"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IP address"
+msgstr "IP-адрес"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "port %s (assumed)"
+msgstr "порт %s (предположительно)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "port %s"
+msgstr "порт %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%s (assumed from the port)"
+msgstr "%s (предположительно, по порту)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "from %s"
+msgstr "от %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Checked"
+msgstr "Проверено"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Rule"
+msgstr "Правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "priority %d"
+msgstr "приоритет %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "no rule matches: Default"
+msgstr "ни одно правило не подошло: «По умолчанию»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Reason"
+msgstr "Причина"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the rule has no conditions (it matches everything)"
+msgstr "у правила нет условий (оно подходит ко всему)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "traffic that matches no rule goes to the Default target"
+msgstr "трафик, не подошедший ни под одно правило, идёт в цель «По умолчанию»"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgctxt "routing target"
+msgid "Target"
+msgstr "Цель"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "answered empty (blocked by a DNS rule)"
+msgstr "ответ пустой (заблокировано правилом DNS)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The device gets a placeholder address; the real name is resolved by the proxy server."
+msgstr "Устройство получает подставной адрес; настоящее имя разрешает прокси-сервер."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "EDNS Client Subnet: %s"
+msgstr "EDNS Client Subnet: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv6 (AAAA): not answered - IPv4 only"
+msgstr "IPv6 (AAAA): без ответа — только IPv4"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv6 (AAAA): %s"
+msgstr "IPv6 (AAAA): %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not certain: a DNS rule with geodata could apply first."
+msgstr "Не наверняка: раньше может сработать правило DNS с геоданными."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "DNS"
+msgstr "DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "DNS route"
+msgstr "Маршрут DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Resolved"
+msgstr "Адрес"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "asked the router's DNS, because a rule depends on the address"
+msgstr "получено у DNS роутера, потому что от адреса зависит правило"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the router's DNS did not resolve the name (%s); rules that depend on the address stay undecided"
+msgstr "DNS роутера не разрешил имя (%s); правила, зависящие от адреса, остаются неопределёнными"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Forwarding"
+msgstr "Перенаправление"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Not certain"
+msgstr "Не наверняка"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "A rule above could apply first; Route Explain cannot decide it:"
+msgstr "Раньше может сработать правило выше; «Объяснение маршрута» не может это определить:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Checked before"
+msgstr "Проверено раньше"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%d rule(s) with a higher priority do not apply:"
+msgstr "Правил с более высоким приоритетом, которые не подошли: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Based on"
+msgstr "На основе"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the configuration sing-box is running with right now"
+msgstr "конфигурации, с которой sing-box работает прямо сейчас"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the saved settings (Easy VLESS is stopped: this is what a start would use)"
+msgstr "сохранённых настроек (Easy VLESS остановлен: так было бы после запуска)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Firewall (fw4 / nft)"
+msgstr "Межсетевой экран (fw4 / nft)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "nft table inet easy_vless"
+msgstr "Таблица nft inet easy_vless"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS chains"
+msgstr "Цепочки Easy VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Address sets"
+msgstr "Наборы адресов"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Policy routing (fwmark)"
+msgstr "Маршрутизация по метке (fwmark)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "TCP forwarding"
+msgstr "Перенаправление TCP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "UDP forwarding"
+msgstr "Перенаправление UDP"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "LAN interception"
+msgstr "Перехват устройств LAN"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Router interception"
+msgstr "Перехват самого роутера"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "IPv6 TProxy"
+msgstr "IPv6 TProxy"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Port exceptions"
+msgstr "Исключения портов"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Redirected ports"
+msgstr "Перенаправляемые порты"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS redirect (port 53)"
+msgstr "Перенаправление DNS (порт 53)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS DNS"
+msgstr "DNS Easy VLESS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Resolution"
+msgstr "Разрешение имени"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS used"
+msgstr "Используемый DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/settings.js
+msgid "FakeDNS"
+msgstr "FakeDNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv4 / IPv6 mode"
+msgstr "Режим IPv4 / IPv6"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "DNS of LAN devices"
+msgstr "DNS устройств LAN"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Secure DNS on devices"
+msgstr "Защищённый DNS на устройствах"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "EDNS Client Subnet"
+msgstr "EDNS Client Subnet"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Start requirements"
+msgstr "Требования для запуска"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Service"
+msgstr "Служба"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Selected node"
+msgstr "Выбранный узел"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Server Test"
+msgstr "Проверка сервера"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Targets"
+msgstr "Цели"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Rules"
+msgstr "Правила"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Running configuration"
+msgstr "Работающая конфигурация"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "HTTPS request"
+msgstr "HTTPS-запрос"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "no answer (timeout)"
+msgstr "нет ответа (тайм-аут)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the name does not exist (NXDOMAIN)"
+msgstr "такого имени нет (NXDOMAIN)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the DNS server could not resolve it (SERVFAIL: its upstream did not answer)"
+msgstr "DNS-сервер не смог его разрешить (SERVFAIL: вышестоящий сервер не ответил)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "the DNS server refused the query"
+msgstr "DNS-сервер отклонил запрос"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "answered, but without an address"
+msgstr "ответ получен, но без адреса"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "unexpected answer"
+msgstr "неожиданный ответ"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "fw4 and nft are available."
+msgstr "fw4 и nft доступны."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "fw4 or nft was not found. Easy VLESS needs OpenWrt firewall4 (nftables)."
+msgstr "fw4 или nft не найден. Easy VLESS нужен OpenWrt firewall4 (nftables)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "nft could not list the table: %s"
+msgstr "nft не смог показать таблицу: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS is stopped; nothing is loaded."
+msgstr "Easy VLESS остановлен; ничего не загружено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS is stopped, but its nft table is still loaded (left over from a previous run). Press Stop on Main to remove it."
+msgstr "Easy VLESS остановлен, но его таблица nft всё ещё загружена (осталась от прошлого запуска). Нажмите «Остановить» на «Главной», чтобы её убрать."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS is stopped, but its ip rule / routing table 998 is still there. Press Stop on Main to remove it."
+msgstr "Easy VLESS остановлен, но его ip rule / таблица маршрутов 998 всё ещё на месте. Нажмите «Остановить» на «Главной», чтобы их убрать."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "sing-box is running, but the nft table inet easy_vless does not exist: no traffic is redirected. Restart Easy VLESS (Save & Apply on Main)."
+msgstr "sing-box работает, но таблицы nft inet easy_vless нет: трафик не перенаправляется. Перезапустите Easy VLESS («Применить» на «Главной»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Loaded."
+msgstr "Загружена."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Missing chain(s): %s. Restart Easy VLESS; if it stays, see the log on Main."
+msgstr "Нет цепочек: %s. Перезапустите Easy VLESS; если не поможет, смотрите журнал на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "All %d chains are present."
+msgstr "Все цепочки на месте (%d)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Missing set(s): %s. Restart Easy VLESS."
+msgstr "Нет наборов: %s. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The set of direct (local) addresses is empty: connections to LAN addresses would be sent to the proxy. Restart Easy VLESS."
+msgstr "Набор прямых (локальных) адресов пуст: соединения с адресами LAN ушли бы в прокси. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Present (direct addresses: %d, server addresses: %d)."
+msgstr "На месте (прямых адресов: %d, адресов серверов: %d)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Packets marked %s are delivered to sing-box (ip rule → table %s)."
+msgstr "Пакеты с меткой %s доставляются в sing-box (ip rule → таблица %s)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The ip rule for fwmark %s (table %s) is missing: redirected packets never reach sing-box. Restart Easy VLESS."
+msgstr "Нет ip rule для fwmark %s (таблица %s): перенаправленные пакеты не доходят до sing-box. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Routing table %s has no local route: redirected packets never reach sing-box. Restart Easy VLESS."
+msgstr "В таблице маршрутов %s нет локального маршрута: перенаправленные пакеты не доходят до sing-box. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%s forwarding is switched off (redirected ports: disabled, Settings → Forwarding)."
+msgstr "Перенаправление %s выключено (перенаправляемые порты: отключено, «Настройки» → «Перенаправление»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Client Proxy and Localhost Proxy are off: %s is not redirected."
+msgstr "«Проксировать устройства LAN» и «Проксировать сам роутер» выключены: %s не перенаправляется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "No %s rule for %s in the chain %s: %s traffic is not redirected. Restart Easy VLESS."
+msgstr "Нет правила %s для %s в цепочке %s: трафик %s не перенаправляется. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The %s rule redirects to port %s, but sing-box listens on %s. Restart Easy VLESS."
+msgstr "Правило %s перенаправляет на порт %s, а sing-box слушает %s. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%s to sing-box port %s."
+msgstr "%s на порт sing-box %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Only ports %s."
+msgstr "Только порты %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Traffic of LAN devices is handed to Easy VLESS."
+msgstr "Трафик устройств LAN передаётся в Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Client Proxy is off (Main): LAN devices bypass Easy VLESS."
+msgstr "«Проксировать устройства LAN» выключено («Главная»): устройства LAN идут мимо Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The forwarding chain is not hooked into %s: traffic of LAN devices is not redirected. Restart Easy VLESS."
+msgstr "Цепочка перенаправления не подключена к %s: трафик устройств LAN не перенаправляется. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Traffic of the router itself is handed to Easy VLESS."
+msgstr "Трафик самого роутера передаётся в Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Localhost Proxy is off (Main): the router's own traffic bypasses Easy VLESS."
+msgstr "«Проксировать сам роутер» выключено («Главная»): трафик самого роутера идёт мимо Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The output chain is not hooked into %s: the router's own traffic is not redirected. Restart Easy VLESS."
+msgstr "Выходная цепочка не подключена к %s: трафик самого роутера не перенаправляется. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Off (Settings → Forwarding): IPv6 connections bypass Easy VLESS."
+msgstr "Выключен («Настройки» → «Перенаправление»): соединения IPv6 идут мимо Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv6 traffic is redirected."
+msgstr "Трафик IPv6 перенаправляется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv6 TProxy is on, but %s is missing: IPv6 traffic is not redirected. Restart Easy VLESS."
+msgstr "IPv6 TProxy включён, но нет %s: трафик IPv6 не перенаправляется. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Never proxied: %s."
+msgstr "Никогда не проксируются: %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Only these ports are redirected, everything else goes directly: %s."
+msgstr "Перенаправляются только эти порты, всё остальное идёт напрямую: %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS queries (port 53) are redirected to the DNS of Easy VLESS."
+msgstr "DNS-запросы (порт 53) перенаправляются на DNS Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS redirect is on, but its rule is missing: devices that use their own DNS server bypass the DNS of Easy VLESS. Restart Easy VLESS."
+msgstr "Перенаправление DNS включено, но его правила нет: устройства со своим DNS-сервером идут мимо DNS Easy VLESS. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Off (Settings → DNS): only queries sent to the router itself are handled."
+msgstr "Выключено («Настройки» → «DNS»): обрабатываются только запросы, отправленные самому роутеру."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS is stopped: names are resolved by the router's normal DNS."
+msgstr "Easy VLESS остановлен: имена разрешает обычный DNS роутера."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Resolved by the router's DNS: %s"
+msgstr "Разрешено DNS роутера: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Resolved: %s"
+msgstr "Разрешено: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Resolved to a FakeDNS placeholder: %s"
+msgstr "Разрешено в подставной адрес FakeDNS: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Answered empty: a DNS rule blocks this name."
+msgstr "Ответ пустой: это имя блокирует правило DNS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not resolved: %s."
+msgstr "Не разрешено: %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "This name is resolved by Remote DNS through the proxy: check the server (Server Test) and Remote DNS (Settings → DNS)."
+msgstr "Это имя разрешает удалённый DNS через прокси: проверьте сервер («Проверка сервера») и удалённый DNS («Настройки» → «DNS»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "This name is resolved by Direct DNS: check Direct DNS (Settings → DNS) and the WAN connection."
+msgstr "Это имя разрешает прямой DNS: проверьте прямой DNS («Настройки» → «DNS») и подключение WAN."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "A DNS rule answers empty."
+msgstr "Правило DNS отвечает пустым ответом."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "not certain: a DNS rule with geodata could apply first."
+msgstr "не наверняка: раньше может сработать правило DNS с геоданными."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The running configuration could not be read; which DNS server is used is not known."
+msgstr "Не удалось прочитать работающую конфигурацию; какой DNS-сервер используется, неизвестно."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "In use for this name, as configured."
+msgstr "Используется для этого имени, как и настроено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Off (Settings → DNS)."
+msgstr "Выключен («Настройки» → «DNS»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "On, but not used for this name (its rule resolves real addresses)."
+msgstr "Включён, но для этого имени не используется (его правило получает настоящие адреса)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Conflict: the answer is a FakeDNS placeholder (%s), but the rule for this name uses a real DNS server. An old answer may be cached: restart Easy VLESS, and flush the DNS cache of the device."
+msgstr "Конфликт: ответ — подставной адрес FakeDNS (%s), а правило для этого имени использует настоящий DNS-сервер. Возможно, в кэше старый ответ: перезапустите Easy VLESS и очистите кэш DNS на устройстве."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Conflict: FakeDNS should answer this name, but a real address came back (%s). Another DNS answers before Easy VLESS, or an old answer is cached."
+msgstr "Конфликт: на это имя должен отвечать FakeDNS, но пришёл настоящий адрес (%s). Раньше Easy VLESS отвечает другой DNS, или в кэше старый ответ."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv4 only: IPv6 (AAAA) answers are suppressed, as configured."
+msgstr "Только IPv4: ответы IPv6 (AAAA) подавляются, как и настроено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Mismatch: IPv4 only is configured, but an IPv6 address was answered (%s). Another DNS answers before Easy VLESS."
+msgstr "Несоответствие: настроено «только IPv4», а в ответе адрес IPv6 (%s). Раньше Easy VLESS отвечает другой DNS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Mismatch: this proxied name gets IPv6 addresses (%s), but IPv6 TProxy is off - IPv6 connections bypass the proxy. Set Remote DNS to IPv4 only or turn IPv6 TProxy on."
+msgstr "Несоответствие: это проксируемое имя получает адреса IPv6 (%s), а IPv6 TProxy выключен — соединения IPv6 идут мимо прокси. Переключите удалённый DNS на «только IPv4» или включите IPv6 TProxy."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "IPv4 and IPv6 addresses are answered."
+msgstr "В ответах есть адреса IPv4 и IPv6."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The name has no IPv6 address."
+msgstr "У имени нет адреса IPv6."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%s answered"
+msgstr "%s ответил"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "through %s"
+msgstr "через %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%s did not answer: %s."
+msgstr "%s не ответил: %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "It is reached through the proxy (%s): run Server Test for that server, or choose another Remote DNS."
+msgstr "Он доступен через прокси (%s): запустите «Проверку сервера» для этого сервера или выберите другой удалённый DNS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Check the WAN connection or set another Direct DNS (Settings → DNS)."
+msgstr "Проверьте подключение WAN или задайте другой прямой DNS («Настройки» → «DNS»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not checked: this name is not resolved by Remote DNS."
+msgstr "Не проверялся: это имя удалённый DNS не разрешает."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not checked: the DNS port of sing-box was not found."
+msgstr "Не проверялся: DNS-порт sing-box не найден."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Port 53 of every LAN device is redirected to Easy VLESS, also when the device uses its own DNS server."
+msgstr "Порт 53 каждого устройства LAN перенаправляется в Easy VLESS, даже если устройство использует свой DNS-сервер."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS redirect is on, but its firewall rule is missing: a device with its own DNS server (for example 8.8.8.8) bypasses Easy VLESS. Restart Easy VLESS."
+msgstr "Перенаправление DNS включено, но правила в межсетевом экране нет: устройство со своим DNS-сервером (например, 8.8.8.8) идёт мимо Easy VLESS. Перезапустите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS redirect is off: only devices that use the router as DNS are covered. A device with its own DNS server bypasses Easy VLESS (turn on DNS redirect in Settings → DNS)."
+msgstr "Перенаправление DNS выключено: охвачены только устройства, у которых DNS — роутер. Устройство со своим DNS-сервером идёт мимо Easy VLESS (включите перенаправление DNS: «Настройки» → «DNS»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS is not handed to Easy VLESS: DNS redirect is off and dnsmasq does not forward to sing-box. Turn on DNS redirect (Settings → DNS) and restart."
+msgstr "DNS не передаётся в Easy VLESS: перенаправление DNS выключено, а dnsmasq не пересылает запросы в sing-box. Включите перенаправление DNS («Настройки» → «DNS») и перезапустите."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The router cannot see whether a device uses encrypted DNS (DoH / DoT, \"Private DNS\", browser \"Secure DNS\"). Such a device resolves names itself; domain rules then work only through sniffing. Turn it off on the device if rules do not apply."
+msgstr "Роутер не видит, использует ли устройство шифрованный DNS (DoH / DoT, «Частный DNS», «Безопасный DNS» в браузере). Такое устройство разрешает имена само; правила по доменам тогда работают только через распознавание трафика. Если правила не срабатывают, отключите его на устройстве."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Sent to Remote DNS: %s"
+msgstr "Передаётся удалённому DNS: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Could not be checked: %s"
+msgstr "Проверить не удалось: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "sing-box %s"
+msgstr "sing-box %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The sing-box binary was not found. Install a sing-box package (easy-vless-sing-box depends on it)."
+msgstr "Исполняемый файл sing-box не найден. Установите пакет sing-box (от него зависит easy-vless-sing-box)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The sing-box backend of Easy VLESS is not installed (package easy-vless-sing-box)."
+msgstr "Не установлен бэкенд sing-box для Easy VLESS (пакет easy-vless-sing-box)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "fw4, dnsmasq with nftset support and the kernel modules are present."
+msgstr "fw4, dnsmasq с поддержкой nftset и модули ядра на месте."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS cannot start: %s"
+msgstr "Easy VLESS не может запуститься: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Running (PID %s)"
+msgstr "Работает (PID %s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The main switch is on, but sing-box is not running. See the log on Main; Save & Apply starts it again."
+msgstr "Главный переключатель включён, но sing-box не работает. Смотрите журнал на «Главной»; «Применить» запустит его снова."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The main switch is off."
+msgstr "Главный переключатель выключен."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "No node is selected (Main → Node)."
+msgstr "Узел не выбран («Главная» → «Узел»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The selected node \"%s\" does not exist any more. Choose a node on Main."
+msgstr "Выбранного узла «%s» больше нет. Выберите узел на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "No server is used: Default and all rules go Direct or are blocked."
+msgstr "Ни один сервер не используется: «По умолчанию» и все правила идут напрямую или блокируются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d server(s)"
+msgstr "серверов: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "sing-box tests the servers of the group itself (Node List → URL Test live results)."
+msgstr "Серверы группы sing-box проверяет сам («Список узлов» → результаты URL-теста)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not tested yet: run Server Test in Node List."
+msgstr "Ещё не проверялся: запустите «Проверку сервера» в «Списке узлов»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Passed, %d ms"
+msgstr "Пройдена, %d мс"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Failed: %s"
+msgstr "Не пройдена: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Every target points to an existing node."
+msgstr "Все цели указывают на существующие узлы."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "These entries point to a node that does not exist: %s. Choose their target again on Main."
+msgstr "Эти записи указывают на несуществующий узел: %s. Выберите для них цель заново на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "%d of %d rules have a target."
+msgstr "Правил с целью: %d из %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "No rule has a target: everything goes to Default."
+msgstr "Ни у одного правила нет цели: всё идёт в «По умолчанию»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "A single node is the main node: all traffic goes to it, the rules are not used."
+msgstr "Основной узел — один сервер: весь трафик идёт в него, правила не используются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "sing-box runs with %d rule(s)."
+msgstr "sing-box работает с правилами: %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Could not be read: %s"
+msgstr "Не удалось прочитать: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The running sing-box has %d rule(s), the saved settings have %d: saved changes are not applied yet (Save & Apply on Main)."
+msgstr "В работающем sing-box правил: %d, в сохранённых настройках: %d — сохранённые изменения ещё не применены («Применить» на «Главной»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The router reached the test site through Easy VLESS (HTTP %s)"
+msgstr "Роутер открыл тестовый сайт через Easy VLESS (HTTP %s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The router reached the test site (HTTP %s)"
+msgstr "Роутер открыл тестовый сайт (HTTP %s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The router could not reach the test site through Easy VLESS (%s). Check the server (Server Test) and DNS."
+msgstr "Роутер не смог открыть тестовый сайт через Easy VLESS (%s). Проверьте сервер («Проверка сервера») и DNS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The router could not reach the test site (%s). Check the WAN connection and DNS."
+msgstr "Роутер не смог открыть тестовый сайт (%s). Проверьте подключение WAN и DNS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Core"
+msgstr "Ядро"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Routing"
+msgstr "Маршрутизация"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Internet"
+msgstr "Интернет"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "partly works"
+msgstr "работает частично"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "works"
+msgstr "работает"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "works, with a warning"
+msgstr "работает, есть предупреждение"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "does not work"
+msgstr "не работает"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "off"
+msgstr "выключено"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "not checked"
+msgstr "не проверено"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Technical details"
+msgstr "Технические подробности"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Easy VLESS is starting or stopping right now: the result shows a state in transition. Run the diagnostic again when it has finished."
+msgstr "Easy VLESS сейчас запускается или останавливается: результат показывает переходное состояние. Запустите диагностику ещё раз, когда он закончит."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Checking Core, DNS, nftables, TPROXY, VLESS, Routing and Internet…"
+msgstr "Проверка ядра, DNS, nftables, TPROXY, VLESS, маршрутизации и интернета…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Click an item to see its checks. DNS is checked with %s."
+msgstr "Нажмите на пункт, чтобы увидеть его проверки. DNS проверяется на имени %s."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Evaluating the routing rules…"
+msgstr "Вычисление правил маршрутизации…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Resolving %s and checking the DNS servers…"
+msgstr "Разрешение %s и проверка DNS-серверов…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Reading nftables and the routing tables…"
+msgstr "Чтение nftables и таблиц маршрутизации…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Diagnostics"
+msgstr "Диагностика"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Why does traffic go the way it goes, and what is broken if it does not. Everything here only reads the state of the router: nothing is started, stopped or changed."
+msgstr "Почему трафик идёт именно так и что сломано, если он не идёт. Всё здесь только читает состояние роутера: ничего не запускается, не останавливается и не меняется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Connection"
+msgstr "Соединение"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "One check of every part Easy VLESS needs. Each item shows what works, what does not and why."
+msgstr "Одна проверка всех частей, нужных Easy VLESS. Каждый пункт показывает, что работает, что нет и почему."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Run diagnostics"
+msgstr "Запустить диагностику"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Route Explain"
+msgstr "Объяснение маршрута"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Enter a domain, an IP address, host:port or a URL: Easy VLESS shows which rule applies, why, where the traffic goes and how its DNS is resolved."
+msgstr "Введите домен, IP-адрес, хост:порт или URL: Easy VLESS покажет, какое правило сработает, почему, куда пойдёт трафик и как разрешается его DNS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Network of the connection"
+msgstr "Сеть соединения"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Explain"
+msgstr "Объяснить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "More: port, protocol, source"
+msgstr "Ещё: порт, протокол, источник"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgctxt "diagnostics"
+msgid "Port"
+msgstr "Порт"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Sniffed protocol"
+msgstr "Распознанный протокол"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "by port (443 TLS / QUIC, 80 HTTP)"
+msgstr "по порту (443 — TLS / QUIC, 80 — HTTP)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "not recognised"
+msgstr "не распознан"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Source IP"
+msgstr "IP источника"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "DNS diagnostics"
+msgstr "Диагностика DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Resolves one domain the way a LAN device does and shows which DNS answers it, through which route, and what is wrong if it fails."
+msgstr "Разрешает один домен так же, как устройство LAN, и показывает, какой DNS на него отвечает, каким маршрутом и что не так, если не получается."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Check DNS"
+msgstr "Проверить DNS"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Forwarding diagnostics"
+msgstr "Диагностика перенаправления"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "The firewall side: the nft table, chains and sets of Easy VLESS, policy routing, TPROXY / REDIRECT for TCP and UDP, LAN and router interception, IPv6, port exceptions."
+msgstr "Сторона межсетевого экрана: таблица nft, цепочки и наборы Easy VLESS, маршрутизация по метке, TPROXY / REDIRECT для TCP и UDP, перехват LAN и самого роутера, IPv6, исключения портов."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Check forwarding"
+msgstr "Проверить перенаправление"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "No node selected yet: choose one above in Node, or add a server in Node List."
 msgstr "Узел ещё не выбран: выберите его выше в поле «Узел» или добавьте сервер в «Списке узлов»."
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/main.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
-msgctxt "routing target"
-msgid "Target"
-msgstr "Цель"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/main.js
 msgid "Used by"
@@ -693,6 +1837,466 @@ msgstr "Проверка сервера открывает %s по HTTPS чер�
 msgid "Test all targets"
 msgstr "Проверить все цели"
 
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Servers"
+msgstr "Серверы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Rules"
+msgstr "Правила"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Subscriptions"
+msgstr "Подписки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This is not an Easy VLESS file (it is not valid JSON)."
+msgstr "Это не файл Easy VLESS (некорректный JSON)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This is an export file (%s), not a backup. Use Import below for it."
+msgstr "Это файл экспорта (%s), а не резервная копия. Используйте для него «Импорт» ниже."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This is not an Easy VLESS backup file."
+msgstr "Это не файл резервной копии Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This is a backup of the whole configuration, not an export file. Use Restore above for it."
+msgstr "Это резервная копия всей конфигурации, а не файл экспорта. Используйте для неё «Восстановление» выше."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This is not an Easy VLESS export file."
+msgstr "Это не файл экспорта Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file was made by a newer Easy VLESS (format %s). Update Easy VLESS first."
+msgstr "Файл создан более новой версией Easy VLESS (формат %s). Сначала обновите Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file is too large."
+msgstr "Файл слишком большой."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file is damaged or was changed after it was made (its checksum does not match). Nothing was changed."
+msgstr "Файл повреждён или был изменён после создания (контрольная сумма не совпадает). Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The configuration in the backup is not valid (line %s). Nothing was changed."
+msgstr "Конфигурация в резервной копии некорректна (строка %s). Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The backup contains an empty configuration. Nothing was changed."
+msgstr "В резервной копии пустая конфигурация. Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The backup does not contain an Easy VLESS configuration. Nothing was changed."
+msgstr "В резервной копии нет конфигурации Easy VLESS. Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The HWID in the backup is not valid. Nothing was changed."
+msgstr "HWID в резервной копии некорректен. Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The direct IP list in the backup contains an invalid entry (%s). Nothing was changed."
+msgstr "В списке прямых IP резервной копии есть некорректная запись (%s). Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS is starting or stopping; try again when it has finished."
+msgstr "Easy VLESS запускается или останавливается; повторите, когда он закончит."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The current configuration could not be saved before the restore (is the flash full?). Nothing was changed."
+msgstr "Не удалось сохранить текущую конфигурацию перед восстановлением (заполнена флеш-память?). Ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The restore failed (%s) and the previous configuration could not be put back automatically. Use \"Undo the last restore\"."
+msgstr "Восстановление не удалось (%s), и прежнюю конфигурацию не удалось вернуть автоматически. Нажмите «Отменить последнее восстановление»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Writing the configuration failed (%s). The previous configuration is still in place."
+msgstr "Не удалось записать конфигурацию (%s). Прежняя конфигурация осталась на месте."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "There is no earlier configuration to go back to."
+msgstr "Нет прежней конфигурации, к которой можно вернуться."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The export file does not say what it contains."
+msgstr "В файле экспорта не указано, что он содержит."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file contains %s, not %s."
+msgstr "В файле «%s», а не «%s»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "There is nothing to export: no %s."
+msgstr "Экспортировать нечего: раздел «%s» пуст."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file contains no entries."
+msgstr "В файле нет записей."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Nothing to import: every entry of the file already exists or is invalid."
+msgstr "Импортировать нечего: все записи файла уже есть или некорректны."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The configuration file of Easy VLESS could not be read."
+msgstr "Не удалось прочитать файл конфигурации Easy VLESS."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This function is not installed on the router (update the easy-vless package)."
+msgstr "Эта функция не установлена на роутере (обновите пакет easy-vless)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The request was interrupted on the router. Nothing was changed; try again."
+msgstr "Запрос был прерван на роутере. Ничего не изменено; повторите."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The router refused the request (%s)."
+msgstr "Роутер отклонил запрос (%s)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "already exists"
+msgstr "уже есть"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "twice in the file"
+msgstr "дважды в файле"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "invalid value: %s"
+msgstr "некорректное значение: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Downloading the release…"
+msgstr "Загрузка выпуска…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The release files did not pass the check. Nothing was installed."
+msgstr "Файлы выпуска не прошли проверку. Ничего не установлено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Verifying the release files…"
+msgstr "Проверка файлов выпуска…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "This router does not meet the requirements of the new version. Nothing was installed."
+msgstr "Этот роутер не подходит под требования новой версии. Ничего не установлено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Checking the router for the new version…"
+msgstr "Проверка роутера для новой версии…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The configuration could not be saved first. Nothing was installed."
+msgstr "Не удалось заранее сохранить конфигурацию. Ничего не установлено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Saving the configuration…"
+msgstr "Сохранение конфигурации…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Installing…"
+msgstr "Установка…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Checking the installation…"
+msgstr "Проверка установки…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Restarting Easy VLESS…"
+msgstr "Перезапуск Easy VLESS…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS %s is installed."
+msgstr "Easy VLESS %s установлен."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update was not started."
+msgstr "Обновление не было запущено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update failed and was rolled back: Easy VLESS %s is installed again, with the saved configuration."
+msgstr "Обновление не удалось и было откачено: снова установлен Easy VLESS %s с сохранённой конфигурацией."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update failed, and the previous version could not be put back completely."
+msgstr "Обновление не удалось, и прежнюю версию не получилось вернуть полностью."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "GitHub could not be reached over HTTPS, so it is not known whether there is a newer version. Check the internet connection and the router time."
+msgstr "Не удалось связаться с GitHub по HTTPS, поэтому неизвестно, есть ли новая версия. Проверьте подключение к интернету и время на роутере."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The latest release on GitHub does not look like an Easy VLESS release (%s). Nothing is offered."
+msgstr "Последний выпуск на GitHub не похож на выпуск Easy VLESS (%s). Обновление не предлагается."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update function is not installed on the router."
+msgstr "Функция обновления не установлена на роутере."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS is not installed as a package on this router, so it cannot be updated from here."
+msgstr "Easy VLESS установлен на этом роутере не как пакет, поэтому обновить его отсюда нельзя."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "An update is already running."
+msgstr "Обновление уже выполняется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file could not be read."
+msgstr "Не удалось прочитать файл."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Not checked yet."
+msgstr "Ещё не проверялось."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Up to date"
+msgstr "Актуальная версия"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS %s is the latest version."
+msgstr "Easy VLESS %s — последняя версия."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Not now. Version %s stays available here."
+msgstr "Не сейчас. Версия %s остаётся доступной здесь."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Asking GitHub for the latest release…"
+msgstr "Запрос последнего выпуска на GitHub…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Update Easy VLESS %s to %s?"
+msgstr "Обновить Easy VLESS %s до %s?"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The release files are downloaded over HTTPS and checked against the checksums of the release; a file that does not match is not installed."
+msgstr "Файлы выпуска загружаются по HTTPS и сверяются с контрольными суммами выпуска; файл, который не совпал, не устанавливается."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The router is checked for the new version before anything is changed."
+msgstr "Перед любыми изменениями роутер проверяется на совместимость с новой версией."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Your configuration is kept; a copy is saved first."
+msgstr "Ваша конфигурация сохраняется; сначала делается её копия."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS is restarted at the end if its main switch is on: connections are interrupted for a moment."
+msgstr "В конце Easy VLESS перезапускается, если главный переключатель включён: соединения ненадолго прервутся."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "If the installation or the check afterwards fails, the previous version and configuration are put back."
+msgstr "Если установка или проверка после неё не удастся, прежние версия и конфигурация возвращаются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Starting the update…"
+msgstr "Запуск обновления…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Reload the page"
+msgstr "Обновить страницу"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The router did not begin the update. Try again; the update log is /tmp/log/easy_vless_update.log on the router."
+msgstr "Роутер не начал обновление. Повторите; журнал обновления — /tmp/log/easy_vless_update.log на роутере."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update did not finish in time."
+msgstr "Обновление не завершилось вовремя."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Reload the page and look at the state here; the update log is /tmp/log/easy_vless_update.log on the router."
+msgstr "Обновите страницу и посмотрите состояние здесь; журнал обновления — /tmp/log/easy_vless_update.log на роутере."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS looks for a new version when its pages are opened, at most once a day."
+msgstr "Easy VLESS проверяет наличие новой версии при открытии своих страниц, не чаще раза в сутки."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS no longer looks for new versions by itself. \"Check for updates\" still works."
+msgstr "Easy VLESS больше не проверяет новые версии сам. Кнопка «Проверить обновления» по-прежнему работает."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Backup saved as %s. It contains your server credentials and subscription links: keep it private."
+msgstr "Резервная копия сохранена как %s. В ней данные доступа к серверам и ссылки подписок: никому её не передавайте."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Choose a backup file first."
+msgstr "Сначала выберите файл резервной копии."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Checking the file…"
+msgstr "Проверка файла…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Servers: %d · URL Test groups: %d · rules: %d · subscriptions: %d"
+msgstr "Серверов: %d · групп URL-теста: %d · правил: %d · подписок: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Made: %s"
+msgstr "Создана: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Main switch: on - Easy VLESS is restarted with the restored configuration."
+msgstr "Главный переключатель: включён — Easy VLESS перезапустится с восстановленной конфигурацией."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Main switch: off - Easy VLESS is stopped after the restore."
+msgstr "Главный переключатель: выключен — после восстановления Easy VLESS будет остановлен."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "In this backup these entries point to a node that does not exist: %s. Choose their target after the restore."
+msgstr "В этой копии эти записи указывают на несуществующий узел: %s. После восстановления выберите для них цель."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file is a valid backup. Restoring it replaces the whole current configuration of Easy VLESS:"
+msgstr "Файл — корректная резервная копия. Восстановление заменит всю текущую конфигурацию Easy VLESS:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Restore this backup"
+msgstr "Восстановить эту копию"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Restore"
+msgstr "Восстановить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Restarting Easy VLESS with the restored configuration…"
+msgstr "Перезапуск Easy VLESS с восстановленной конфигурацией…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Stopping Easy VLESS…"
+msgstr "Остановка Easy VLESS…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Replace the whole configuration of Easy VLESS with this backup? The current configuration is kept as a copy: \"Undo the last restore\" puts it back."
+msgstr "Заменить всю конфигурацию Easy VLESS этой резервной копией? Текущая конфигурация сохранится как копия: её вернёт «Отменить последнее восстановление»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Restoring the configuration…"
+msgstr "Восстановление конфигурации…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The backup was restored."
+msgstr "Резервная копия восстановлена."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Undo the last restore"
+msgstr "Отменить последнее восстановление"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Put back the configuration from before the last restore?"
+msgstr "Вернуть конфигурацию, которая была до последнего восстановления?"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The configuration from before the restore is back."
+msgstr "Конфигурация, которая была до восстановления, возвращена."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d rule(s) exported to %s. A rule keeps its target only when it is Direct, Block or \"Default target\"."
+msgstr "Экспортировано правил: %d, файл %s. Цель правила сохраняется, только если это «Напрямую», «Блокировать» или «Цель по умолчанию»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d server(s) exported to %s. The file contains the server credentials: keep it private."
+msgstr "Экспортировано серверов: %d, файл %s. В файле данные доступа к серверам: никому его не передавайте."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d subscription(s) exported to %s. The file contains the subscription links: keep it private."
+msgstr "Экспортировано подписок: %d, файл %s. В файле ссылки подписок: никому его не передавайте."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Choose an export file first."
+msgstr "Сначала выберите файл экспорта."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%s: %d to add, %d skipped."
+msgstr "%s: добавить — %d, пропущено — %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d option(s) that Easy VLESS does not know were left out."
+msgstr "Неизвестных Easy VLESS параметров отброшено: %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Add %d"
+msgstr "Добавить: %d"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The file was checked. Importing only adds entries; nothing that exists is changed:"
+msgstr "Файл проверен. Импорт только добавляет записи; существующее не изменяется:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Import"
+msgstr "Импортировать"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d rule(s) added at the end of the rule list. Check their order and targets in Rule Manage; they apply after Save & Apply on Main."
+msgstr "Добавлено правил в конец списка: %d. Проверьте их порядок и цели в «Правилах»; они начнут действовать после «Применить» на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d server(s) added to the Node List."
+msgstr "Добавлено серверов в «Список узлов»: %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "%d subscription(s) added. Press Update in Node List to download their servers."
+msgstr "Добавлено подписок: %d. Нажмите «Обновить» в «Списке узлов», чтобы загрузить их серверы."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
+msgid "Maintenance"
+msgstr "Обслуживание"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Easy VLESS never updates itself: a new version is only shown here, and installed when you press Update and confirm."
+msgstr "Easy VLESS никогда не обновляется сам: новая версия только показывается здесь и устанавливается, когда вы нажмёте «Обновить» и подтвердите."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Check for updates"
+msgstr "Проверить обновления"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Look for a new version when a page of Easy VLESS is opened (the router asks GitHub at most once a day)"
+msgstr "Проверять наличие новой версии при открытии страниц Easy VLESS (роутер обращается к GitHub не чаще раза в сутки)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Backup and restore"
+msgstr "Резервная копия и восстановление"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The complete state of Easy VLESS in one file: settings, servers, rules, subscriptions, the subscription HWID. Restore replaces the whole configuration with the file."
+msgstr "Полное состояние Easy VLESS в одном файле: настройки, серверы, правила, подписки, HWID подписок. Восстановление заменяет всю конфигурацию содержимым файла."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Download backup"
+msgstr "Скачать резервную копию"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Check the file…"
+msgstr "Проверить файл…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Import and export"
+msgstr "Импорт и экспорт"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Single kinds of entries, to carry them to another router: servers, rules or subscriptions. Import only adds what is not there yet; it never changes existing entries or settings."
+msgstr "Отдельные виды записей для переноса на другой роутер: серверы, правила или подписки. Импорт только добавляет то, чего ещё нет; существующие записи и настройки он не меняет."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Export:"
+msgstr "Экспорт:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Import:"
+msgstr "Импорт:"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "Last update: %s"
+msgstr "Последнее обновление: %s"
+
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Domain Resource"
 msgstr "Ресурс доменов"
@@ -762,6 +2366,86 @@ msgid "missing"
 msgstr "нет файла"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Default points to a node that does not exist any more. Choose the Default target on Main."
+msgstr "«По умолчанию» указывает на узел, которого больше нет. Выберите цель «По умолчанию» на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Default is a URL Test group without servers. Add servers to the group or choose another Default on Main."
+msgstr "«По умолчанию» — группа URL-теста без серверов. Добавьте серверы в группу или выберите другую цель «По умолчанию» на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "The domain resource \"%s\" is not installed: Easy VLESS does not start with this rule. Remove the resource from the rule or reinstall easy-vless."
+msgstr "Ресурс доменов «%s» не установлен: с этим правилом Easy VLESS не запустится. Уберите ресурс из правила или переустановите easy-vless."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Never applies: the protocol %s is not carried over %s (TLS and HTTP are TCP, QUIC is UDP)."
+msgstr "Никогда не сработает: протокол %s не передаётся по %s (TLS и HTTP — это TCP, QUIC — это UDP)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Off: the rule has no target, traffic it would match goes on to the rules below."
+msgstr "Выключено: у правила нет цели, подходящий под него трафик идёт дальше, к правилам ниже."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "The target points to a node that does not exist any more. Choose a target for this rule."
+msgstr "Цель указывает на узел, которого больше нет. Выберите цель для этого правила."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "The target is a URL Test group without servers. Add servers to the group or choose another target."
+msgstr "Цель — группа URL-теста без серверов. Добавьте серверы в группу или выберите другую цель."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "The target is \"Default target\", and Default points to a node that does not exist."
+msgstr "Цель — «Цель по умолчанию», а «По умолчанию» указывает на несуществующий узел."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Has no effect: rule \"%s\" above has no conditions and already sends everything to the same target."
+msgstr "Ни на что не влияет: правило «%s» выше не имеет условий и уже отправляет всё в ту же цель."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Never applies: rule \"%s\" above has no conditions and matches all traffic first. Move this rule above it."
+msgstr "Никогда не сработает: правило «%s» выше не имеет условий и первым забирает весь трафик. Поднимите это правило выше него."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Never applies: rule \"%s\" above has the same conditions and another target; the upper rule wins."
+msgstr "Никогда не сработает: у правила «%s» выше те же условия и другая цель; побеждает верхнее правило."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Has no effect: rule \"%s\" above has the same conditions and the same target."
+msgstr "Ни на что не влияет: у правила «%s» выше те же условия и та же цель."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Never applies: rule \"%s\" above already matches everything this rule matches, with another target. Move this rule above it."
+msgstr "Никогда не сработает: правило «%s» выше уже забирает всё, что подходит под это правило, и у него другая цель. Поднимите это правило выше него."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Has no effect: rule \"%s\" above already matches everything this rule matches, with the same target."
+msgstr "Ни на что не влияет: правило «%s» выше уже забирает всё, что подходит под это правило, с той же целью."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Partly overridden: %s is also matched by rule \"%s\" above, which has another target and wins."
+msgstr "Частично перекрыто: %s подходит и под правило «%s» выше, у него другая цель, и оно побеждает."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "(and %d more)"
+msgstr "(и ещё %d)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "No conditions: matches all traffic that reached it (it acts like Default)."
+msgstr "Нет условий: подходит весь дошедший до него трафик (работает как «По умолчанию»)."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "No conditions: matches all traffic that reached it - the rules below never apply."
+msgstr "Нет условий: подходит весь дошедший до него трафик — правила ниже никогда не сработают."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgid "Not used"
+msgstr "Не используется"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "missing node"
+msgstr "узла нет"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Resource: %s"
 msgstr "Ресурс: %s"
 
@@ -772,10 +2456,6 @@ msgstr "доменов: %d"
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "%d IPs"
 msgstr "IP: %d"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
-msgid "port %s"
-msgstr "порт %s"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "source %s"
@@ -857,9 +2537,17 @@ msgstr "Домены: неизвестный префикс в «%s»"
 msgid "Domain Resource: select at least one resource or remove the condition"
 msgstr "Ресурс доменов: выберите хотя бы один ресурс или уберите условие"
 
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Network %s and protocol %s exclude each other (TLS and HTTP are TCP, QUIC is UDP): the rule would never apply"
+msgstr "Сеть %s и протокол %s исключают друг друга (TLS и HTTP — это TCP, QUIC — это UDP): правило никогда бы не сработало"
+
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Move"
 msgstr "Переместить"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "%d rule problem(s) found:"
+msgstr "Найдено проблем в правилах: %d"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "A rule named \"%s\" already exists."
@@ -910,10 +2598,6 @@ msgid "Missing"
 msgstr "Отсутствует"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
-msgid "Rules"
-msgstr "Правила"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Checked from top to bottom: the first matching rule wins (higher = higher priority). Unmatched traffic goes to Default (Main). A rule whose target is \"Not used\" is inactive."
 msgstr "Проверяются сверху вниз: срабатывает первое подходящее правило (выше = важнее). Трафик, не подошедший ни под одно правило, идёт в «По умолчанию» (Главная). Правило с целью «Не используется» неактивно."
 
@@ -956,6 +2640,10 @@ msgid "Up"
 msgstr "Вверх"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "Make this the first rule (highest priority)"
+msgstr "Сделать это правило первым (наивысший приоритет)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Add a prepared rule (conditions from the resource manifest)"
 msgstr "Добавить готовое правило (условия из манифеста ресурсов)"
 
@@ -975,9 +2663,14 @@ msgstr "Условия"
 msgid "Where matching traffic goes (also selectable on Main). Used while the Main Router is the main node."
 msgstr "Куда идёт подходящий трафик (можно выбрать и на Главной). Действует, пока основной узел — «По правилам»."
 
-#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Not used"
-msgstr "Не используется"
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgctxt "rule checks"
+msgid "Checks"
+msgstr "Проверки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "No problem found"
+msgstr "Проблем не найдено"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json
 msgid "Rule Manage"
@@ -990,6 +2683,10 @@ msgstr "Правило описывает, какой трафик ему под
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Rules are not used right now: Node on Main is not the Main Router. Select \"Main Router (shunt)\" as Node on Main to route by rules."
 msgstr "Сейчас правила не используются: на Главной в поле «Узел» выбрано не «По правилам». Выберите «По правилам (Main Router)» в поле «Узел» на Главной, чтобы маршрутизировать по правилам."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
+msgid "To see which rule a domain or address really gets, use Route Explain:"
+msgstr "Чтобы увидеть, под какое правило на самом деле попадает домен или адрес, используйте «Объяснение маршрута»:"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/rules.js
 msgid "Resources"
@@ -1076,6 +2773,14 @@ msgid "Use"
 msgstr "Выбрать"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%s is already the selected node; nothing was changed."
+msgstr "%s уже выбран; ничего не изменено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%s is now the target of: %s"
+msgstr "%s теперь цель для: %s"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Import VLESS URL"
 msgstr "Импорт VLESS-ссылки"
 
@@ -1120,10 +2825,6 @@ msgid "No server was imported (unsupported or invalid link, or a transport sing-
 msgstr "Ни один сервер не импортирован (неподдерживаемая или неверная ссылка либо транспорт, который sing-box не поддерживает)."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Import"
-msgstr "Импортировать"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Subscription update failed: %s"
 msgstr "Обновление подписки не удалось: %s"
 
@@ -1142,6 +2843,110 @@ msgstr "Подписка обновлена (%s): получено узлов: %
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Update all subscriptions"
 msgstr "Обновить все подписки"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete server"
+msgstr "Удалить сервер"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "The server was not deleted."
+msgstr "Сервер не удалён."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Server deleted. Updates of its subscription will not import it again."
+msgstr "Сервер удалён. Обновления его подписки больше не будут его добавлять."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Server deleted."
+msgstr "Сервер удалён."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete all nodes"
+msgstr "Удалить все узлы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Nothing was deleted."
+msgstr "Ничего не удалено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "There are no servers to delete."
+msgstr "Нет серверов для удаления."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d server(s) added manually or by link: deleted for good."
+msgstr "Серверов, добавленных вручную или по ссылке: %d — удаляются безвозвратно."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d server(s) of subscriptions: deleted. The subscriptions themselves stay, and their next update imports the servers again."
+msgstr "Серверов из подписок: %d — удаляются. Сами подписки остаются, и следующее обновление добавит серверы снова."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test group \"%s\" has no server left and is deleted too."
+msgstr "В группе URL-теста «%s» не останется серверов — она тоже удаляется."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "URL Test group \"%s\" loses the deleted servers."
+msgstr "Из группы URL-теста «%s» убираются удалённые серверы."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Main Router: Default becomes Direct."
+msgstr "По правилам: цель «По умолчанию» станет «Напрямую»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Main Router: the target of rule \"%s\" becomes \"Default target\"."
+msgstr "По правилам: цель правила «%s» станет «Цель по умолчанию»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "The main node is one of these servers: it is cleared, the main switch is turned off and Easy VLESS is stopped."
+msgstr "Основной узел — один из этих серверов: он сбрасывается, главный переключатель выключается, Easy VLESS останавливается."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "This deletes every server of the Node List. It cannot be undone."
+msgstr "Будут удалены все серверы из «Списка узлов». Это нельзя отменить."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Rules, subscriptions, DNS and forwarding settings are kept."
+msgstr "Правила, подписки, настройки DNS и перенаправления сохраняются."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Deleting the servers…"
+msgstr "Удаление серверов…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Stopping Easy VLESS (no main node is left)…"
+msgstr "Остановка Easy VLESS (основного узла больше нет)…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Restarting Easy VLESS with the changed targets…"
+msgstr "Перезапуск Easy VLESS с изменёнными целями…"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d node(s) deleted."
+msgstr "Удалено узлов: %d."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d node(s) deleted. Easy VLESS was stopped: no main node is left."
+msgstr "Удалено узлов: %d. Easy VLESS остановлен: основного узла больше нет."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Deleted nodes"
+msgstr "Удалённые узлы"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Nothing was restored."
+msgstr "Ничего не восстановлено."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "%d node(s) of \"%s\" are no longer marked as deleted. Press Update to import them again."
+msgstr "Снята отметка об удалении с узлов: %d (подписка «%s»). Нажмите «Обновить», чтобы добавить их снова."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Servers of the subscription \"%s\" that you deleted. Updates do not import them again until you restore them."
+msgstr "Серверы подписки «%s», которые вы удалили. Обновления не добавят их снова, пока вы их не восстановите."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Restore all"
+msgstr "Восстановить все"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Delete nodes"
@@ -1204,10 +3009,6 @@ msgid "URL Test Groups"
 msgstr "Группы URL-теста"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Servers"
-msgstr "Серверы"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Add VLESS"
 msgstr "Добавить VLESS"
 
@@ -1224,10 +3025,6 @@ msgid "New server"
 msgstr "Новый сервер"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Delete server"
-msgstr "Удалить сервер"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "This server is still used and was not deleted."
 msgstr "Этот сервер ещё используется и не был удалён."
 
@@ -1240,16 +3037,16 @@ msgid "Select another target there first."
 msgstr "Сначала выберите там другую цель."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete server \"%s\"? It was imported from the subscription \"%s\": updates of that subscription will not import it again. \"Deleted nodes\" in the subscription row brings it back."
+msgstr "Удалить сервер «%s»? Он добавлен из подписки «%s»: её обновления больше не будут его добавлять. Вернуть его можно кнопкой «Удалённые узлы» в строке подписки."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Delete server \"%s\"? This cannot be undone."
 msgstr "Удалить сервер «%s»? Это действие нельзя отменить."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Server deleted."
-msgstr "Сервер удалён."
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Use this server (main node, or Default target while the Main Router is the main node)"
-msgstr "Выбрать этот сервер (основной узел или цель по умолчанию, если основной узел — «По правилам»)"
+msgid "Use this server: it becomes the main node, or - while the Main Router is the main node - replaces the selected server in Default and in every rule target that points to it"
+msgstr "Выбрать этот сервер: он станет основным узлом, а если основной узел — «По правилам», заменит выбранный сервер в цели по умолчанию и во всех правилах, которые на него указывают"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Server Test: HTTPS request to %s through this server (temporary sing-box instance)"
@@ -1392,12 +3189,16 @@ msgid "Delete the nodes of this subscription"
 msgstr "Удалить узлы этой подписки"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "Update"
-msgstr "Обновить"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Download and import this subscription now"
 msgstr "Загрузить и импортировать эту подписку сейчас"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Deleted nodes (%d)"
+msgstr "Удалённые узлы (%d)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Servers of this subscription that you deleted; updates do not import them again"
+msgstr "Серверы этой подписки, которые вы удалили; обновления не добавляют их снова"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Subscription URL"
@@ -1540,10 +3341,6 @@ msgid "Use this group"
 msgstr "Выбрать эту группу"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
-msgid "%d server(s)"
-msgstr "серверов: %d"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Select at least one server"
 msgstr "Выберите хотя бы один сервер"
 
@@ -1578,6 +3375,10 @@ msgstr "Список узлов"
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Servers: your VLESS servers - add one by hand or import a vless:// link, then Use it or test it. URL Subscriptions: a link from your provider that downloads the server list. URL Test Groups: several servers, sing-box uses the fastest one."
 msgstr "Серверы: ваши VLESS-серверы — добавьте сервер вручную или импортируйте ссылку vless://, затем выберите или проверьте его. Подписки по URL: ссылка от провайдера, по которой загружается список серверов. Группы URL-теста: несколько серверов, sing-box использует самый быстрый."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
+msgid "Delete every server of the Node List (asks first and shows what else changes)"
+msgstr "Удалить все серверы из «Списка узлов» (сначала спросит и покажет, что ещё изменится)"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/servers.js
 msgid "Search servers…"
@@ -1632,10 +3433,6 @@ msgid "While Easy VLESS runs, dnsmasq forwards DNS queries to sing-box: domains 
 msgstr "Пока Easy VLESS работает, dnsmasq передаёт DNS-запросы в sing-box: домены, которые идут напрямую, разрешает прямой DNS, а проксируемые домены — удалённый DNS через сервер. Значения по умолчанию подходят для большинства случаев."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
-msgid "Direct DNS"
-msgstr "Прямой DNS"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "DNS for domains that go direct. Auto uses the DNS servers of your internet provider."
 msgstr "DNS для доменов, которые идут напрямую. «Авто» использует DNS-серверы вашего интернет-провайдера."
 
@@ -1668,10 +3465,6 @@ msgid "DNS for proxied domains, queried through the server."
 msgstr "DNS для проксируемых доменов, запросы идут через сервер."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
-msgid "Remote DNS"
-msgstr "Удалённый DNS"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Remote DNS (DoH URL)"
 msgstr "Удалённый DNS (URL DoH)"
 
@@ -1702,10 +3495,6 @@ msgstr "Как идут запросы к удалённому DNS-сервер�
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Remote (through the proxy)"
 msgstr "Удалённо (через прокси)"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
-msgid "FakeDNS"
-msgstr "FakeDNS"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Answer proxied domains with fake IPs (faster, the real resolution happens on the server)."
@@ -1778,10 +3567,6 @@ msgstr "Способ перенаправления TCP"
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "TPROXY (default) keeps the original destination for sing-box; REDIRECT is a fallback for special cases."
 msgstr "TPROXY (по умолчанию) сохраняет исходный адрес назначения для sing-box; REDIRECT — запасной вариант для особых случаев."
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/settings.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "IPv6 TProxy"
-msgstr "IPv6 TProxy"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/settings.js
 msgid "Experimental. Make sure your server supports IPv6."
@@ -2000,10 +3785,6 @@ msgid "Start setup"
 msgstr "Начать настройку"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Restore"
-msgstr "Восстановить"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Restoring the configuration saved before the unfinished Apply…"
 msgstr "Восстановление конфигурации, сохранённой до незавершённого применения…"
 
@@ -2080,10 +3861,6 @@ msgid "Adding…"
 msgstr "Добавление…"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "The router did not answer: %s"
-msgstr "Роутер не ответил: %s"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "The link was not accepted by the VLESS parser."
 msgstr "Разборщик VLESS не принял ссылку."
 
@@ -2126,10 +3903,6 @@ msgstr "Необязательно: Server Test всех серверов по �
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Easy VLESS now connects through the server with a temporary sing-box instance: first the Server Test, then the URL Test (real HTTPS requests through the VLESS connection, not only a TCP connect)."
 msgstr "Сейчас Easy VLESS подключится через сервер с помощью временного экземпляра sing-box: сначала Server Test, затем URL Test (настоящие HTTPS-запросы через VLESS-соединение, а не только TCP-подключение)."
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Server Test"
-msgstr "Проверка сервера"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "The server works."
@@ -2238,10 +4011,6 @@ msgstr "Домены напрямую"
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "the provider's DNS (automatic)"
 msgstr "DNS провайдера (автоматически)"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "DNS of LAN devices"
-msgstr "DNS устройств LAN"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "redirected to the router (dnsmasq → sing-box)"
@@ -2403,14 +4172,6 @@ msgstr "Easy VLESS настроен и работает."
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Russian sites direct, everything else through VLESS"
 msgstr "Российские сайты напрямую, остальное через VLESS"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Service"
-msgstr "Служба"
-
-#: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
-msgid "Connection"
-msgstr "Соединение"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
 msgid "Main shows the status and the connection test, Node List manages servers and subscriptions, Rule Manage the rules."

@@ -13,6 +13,8 @@
 #           User-Agent / HWID request strategy; records every request
 # Then:
 #   tests/ci/wizard-backend-tests.sh   ubus/rpcd calls of the wizard
+#   tests/ci/v09-backend-tests.sh      0.9: Route Explain, diagnostics and
+#                                      their races, node list, backup / import
 #   WIZARD_E2E=1: tests/ci/luci_wizard_e2e.py, the LuCI wizard in headless
 #   Chromium (Playwright) against uhttpd/LuCI of the router container;
 #   screenshots in $SHOTS (default ./wizard-shots).
@@ -96,6 +98,9 @@ echo "subscription test server: $SUB_URL"
 
 echo "################ wizard backend tests (ubus)"
 docker exec -e GOOD_LINK="$GOOD_LINK" -e BAD_LINK="$BAD_LINK" -e SUB_URL="$SUB_URL" evw /bin/ash /w/tests/ci/wizard-backend-tests.sh
+
+echo "################ 0.9 backend tests (ubus): Route Explain, diagnostics, node list, backup"
+docker exec -e GOOD_LINK="$GOOD_LINK" -e BAD_LINK="$BAD_LINK" -e SUB_URL="$SUB_URL" evw /bin/ash /w/tests/ci/v09-backend-tests.sh
 
 [ "$E2E" = "1" ] || exit 0
 

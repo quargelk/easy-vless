@@ -8,7 +8,8 @@
 					"check",
 					"groups",
 					"resources",
-					"wizard_state"
+					"wizard_state",
+					"diag"
 				]
 			},
 			"uci": [
@@ -25,7 +26,10 @@
 					"urltest_node",
 					"test",
 					"group_test",
-					"wizard"
+					"wizard",
+					"nodes",
+					"transfer",
+					"update"
 				],
 				"uci": [
 					"commit",

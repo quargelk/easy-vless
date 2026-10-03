@@ -15,6 +15,9 @@ LINKS_FILE=/tmp/links.conf
 CLASH_API=/usr/share/easy_vless/clash_api.lua
 SUBSCRIBE=/usr/share/easy_vless/subscribe.lua
 TEST=/usr/share/easy_vless/test.sh
+DIAG=/usr/share/easy_vless/diag.lua
+BACKUP=/usr/share/easy_vless/backup.lua
+UPDATE=/usr/share/easy_vless/update.sh
 # last result of every subscription update (subscribe.lua, tmpfs)
 SUB_STATE_DIR=/var/run/${CONFIG}_sub
 SERVER_TEST_URL=https://www.gstatic.com/generate_204
@@ -442,6 +445,189 @@ method_subscribe() {
 	json_dump
 }
 
+# nodes <action> [id] [key] (0.9.0): node list actions that must not race a
+# subscription update and must leave no broken reference behind. The work is
+# done by subscribe.lua (it owns the node list and its lock) with nodes.lua.
+#   delete id          delete one server (refused while it is still used); a
+#                      subscription node is not imported again by updates
+#   delete_all_plan    what "Delete all nodes" would do (changes nothing)
+#   delete_all         delete every server and repair what pointed to them;
+#                      then the service is stopped (no main node left) or
+#                      restarted (it was running with one of the servers)
+#   restore id [key]   subscription id: forget one / all of its deleted nodes
+method_nodes() {
+	local action="$1" id="$2" key="$3" out ok stop service=none running ids
+	json_init
+	case "$action" in
+		delete|delete_all|delete_all_plan|restore) ;;
+		*)
+			json_add_boolean "ok" 0
+			json_add_string "error" "action"
+			json_dump
+			return
+		;;
+	esac
+	case "${id}${key}" in
+		*[!A-Za-z0-9_]*)
+			json_add_boolean "ok" 0
+			json_add_string "error" "unknown"
+			json_dump
+			return
+		;;
+	esac
+	# never race a running (detached) update: both rewrite the node list
+	if sub_busy; then
+		json_add_boolean "ok" 0
+		json_add_string "error" "busy"
+		json_dump
+		return
+	fi
+	# queued Server Tests of servers that are about to disappear
+	[ "$action" = "delete_all" ] && $TEST queue_cancel >/dev/null 2>&1
+	out=$(lua $SUBSCRIBE "$action" "$id" "$key" 2>/dev/null)
+	case "$out" in
+		"{"*) ;;
+		*)
+			json_add_boolean "ok" 0
+			json_add_string "error" "busy"
+			json_dump
+			return
+		;;
+	esac
+	json_load "$out"
+	json_get_var ok ok
+	if [ "$ok" = 1 ] && [ "$action" = "delete" ]; then
+		$TEST result_clear "$id" >/dev/null 2>&1
+	fi
+	if [ "$ok" = 1 ] && [ "$action" = "delete_all" ]; then
+		ids=$(jsonfilter -s "$out" -e '@.removed[*]' 2>/dev/null)
+		[ -n "$ids" ] && (set -f; $TEST result_clear $ids) >/dev/null 2>&1
+		json_get_var stop stop
+		running=$(jsonfilter -s "$($APP status 2>/dev/null)" -e '@.running' 2>/dev/null)
+		json_add_int "log_mark" "$(log_lines)"
+		if [ "$stop" = 1 ]; then
+			service=stop
+			run_detached $INIT stop
+		elif [ "$running" = "true" ] && [ -n "$ids" ]; then
+			service=restart
+			run_detached $INIT restart
+		fi
+		json_add_string "service" "$service"
+	fi
+	json_dump
+}
+
+# diag <action> [arg] (0.9.0): Route Explain and diagnostics - read-only
+# (diag.lua with explain.lua / diagnose.lua). Nothing is started, stopped or
+# saved; a consistent copy of the sing-box configuration is taken by
+# "app.sh diag_config" under the operation lock (short wait, then "busy").
+#   explain '<json>'   where a connection goes and why: input (domain, IP,
+#                      host:port, URL), network, port, protocol, source
+#   dns <domain>       DNS diagnostics of one domain
+#   forwarding         nftables / TPROXY / policy routing diagnostics
+#   connection         the single panel (Core, DNS, nftables, TPROXY, VLESS,
+#                      Routing, Internet) built from the checks above
+method_diag() {
+	local action="$1" arg="$2" out
+	case "$action" in
+		explain|dns|forwarding|connection) ;;
+		*)
+			echo '{"ok":false,"error":"action"}'
+			return
+		;;
+	esac
+	if [ ! -f "$DIAG" ]; then
+		echo '{"ok":false,"error":"not_installed"}'
+		return
+	fi
+	out=$(lua "$DIAG" "$action" "$arg" 2>/dev/null)
+	case "$out" in
+		"{"*) echo "$out" ;;
+		*) echo '{"ok":false,"error":"interrupted"}' ;;
+	esac
+}
+
+# transfer (0.9.0): Backup / Restore and Import / Export (backup.lua with
+# transfer.lua). The request { action, data, kind } is handed to backup.lua
+# as it came (a backup can be large; it never passes through shell words).
+#   backup, restore_check, restore_apply, rollback, state,
+#   export, import_check, import_apply
+# A file is validated completely before the configuration is changed. After
+# a restore / rollback the service is brought to the restored state: stopped
+# when its main switch is off, restarted with the restored configuration
+# when on (detached; LuCI polls "status").
+method_transfer() {
+	local input="$1" out service
+	if [ ! -f "$BACKUP" ]; then
+		echo '{"ok":false,"error":{"code":"not_installed"}}'
+		return
+	fi
+	out=$(printf '%s' "$input" | lua "$BACKUP" 2>/dev/null)
+	case "$out" in
+		"{"*) ;;
+		*)
+			echo '{"ok":false,"error":{"code":"interrupted"}}'
+			return
+		;;
+	esac
+	service=$(jsonfilter -s "$out" -e '@.service' 2>/dev/null)
+	case "$service" in
+		restart) run_detached $INIT restart ;;
+		stop) run_detached $INIT stop ;;
+	esac
+	echo "$out"
+}
+
+# update <action> [tag] (0.9.0): update from a GitHub release (update.sh).
+#   check           is a newer release available (answer cached for a day)
+#   recheck         the same, asking GitHub now
+#   state           progress / result of the last installation, last check
+#   install tag     download, verify, check compatibility, save the
+#                   configuration, install, validate, restart - or roll back.
+#                   Only ever started from here, by an explicit click in
+#                   LuCI; it runs detached (the package upgrade restarts
+#                   rpcd) and LuCI polls "state".
+method_update() {
+	local action="$1" tag="$2" out
+	if [ ! -f "$UPDATE" ]; then
+		echo '{"ok":false,"error":"not_installed"}'
+		return
+	fi
+	case "$action" in
+		check) out=$(sh "$UPDATE" check 2>/dev/null) ;;
+		recheck) out=$(sh "$UPDATE" check force 2>/dev/null) ;;
+		state) out=$(sh "$UPDATE" state 2>/dev/null) ;;
+		install)
+			case "$tag" in
+				""|*[!A-Za-z0-9.-]*)
+					echo '{"ok":false,"error":"tag"}'
+					return
+				;;
+			esac
+			if [ -d "/var/lock/${CONFIG}_update.lock" ]; then
+				echo '{"ok":false,"error":"busy"}'
+				return
+			fi
+			# its own session: the rpcd restart of the package upgrade must not end it
+			if command -v setsid >/dev/null 2>&1; then
+				( setsid sh "$UPDATE" install "$tag" ) </dev/null >/dev/null 2>&1 &
+			else
+				( sh "$UPDATE" install "$tag" ) </dev/null >/dev/null 2>&1 &
+			fi
+			echo '{"ok":true,"started":true}'
+			return
+		;;
+		*)
+			echo '{"ok":false,"error":"action"}'
+			return
+		;;
+	esac
+	case "$out" in
+		"{"*) echo "$out" ;;
+		*) echo '{"ok":false,"error":"interrupted"}' ;;
+	esac
+}
+
 case "$1" in
 	list)
 		json_init
@@ -458,6 +644,10 @@ case "$1" in
 		json_add_object "group_test"; json_add_string "group" "string"; json_close_object
 		json_add_object "wizard_state"; json_close_object
 		json_add_object "wizard"; json_add_string "action" "string"; json_close_object
+		json_add_object "nodes"; json_add_string "action" "string"; json_add_string "id" "string"; json_add_string "key" "string"; json_close_object
+		json_add_object "diag"; json_add_string "action" "string"; json_add_string "arg" "string"; json_close_object
+		json_add_object "transfer"; json_add_string "action" "string"; json_add_string "data" "string"; json_add_string "kind" "string"; json_close_object
+		json_add_object "update"; json_add_string "action" "string"; json_add_string "tag" "string"; json_close_object
 		json_dump
 	;;
 	call)
@@ -500,6 +690,19 @@ case "$1" in
 			wizard)
 				json_load "$input"; json_get_var action action
 				method_wizard "$action"
+			;;
+			nodes)
+				json_load "$input"; json_get_var action action; json_get_var id id; json_get_var key key
+				method_nodes "$action" "$id" "$key"
+			;;
+			diag)
+				json_load "$input"; json_get_var action action; json_get_var arg arg
+				method_diag "$action" "$arg"
+			;;
+			transfer) method_transfer "$input" ;;
+			update)
+				json_load "$input"; json_get_var action action; json_get_var tag tag
+				method_update "$action" "$tag"
 			;;
 			*)
 				json_init; json_add_int "code" 2; json_add_string "output" "Unknown method"; json_dump

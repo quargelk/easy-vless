@@ -484,6 +484,9 @@ function gen_config(var)
 	local outbounds = {}
 	local rule_set_table = {}
 	local COMMON = {}
+	-- Easy VLESS 0.9.0: route rule (table) -> shunt_rules section id, for
+	-- the meta file read by Route Explain (see the end of gen_config)
+	local rule_meta = {}
 
 	local CACHE_TEXT_FILE = CACHE_PATH .. "/cache_" .. flag .. ".txt"
 
@@ -1108,6 +1111,7 @@ function gen_config(var)
 					rule.invert = e.invert == "1" and true or nil
 
 					table.insert(rules, rule)
+					rule_meta[rule] = e[".name"]
 				end
 			end)
 		end
@@ -1567,6 +1571,30 @@ function gen_config(var)
 			tag = "direct",
 			routing_mark = 255,
 		})
+		-- Easy VLESS 0.9.0: what the generated configuration means in terms
+		-- of the UCI model, next to the config file (sing-box rejects unknown
+		-- fields inside it). Route Explain (explain.lua) evaluates the
+		-- generated route / DNS rules and uses this file only to name them:
+		--   rules      index of a route rule -> shunt_rules section id
+		--   outbounds  outbound tag -> node id (server)
+		if var["meta_file"] then
+			local meta = { node = node_id, default_outbound = COMMON.default_outbound_tag, rules = {}, outbounds = {} }
+			for i, r in ipairs(route.rules) do
+				if rule_meta[r] then
+					meta.rules[#meta.rules + 1] = { index = i, id = rule_meta[r] }
+				end
+			end
+			for _, o in ipairs(outbounds) do
+				if o.tag and o["_id"] then
+					meta.outbounds[o.tag] = o["_id"]
+				end
+			end
+			local f = io.open(var["meta_file"], "w")
+			if f then
+				f:write(jsonc.stringify(meta))
+				f:close()
+			end
+		end
 		for index, value in ipairs(config.outbounds) do
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and value.server_port and not NO_RUN then
 				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
