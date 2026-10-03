@@ -6,6 +6,7 @@
 'require dom';
 'require poll';
 'require easy_vless.common as ev';
+'require easy_vless.rulecheck as rc';
 
 /*
  * Easy VLESS - Rule Manage (PassWall2 "Rule Manage" + "Shunt Rule" model).
@@ -21,6 +22,9 @@
  *   Order = UCI section order = sing-box rule order (first match wins).
  * Resources come from /usr/share/easy_vless/resources/manifest.json (rpcd
  * "resources"); UCI keeps only their ids, the runtime reads the files.
+ * Checks (0.9.0, easy_vless/rulecheck.js): rules that can never apply, are
+ * covered by an earlier rule, conflict with it or point to a missing target
+ * are marked in the list - only what follows from the settings is claimed.
  */
 
 const CONFIG = ev.CONFIG;
@@ -70,6 +74,87 @@ function readConditions(sid) {
 	if (words(g('protocol')).length) c.protocol = words(g('protocol')).join(' ');
 	if (words(g('inbound')).length) c.inbound = words(g('inbound')).join(' ');
 	return c;
+}
+
+/* ---------- checks (rulecheck.js) ---------- */
+
+function targetKind(t) {
+	if (t == '_direct') return 'direct';
+	if (t == '_blackhole') return 'block';
+	if (t == '_default') return 'default';
+	if (ev.isServer(t)) return 'server';
+	if (ev.isGroup(t))
+		return L.toArray(uci.get(CONFIG, t, 'urltest_node')).some(function(id) { return ev.isServer(id); }) ? 'group' : 'empty_group';
+	return null;
+}
+
+/* Findings of all rules as they are now in uci (saved or staged). */
+function findings() {
+	return rc.analyze({
+		rules: ev.rules().map(function(r) {
+			return { id: r['.name'], name: r.remarks || r['.name'], target: uci.get(CONFIG, ROUTER, r['.name']) || '', cond: readConditions(r['.name']) };
+		}),
+		defaultTarget: uci.get(CONFIG, ROUTER, 'default_node') || '_direct',
+		targetKind: targetKind,
+		resourceOk: function(id) { return RESOURCES.some(function(x) { return x.id == id && x.exists; }); }
+	});
+}
+
+function findingText(f) {
+	switch (f.code) {
+	case 'default_missing':
+		return _('Default points to a node that does not exist any more. Choose the Default target on Main.');
+	case 'default_empty_group':
+		return _('Default is a URL Test group without servers. Add servers to the group or choose another Default on Main.');
+	case 'resource_missing':
+		return _('The domain resource "%s" is not installed: Easy VLESS does not start with this rule. Remove the resource from the rule or reinstall easy-vless.').format(f.resource);
+	case 'protocol_network':
+		return _('Never applies: the protocol %s is not carried over %s (TLS and HTTP are TCP, QUIC is UDP).').format(f.protocol, f.network);
+	case 'no_target':
+		return _('Off: the rule has no target, traffic it would match goes on to the rules below.');
+	case 'target_missing':
+		return _('The target points to a node that does not exist any more. Choose a target for this rule.');
+	case 'target_empty_group':
+		return _('The target is a URL Test group without servers. Add servers to the group or choose another target.');
+	case 'target_default_missing':
+		return _('The target is "Default target", and Default points to a node that does not exist.');
+	case 'after_match_all':
+		return f.sameTarget
+			? _('Has no effect: rule "%s" above has no conditions and already sends everything to the same target.').format(f.otherName)
+			: _('Never applies: rule "%s" above has no conditions and matches all traffic first. Move this rule above it.').format(f.otherName);
+	case 'conflict':
+		return _('Never applies: rule "%s" above has the same conditions and another target; the upper rule wins.').format(f.otherName);
+	case 'duplicate':
+		return _('Has no effect: rule "%s" above has the same conditions and the same target.').format(f.otherName);
+	case 'shadowed':
+		return _('Never applies: rule "%s" above already matches everything this rule matches, with another target. Move this rule above it.').format(f.otherName);
+	case 'redundant':
+		return _('Has no effect: rule "%s" above already matches everything this rule matches, with the same target.').format(f.otherName);
+	case 'overlap':
+		return _('Partly overridden: %s is also matched by rule "%s" above, which has another target and wins.').format(
+			f.entries.join(', ') + (f.more ? ' ' + _('(and %d more)').format(f.more) : ''), f.otherName);
+	case 'match_all':
+		return f.last
+			? _('No conditions: matches all traffic that reached it (it acts like Default).')
+			: _('No conditions: matches all traffic that reached it - the rules below never apply.');
+	}
+	return f.code;
+}
+
+const LEVEL = { error: [ '❌', 'bad' ], warn: [ '⚠️', 'warn' ], info: [ 'ℹ️', 'info' ] };
+
+/* Target as a coloured badge: where the traffic of a rule really goes. */
+function targetBadge(t) {
+	if (!t)
+		return E('em', { 'style': 'opacity:.7' }, _('Not used'));
+	const kind = targetKind(t);
+	if (kind == null)
+		return ev.badge(_('missing node'), 'bad');
+	if (kind == 'default') {
+		const def = uci.get(CONFIG, ROUTER, 'default_node') || '_direct';
+		return E('span', {}, [ ev.badge(_('Default target'), 'idle'), ' ', E('small', { 'style': 'opacity:.75' }, '→ ' + ev.label(def)) ]);
+	}
+	return ev.badge(ev.label(t), kind == 'direct' ? 'info' : (kind == 'block' || kind == 'empty_group') ? 'bad' : 'ok');
 }
 
 function summary(sid) {
@@ -246,6 +331,9 @@ const ConditionsValue = form.Value.extend({
 		const rows = L.toArray(this.state && this.state[section_id]);
 		if (rows.some(function(r) { return r.type == 'domain_resource' && !L.toArray(r.value).length; }))
 			return _('Domain Resource: select at least one resource or remove the condition');
+		const bad = rc.contradiction(v);
+		if (bad)
+			return _('Network %s and protocol %s exclude each other (TLS and HTTP are TCP, QUIC is UDP): the rule would never apply').format(bad.network, bad.protocol);
 		return null;
 	},
 
@@ -297,6 +385,37 @@ return view.extend({
 		}, this));
 	},
 
+	/* Highest priority: the rule becomes the first one. */
+	handleTop: function(sid) {
+		return ev.exclusive(_('Move'), L.bind(function() {
+			const first = ev.rules()[0];
+			if (!first || first['.name'] == sid)
+				return;
+			uci.move(CONFIG, sid, first['.name'], false);
+			return ev.saveAndCommit(this.map);
+		}, this));
+	},
+
+	/* Errors and warnings of all rules above the table. */
+	renderFindings: function() {
+		const list = findings().filter(function(f) { return f.level != 'info'; });
+		if (!list.length)
+			return E('div', { 'id': 'ev-rule-findings' });
+		return E('div', { 'id': 'ev-rule-findings', 'class': 'alert-message warning' }, [
+			E('p', {}, E('strong', {}, _('%d rule problem(s) found:').format(list.length))),
+			E('ul', { 'style': 'margin:.2em 0 0 1.2em' }, list.map(function(f) {
+				return E('li', {}, [ LEVEL[f.level][0], ' ',
+					f.rule ? E('strong', {}, '%d. %s: '.format(f.order, f.name)) : E('strong', {}, _('Default') + ': '), findingText(f) ]);
+			}))
+		]);
+	},
+
+	refreshFindings: function() {
+		const el = document.getElementById('ev-rule-findings');
+		if (el)
+			el.parentNode.replaceChild(this.renderFindings(), el);
+	},
+
 	/* Prepared rule from the resource manifest (explicit user action; the
 	 * First Run Wizard uses the same templates through ev.applyTemplate).
 	 * Staged; Save commits it. */
@@ -309,9 +428,8 @@ return view.extend({
 			ev.notify(_('A rule named "%s" already exists.').format(t.remarks), 'warning');
 			return Promise.resolve();
 		}
-		/* "@active" = "selected VLESS": the current main node / Main Router
-		 * Default, only if that is a server or URL Test group */
-		const target = ev.applyTemplate(t, null, ev.activeTarget()).target;
+		/* "@active" = the selected VLESS node (ev.selectedNode) */
+		const target = ev.applyTemplate(t, null, ev.selectedNode()).target;
 		return ev.exclusive(_('Add prepared rule'), L.bind(function() {
 			return ev.saveAndCommit(this.map).then(function() {
 				ev.notify(target
@@ -386,6 +504,7 @@ return view.extend({
 			const box = td.lastElementChild;
 			box.insertBefore(ev.smallButton('↓', _('Down', 'move row'), '', ui.createHandlerFn(view_, 'handleMove', section_id, false)), box.firstChild);
 			box.insertBefore(ev.smallButton('↑', _('Up', 'move row'), '', ui.createHandlerFn(view_, 'handleMove', section_id, true)), box.firstChild);
+			box.insertBefore(ev.smallButton('⤒', _('Make this the first rule (highest priority)'), '', ui.createHandlerFn(view_, 'handleTop', section_id)), box.firstChild);
 			return td;
 		};
 		s.renderSectionAdd = function(extra_class) {
@@ -435,13 +554,33 @@ return view.extend({
 			uci.unset(CONFIG, ROUTER, section_id);
 		};
 		o.textvalue = function(section_id) {
-			const t = uci.get(CONFIG, ROUTER, section_id);
-			return t ? ev.label(t) : E('em', {}, _('Not used'));
+			return targetBadge(uci.get(CONFIG, ROUTER, section_id));
+		};
+
+		/* Checks of this rule against the rules above it and its target. */
+		o = s.option(form.DummyValue, '_checks', _('Checks', 'rule checks'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const list = findings().filter(function(f) { return f.rule == section_id; });
+			if (!list.length)
+				return E('span', { 'title': _('No problem found') }, '✅');
+			return E('div', { 'class': 'ev-rule-checks' }, list.map(function(f) {
+				return E('div', { 'data-level': f.level, 'data-code': f.code, 'style': 'font-size:90%;' + (f.level == 'info' ? 'opacity:.8' : '') },
+					[ LEVEL[f.level][0], ' ', findingText(f) ]);
+			}));
 		};
 
 
 		return m.render().then(L.bind(function(mapEl) {
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
+			/* every save re-renders the table: refresh the summary with it */
+			const renderContents = m.renderContents;
+			m.renderContents = function() {
+				return renderContents.apply(this, arguments).then(function(el) {
+					view_.refreshFindings();
+					return el;
+				});
+			};
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Rule Manage')),
@@ -449,7 +588,11 @@ return view.extend({
 				ev.renderHeader(m, status, null, true),
 				ev.shuntEnabled() ? '' : E('div', { 'class': 'alert-message' },
 					E('p', {}, _('Rules are not used right now: Node on Main is not the Main Router. Select "Main Router (shunt)" as Node on Main to route by rules.'))),
+				this.renderFindings(),
 				mapEl,
+				E('p', { 'class': 'cbi-value-description' }, [
+					_('To see which rule a domain or address really gets, use Route Explain:') + ' ',
+					E('a', { 'href': L.url('admin/services/easy_vless/diagnostics') }, _('Diagnostics')) ]),
 				E('div', { 'class': 'cbi-section' }, [
 					E('h3', {}, _('Resources')),
 					E('div', { 'class': 'cbi-section-descr' }, res.ok

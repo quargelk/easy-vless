@@ -7,7 +7,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.8.0
+PKG_VERSION:=0.9.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -238,6 +238,9 @@ define Package/easy-vless/install
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/helper_dnsmasq.lua $(1)/usr/share/easy_vless/helper_dnsmasq.lua
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/subscribe.lua $(1)/usr/share/easy_vless/subscribe.lua
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/test.sh $(1)/usr/share/easy_vless/test.sh
+	$(INSTALL_BIN) ./root/usr/share/easy_vless/diag.lua $(1)/usr/share/easy_vless/diag.lua
+	$(INSTALL_BIN) ./root/usr/share/easy_vless/backup.lua $(1)/usr/share/easy_vless/backup.lua
+	$(INSTALL_BIN) ./root/usr/share/easy_vless/update.sh $(1)/usr/share/easy_vless/update.sh
 	$(INSTALL_BIN) ./root/usr/share/easy_vless/lease2hosts.sh $(1)/usr/share/easy_vless/lease2hosts.sh
 	$(INSTALL_DATA) ./root/usr/share/easy_vless/direct_ip $(1)/usr/share/easy_vless/direct_ip
 
@@ -251,6 +254,10 @@ define Package/easy-vless/install
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/easy_vless
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/api.lua $(1)/usr/lib/lua/luci/easy_vless/api.lua
 	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/com.lua $(1)/usr/lib/lua/luci/easy_vless/com.lua
+	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/nodes.lua $(1)/usr/lib/lua/luci/easy_vless/nodes.lua
+	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/explain.lua $(1)/usr/lib/lua/luci/easy_vless/explain.lua
+	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/diagnose.lua $(1)/usr/lib/lua/luci/easy_vless/diagnose.lua
+	$(INSTALL_BIN) ./root/usr/lib/lua/luci/easy_vless/transfer.lua $(1)/usr/lib/lua/luci/easy_vless/transfer.lua
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/easy_vless $(1)/etc/init.d/easy_vless
@@ -336,9 +343,12 @@ define Package/luci-app-easy-vless/install
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/rules.js $(1)/www/luci-static/resources/view/easy_vless/rules.js
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/settings.js $(1)/www/luci-static/resources/view/easy_vless/settings.js
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/wizard.js $(1)/www/luci-static/resources/view/easy_vless/wizard.js
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js $(1)/www/luci-static/resources/view/easy_vless/diagnostics.js
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js $(1)/www/luci-static/resources/view/easy_vless/maintenance.js
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/easy_vless
 	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/easy_vless/common.js $(1)/www/luci-static/resources/easy_vless/common.js
+	$(INSTALL_DATA) ./luci/htdocs/luci-static/resources/easy_vless/rulecheck.js $(1)/www/luci-static/resources/easy_vless/rulecheck.js
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./luci/root/usr/share/luci/menu.d/luci-app-easy-vless.json $(1)/usr/share/luci/menu.d/luci-app-easy-vless.json

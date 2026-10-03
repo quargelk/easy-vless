@@ -28,16 +28,16 @@ let lastGroupTest = {};     /* member tag -> result of the last manual group tes
 
 /* Status = real usage (not "configured"): Active = the service is running
  * and this server is the main node / Default target; Selected = same, but the
- * service is stopped; In active group / Used by = referenced elsewhere;
+ * service is stopped (ev.selectedNode); In active group / Used by = referenced elsewhere;
  * Inactive = not used. Below: the URL Test result and the source (manual or
  * the subscription the server came from). The Server Test result has its own
  * column (Latency). */
 function stateText(sid) {
 	const running = !!(ev.lastStatus && ev.lastStatus.running);
-	const target = ev.activeTarget();
+	const target = ev.selectedNode();
 	const refs = ev.references(sid);
 	let usage;
-	if (uci.get(CONFIG, 'global', 'node') == sid || target == sid)
+	if (target == sid)
 		usage = running ? ev.badge(_('Active'), 'ok') : ev.badge(_('Selected (stopped)'), 'idle');
 	else if (ev.targetUses(target, sid))
 		usage = running ? ev.badge(_('Active (group)'), 'ok') : ev.badge(_('In group (stopped)'), 'idle');
@@ -61,6 +61,23 @@ function stateText(sid) {
 function sourceText(sid) {
 	const group = uci.get(CONFIG, sid, 'group');
 	return (uci.get(CONFIG, sid, 'add_mode') == '2' && group) ? _('Subscription: %s').format(group) : _('Added manually');
+}
+
+/* The subscription (subscribe_list section) a server was imported from. */
+function sourceSubscription(sid) {
+	const group = (uci.get(CONFIG, sid, 'group') || '').toLowerCase();
+	if (uci.get(CONFIG, sid, 'add_mode') != '2' || !group)
+		return null;
+	return uci.sections(CONFIG, 'subscribe_list').filter(function(s) { return (s.remark || '').toLowerCase() == group; })[0] || null;
+}
+
+/* Nodes of a subscription the user deleted: [{ key, name }] (UCI list
+ * excluded_node, entries "<key> <name>", written by nodes.lua). */
+function excludedNodes(subId) {
+	return L.toArray(uci.get(CONFIG, subId, 'excluded_node')).map(function(v) {
+		const m = String(v).match(/^([0-9a-f]{16})\s*(.*)$/);
+		return m ? { key: m[1], name: m[2] || m[1] } : null;
+	}).filter(function(x) { return x; });
 }
 
 function sourceKey(sid) {
@@ -240,8 +257,17 @@ return view.extend({
 
 	handleUse: function(sid) {
 		return ev.exclusive(_('Use'), L.bind(function() {
-			ev.setActiveTarget(sid);
-			return ev.applyIfRunning(this.map).then(L.bind(this.refreshRows, this));
+			const changed = ev.setActiveTarget(sid);
+			if (!changed.length) {
+				ev.notify(_('%s is already the selected node; nothing was changed.').format(ev.label(sid)));
+				return;
+			}
+			/* names read before the commit re-renders the form */
+			const names = ev.changedEntries(changed).join(', ');
+			return ev.applyIfRunning(this.map).then(L.bind(function() {
+				ev.notify(_('%s is now the target of: %s').format(ev.label(sid), names));
+				this.refreshRows();
+			}, this));
 		}, this));
 	},
 
@@ -403,6 +429,130 @@ return view.extend({
 		}
 	},
 
+	/* ---------- deleting servers (rpcd "nodes": subscribe.lua + nodes.lua) ---------- */
+
+	/* One server. A subscription node is remembered by its subscription
+	 * (excluded_node), so an update does not import it again. */
+	doDeleteServer: function(sid) {
+		return ev.exclusive(_('Delete'), L.bind(function() {
+			return ev.callNodes('delete', sid).then(L.bind(function(res) {
+				if (!res.ok)
+					return ev.showResult(_('Delete server'), 'bad', _('The server was not deleted.'), ev.nodesError(res));
+				ev.notify(res.excluded
+					? _('Server deleted. Updates of its subscription will not import it again.')
+					: _('Server deleted.'));
+				return this.reloadNodes();
+			}, this));
+		}, this));
+	},
+
+	/* Delete all nodes: the router says first what it would do (servers,
+	 * URL Test groups, targets, the main node); nothing happens before the
+	 * user has confirmed exactly that. */
+	handleDeleteAll: function() {
+		if (ev.subBusy(null)) {
+			ev.notify(_('A subscription update is running; try again when it has finished.'), 'warning');
+			return Promise.resolve();
+		}
+		return ev.callNodes('delete_all_plan').then(L.bind(function(plan) {
+			if (!plan.ok)
+				return ev.showResult(_('Delete all nodes'), 'bad', _('Nothing was deleted.'), ev.nodesError(plan));
+			const c = plan.counts || {};
+			const total = (c.manual || 0) + (c.subscription || 0);
+			if (!total) {
+				ev.notify(_('There are no servers to delete.'));
+				return;
+			}
+			const items = [];
+			if (c.manual)
+				items.push(_('%d server(s) added manually or by link: deleted for good.').format(c.manual));
+			if (c.subscription)
+				items.push(_('%d server(s) of subscriptions: deleted. The subscriptions themselves stay, and their next update imports the servers again.').format(c.subscription));
+			ev.arr(plan.changes).forEach(function(ch) {
+				if (ch.kind == 'group_removed')
+					items.push(_('URL Test group "%s" has no server left and is deleted too.').format(ch.name));
+				else if (ch.kind == 'group_shrunk')
+					items.push(_('URL Test group "%s" loses the deleted servers.').format(ch.name));
+				else if (ch.kind == 'default')
+					items.push(_('Main Router: Default becomes Direct.'));
+				else if (ch.kind == 'rule')
+					items.push(_('Main Router: the target of rule "%s" becomes "Default target".').format(ch.name));
+				else if (ch.kind == 'main')
+					items.push(_('The main node is one of these servers: it is cleared, the main switch is turned off and Easy VLESS is stopped.'));
+			});
+			const body = E('div', {}, [
+				E('p', {}, E('strong', {}, _('This deletes every server of the Node List. It cannot be undone.'))),
+				E('ul', {}, items.map(function(t) { return E('li', {}, t); })),
+				E('p', {}, _('Rules, subscriptions, DNS and forwarding settings are kept.'))
+			]);
+			return ev.confirm(_('Delete all nodes'), body, _('Delete all nodes')).then(L.bind(function(ok) {
+				if (ok)
+					return this.doDeleteAll();
+			}, this));
+		}, this));
+	},
+
+	doDeleteAll: function() {
+		return ev.exclusive(_('Delete all nodes'), L.bind(function() {
+			ev.showBusy(_('Delete all nodes'), _('Deleting the servers…'));
+			return ev.callNodes('delete_all').then(L.bind(function(res) {
+				const n = ev.arr(res.removed).length;
+				if (!res.ok && res.error != 'dangling') {
+					ev.showResult(_('Delete all nodes'), 'bad', _('Nothing was deleted.'), ev.nodesError(res));
+					return;
+				}
+				/* the service is stopped / restarted detached: wait for it */
+				const wait = (res.service && res.service != 'none') ? ev.waitIdle(res.log_mark, 60000) : Promise.resolve();
+				if (res.service == 'stop')
+					ev.showBusy(_('Delete all nodes'), _('Stopping Easy VLESS (no main node is left)…'));
+				else if (res.service == 'restart')
+					ev.showBusy(_('Delete all nodes'), _('Restarting Easy VLESS with the changed targets…'));
+				return wait.then(L.bind(function() {
+					ui.hideModal();
+					ev.refreshStatus();
+					if (!res.ok)
+						ev.showResult(_('Delete all nodes'), 'warn', _('%d node(s) deleted.').format(n), ev.nodesError(res));
+					else
+						ev.notify(res.service == 'stop'
+							? _('%d node(s) deleted. Easy VLESS was stopped: no main node is left.').format(n)
+							: _('%d node(s) deleted.').format(n));
+					return this.reloadNodes();
+				}, this));
+			}, this));
+		}, this));
+	},
+
+	/* Nodes of a subscription the user deleted: list, restore one or all. */
+	handleExcluded: function(id) {
+		const name = uci.get(CONFIG, id, 'remark') || id;
+		const list = excludedNodes(id);
+		const restore = L.bind(function(key) {
+			ui.hideModal();
+			return ev.exclusive(_('Restore'), L.bind(function() {
+				return ev.callNodes('restore', id, key || '').then(L.bind(function(res) {
+					if (!res.ok)
+						return ev.showResult(_('Deleted nodes'), 'bad', _('Nothing was restored.'), ev.nodesError(res));
+					ev.notify(_('%d node(s) of "%s" are no longer marked as deleted. Press Update to import them again.').format(res.restored || 0, name));
+					return this.reloadNodes();
+				}, this));
+			}, this));
+		}, this);
+		ui.showModal(_('Deleted nodes'), [
+			E('p', {}, _('Servers of the subscription "%s" that you deleted. Updates do not import them again until you restore them.').format(name)),
+			E('table', { 'class': 'table' }, list.map(function(x) {
+				return E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, x.name),
+					E('td', { 'class': 'td right' }, E('button', { 'class': 'btn cbi-button', 'click': function() { return restore(x.key); } }, _('Restore')))
+				]);
+			})),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close')),
+				' ',
+				E('button', { 'class': 'btn cbi-button-action', 'click': function() { return restore(null); } }, _('Restore all'))
+			])
+		]);
+	},
+
 	handleTruncate: function(id) {
 		const name = uci.get(CONFIG, id, 'remark') || id;
 		if (ev.subBusy(null))
@@ -551,13 +701,13 @@ return view.extend({
 				return Promise.resolve();
 			}
 			const name = uci.get(CONFIG, section_id, 'remarks') || section_id;
-			return ev.confirm(_('Delete server'), _('Delete server "%s"? This cannot be undone.').format(name)).then(L.bind(function(ok) {
-				if (!ok) return;
-				return ev.exclusive(_('Delete'), L.bind(function() {
-				this.map.data.remove(CONFIG, section_id);
-				return ev.saveAndCommit(this.map).then(function() { ev.notify(_('Server deleted.')); });
-				}, this));
-			}, this));
+			const sub = sourceSubscription(section_id);
+			return ev.confirm(_('Delete server'), sub
+				? _('Delete server "%s"? It was imported from the subscription "%s": updates of that subscription will not import it again. "Deleted nodes" in the subscription row brings it back.').format(name, sub.remark)
+				: _('Delete server "%s"? This cannot be undone.').format(name)).then(function(ok) {
+				if (ok)
+					return view_.doDeleteServer(section_id);
+			});
 		};
 		s.renderRowActions = function(section_id) {
 			const td = form.GridSection.prototype.renderRowActions.apply(this, [ section_id ]);
@@ -573,7 +723,7 @@ return view.extend({
 				return b;
 			};
 			[
-				sb(_('Use'), _('Use this server (main node, or Default target while the Main Router is the main node)'), 'cbi-button-apply', 'handleUse', [ section_id ]),
+				sb(_('Use'), _('Use this server: it becomes the main node, or - while the Main Router is the main node - replaces the selected server in Default and in every rule target that points to it'), 'cbi-button-apply', 'handleUse', [ section_id ]),
 				tb(_('Test'), _('Server Test: HTTPS request to %s through this server (temporary sing-box instance)').format(ev.SERVER_TEST_URL), 'handleTest', 'server', 'ev-btn-test-'),
 				tb(_('URL Test'), _('URL Test of this server: request to %s through it (temporary sing-box instance)').format(ev.URL_TEST_URL), 'handleUrlTest', 'url', 'ev-btn-urltest-'),
 				ev.smallButton(_('Copy'), _('Copy the VLESS URL of this server'), 'cbi-button-action', ui.createHandlerFn(ev, 'showVlessUrl', section_id)),
@@ -760,6 +910,10 @@ return view.extend({
 			upd.id = 'ev-sub-update-' + section_id;
 			del.disabled = upd.disabled = ev.subBusy(null);
 			box.insertBefore(del, box.firstChild);
+			const gone = excludedNodes(section_id).length;
+			if (gone)
+				box.insertBefore(ev.smallButton(_('Deleted nodes (%d)').format(gone), _('Servers of this subscription that you deleted; updates do not import them again'), '',
+					ui.createHandlerFn(view_, 'handleExcluded', section_id)), box.firstChild);
 			box.insertBefore(upd, box.firstChild);
 			return td;
 		};
@@ -958,7 +1112,7 @@ return view.extend({
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const running = !!(ev.lastStatus && ev.lastStatus.running);
-			if (ev.activeTarget() == section_id)
+			if (ev.selectedNode() == section_id)
 				return running ? ev.badge(_('Active'), 'ok') : ev.badge(_('Selected (stopped)'), 'idle');
 			const refs = ev.references(section_id);
 			return refs.length ? E('span', { 'title': refs.join(', ') }, _('Used by %d').format(refs.length)) : E('span', { 'style': 'opacity:.7' }, _('Inactive'));
@@ -994,7 +1148,10 @@ return view.extend({
 					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, function(ev_) {
 						return this.serversSection.handleAdd(ev_);
 					}) }, _('Add VLESS')),
-					E('span', { 'id': 'ev-testall' })
+					E('span', { 'id': 'ev-testall' }),
+					E('button', { 'class': 'btn cbi-button cbi-button-negative', 'id': 'ev-delete-all', 'style': 'margin-left:auto',
+						'title': _('Delete every server of the Node List (asks first and shows what else changes)'),
+						'click': ui.createHandlerFn(this, 'handleDeleteAll') }, _('Delete all nodes'))
 				]),
 				this.renderViewBar(),
 				this.placeLive(mapEl)

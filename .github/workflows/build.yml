@@ -470,7 +470,10 @@ jobs:
           tar -xzf data.tar.gz
           for f in usr/share/easy_vless/app.sh usr/share/easy_vless/direct_ip usr/share/easy_vless/lease2hosts.sh \
                    usr/share/easy_vless/resources/manifest.json usr/share/easy_vless/resources/domains/proxy.txt usr/share/easy_vless/resources/domains/russia.txt \
-                   usr/share/easy_vless/subscribe.lua lib/upgrade/keep.d/easy-vless; do
+                   usr/share/easy_vless/subscribe.lua lib/upgrade/keep.d/easy-vless \
+                   usr/share/easy_vless/diag.lua usr/share/easy_vless/backup.lua usr/share/easy_vless/update.sh \
+                   usr/lib/lua/luci/easy_vless/nodes.lua usr/lib/lua/luci/easy_vless/explain.lua \
+                   usr/lib/lua/luci/easy_vless/diagnose.lua usr/lib/lua/luci/easy_vless/transfer.lua; do
             test -f "./$f" || { echo "::error::easy-vless (core) does not ship $f"; exit 1; }
           done
           for forbidden_file in usr/lib/lua/luci/easy_vless/util_sing-box.lua \
@@ -673,7 +676,10 @@ jobs:
             ./www/luci-static/resources/view/easy_vless/rules.js \
             ./www/luci-static/resources/view/easy_vless/settings.js \
             ./www/luci-static/resources/view/easy_vless/wizard.js \
+            ./www/luci-static/resources/view/easy_vless/diagnostics.js \
+            ./www/luci-static/resources/view/easy_vless/maintenance.js \
             ./www/luci-static/resources/easy_vless/common.js \
+            ./www/luci-static/resources/easy_vless/rulecheck.js \
             ./usr/share/luci/menu.d/luci-app-easy-vless.json \
             ./usr/share/rpcd/acl.d/luci-app-easy-vless.json \
             ./usr/lib/lua/luci/i18n/easy-vless.ru.lmo \

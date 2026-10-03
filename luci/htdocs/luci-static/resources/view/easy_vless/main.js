@@ -199,6 +199,15 @@ return view.extend({
 			poll.add(L.bind(ev.refreshStatus, ev), 5);
 			poll.add(L.bind(ev.refreshTests, ev), 10);
 			ev.onTestUpdate(L.bind(this.refreshTests, this));
+			/* update notice (0.9.0): asked after the page is there - the router
+			 * answers from its cache, or asks GitHub once a day; never installs */
+			if (ev.updateCheckEnabled())
+				ev.callUpdate('check').then(function(res) {
+					const slot = document.getElementById('ev-update-slot');
+					const notice = ev.updateNotice(res);
+					if (slot && notice)
+						dom.content(slot, notice);
+				});
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Easy VLESS')),
@@ -208,6 +217,7 @@ return view.extend({
 					E('a', { 'class': 'btn cbi-button cbi-button-action', 'href': L.url('admin/services/easy_vless/wizard'),
 						'click': function() { ev.setWizardDismissed(false); } }, _('Start setup wizard'))
 				]) : '',
+				E('div', { 'id': 'ev-update-slot' }),
 				ev.renderHeader(m, status, null, false, true),
 				mapEl,
 				E('div', { 'class': 'cbi-section' }, [

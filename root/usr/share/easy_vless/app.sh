@@ -474,6 +474,9 @@ run_singbox() {
 		json_add_string "clash_api_secret" "check"
 	fi
 
+	# Route Explain (0.9.0): rule names and node ids of the generated config
+	json_add_string "meta_file" "${config_file}.meta"
+
 	local _json_arg="$(json_dump)"
 	lua $UTIL_SINGBOX gen_config "${_json_arg}" > $config_file
 
@@ -1138,7 +1141,11 @@ stop() {
 	busybox pgrep -f "sleep.*(6s|9s|58s)" | xargs -r kill -9 >/dev/null 2>&1
 	# test.sh (0.8.0): the Server Test queue runner and tests waiting for the
 	# operation lock; their sing-box instances never run during a stop (op_lock)
-	busybox pgrep -af "${CONFIG}/" | awk '! /app\.sh|test\.sh|subscribe\.lua|tasks\.sh|server_app\.lua|ujail/{print $1}' | xargs -r kill -9 >/dev/null 2>&1
+	# diag.lua (0.9.0): read-only diagnostics; killing it would only turn its
+	# answer into an empty one. backup.lua, update.sh: a restore, an import
+	# or an update (whose package upgrade stops the service) must never be
+	# cut off half-way.
+	busybox pgrep -af "${CONFIG}/" | awk '! /app\.sh|test\.sh|subscribe\.lua|diag\.lua|backup\.lua|update\.sh|tasks\.sh|server_app\.lua|ujail/{print $1}' | xargs -r kill -9 >/dev/null 2>&1
 	unset V2RAY_LOCATION_ASSET
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
@@ -1286,6 +1293,56 @@ check_config() {
 	return $status
 }
 
+# "app.sh diag_config <dir>" (0.9.0, Route Explain and diagnostics): put a
+# copy of the sing-box configuration and its meta file into <dir> and print
+# where it came from:
+#   running  the configuration of the running main instance
+#   saved    Easy VLESS is stopped: the configuration the saved settings
+#            generate (check_config - the same generator as a start)
+# Runs under the operation lock, so a stop cannot remove the file and a
+# start cannot rewrite it while it is copied; nothing else is touched.
+diag_config() {
+	local out="$1" src kind msg pid
+	if [ -z "$out" ] || [ ! -d "$out" ]; then
+		echo "error:no output directory"
+		return 1
+	fi
+	src=$(get_cache_var "easy_vless_main_config")
+	pid=$(cat "$EV_PID_FILE" 2>/dev/null)
+	if [ -n "$src" ] && [ -s "$src" ] && [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+		kind=running
+	else
+		if ! msg=$(check_config 2>&1); then
+			echo "error:${msg}"
+			return 1
+		fi
+		src=/tmp/etc/${CONFIG}_check/config.json
+		kind=saved
+	fi
+	if ! cp -f "$src" "$out/config.json" 2>/dev/null; then
+		echo "error:cannot copy ${src}"
+		return 1
+	fi
+	[ -s "${src}.meta" ] && cp -f "${src}.meta" "$out/config.json.meta" 2>/dev/null
+	echo "$kind"
+}
+
+# "app.sh env_check" (0.9.0, diagnostics): the guards of start() - firewall
+# backend, dnsmasq, kernel modules, PassWall2 - without writing to the log
+# and without changing anything. Prints "ok" or "<kind>:<reason>".
+env_check() {
+	LOG_FILE=/dev/null
+	if ! check_run_environment; then
+		echo "env:${EV_ENV_ERROR}"
+		return 1
+	fi
+	if ! check_other_proxy_stopped; then
+		echo "coexist:${EV_COEXIST_ERROR}"
+		return 1
+	fi
+	echo "ok"
+}
+
 # "app.sh status": machine-readable runtime state for LuCI (JSON on stdout).
 status_json() {
 	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
@@ -1406,6 +1463,20 @@ check)
 	;;
 status)
 	status_json
+	;;
+diag_config)
+	# a diagnostic waits only briefly: while a start or stop holds the lock
+	# it answers "busy" instead of queueing behind it
+	EV_OP_LOCK_WAIT=${EV_DIAG_LOCK_WAIT:-15}
+	if ! op_lock "the diagnostic" 2>/dev/null; then
+		echo "busy"
+		exit 2
+	fi
+	trap op_unlock EXIT
+	diag_config "$@"
+	;;
+env_check)
+	env_check
 	;;
 stop)
 	op_lock stop || exit 1

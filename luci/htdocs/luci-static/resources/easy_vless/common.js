@@ -47,6 +47,10 @@ const callGroupTest = rpc.declare({ object: 'luci.easy_vless', method: 'group_te
 const callWizardState = rpc.declare({ object: 'luci.easy_vless', method: 'wizard_state', expect: { '': {} } });
 const callTest = rpc.declare({ object: 'luci.easy_vless', method: 'test', params: [ 'action', 'kind', 'nodes' ], expect: { '': {} } });
 const callWizard = rpc.declare({ object: 'luci.easy_vless', method: 'wizard', params: [ 'action' ], expect: { '': {} } });
+const callDiag = rpc.declare({ object: 'luci.easy_vless', method: 'diag', params: [ 'action', 'arg' ], expect: { '': {} } });
+const callTransfer = rpc.declare({ object: 'luci.easy_vless', method: 'transfer', params: [ 'action', 'data', 'kind' ], expect: { '': {} } });
+const callUpdate = rpc.declare({ object: 'luci.easy_vless', method: 'update', params: [ 'action', 'tag' ], expect: { '': {} } });
+const callNodes = rpc.declare({ object: 'luci.easy_vless', method: 'nodes', params: [ 'action', 'id', 'key' ], expect: { '': {} } });
 /* Requires "ubus": { "uci": [ "commit" ] } in the ACL (luci-base does not
  * grant it; without it every save silently failed - see current-state.md). */
 const callUciCommit = rpc.declare({ object: 'uci', method: 'commit', params: [ 'config' ] });
@@ -97,6 +101,15 @@ return baseclass.extend({
 	callWizardState: function() { return safe(callWizardState()); },
 	callWizard: function(action) { return safe(callWizard(action)); },
 	callUciRevert: function() { return safe(callUciRevert(CONFIG)); },
+	callDiag: function(action, arg) { return safe(callDiag(action, arg || '')); },
+	callTransfer: function(action, data, kind) { return safe(callTransfer(action, data || '', kind || '')); },
+	callUpdate: function(action, tag) { return safe(callUpdate(action, tag || '')); },
+	callNodes: function(action, id, key) { return safe(callNodes(action, id || '', key || '')); },
+
+	/* A JSON array of an rpcd answer (Lua writes an empty table as {}). */
+	arr: function(x) {
+		return Array.isArray(x) ? x : [];
+	},
 
 	/* Ports field: comma separated ports or from:to ranges, 1-65535. */
 	validPorts: function(v) {
@@ -107,6 +120,55 @@ return baseclass.extend({
 			const a = +m[1], b = m[2] ? +m[2] : a;
 			return a >= 1 && b <= 65535 && a <= b;
 		});
+	},
+
+	/* ---------- updates (0.9.0) ---------- */
+
+	/* The automatic check (when a page of Easy VLESS is opened; the router
+	 * asks GitHub at most once a day) can be switched off in Maintenance. */
+	updateCheckEnabled: function() {
+		return uci.get(CONFIG, 'global', 'update_check') != '0';
+	},
+
+	/* "Later": the notice for this version stays away in this browser session. */
+	updateDismissed: function(version) {
+		try { return window.sessionStorage.getItem('easy_vless.update.later') == version; } catch (e) { return false; }
+	},
+
+	setUpdateDismissed: function(version) {
+		try { window.sessionStorage.setItem('easy_vless.update.later', version); } catch (e) {}
+	},
+
+	/* "A new version is available: X  [Update] [Later]" - or '' when there
+	 * is nothing to offer. Update leads to Maintenance, where the update is
+	 * explained and confirmed; nothing is installed from here. */
+	updateNotice: function(res) {
+		if (!res || !res.ok || !res.available || this.updateDismissed(res.latest))
+			return '';
+		const box = E('div', { 'class': 'alert-message notice', 'id': 'ev-update-notice' }, [
+			E('p', {}, [ _('A new version of Easy VLESS is available: %s').format(res.latest), ' ',
+				E('small', { 'style': 'opacity:.75' }, _('(installed: %s)').format(res.current)) ]),
+			E('a', { 'class': 'btn cbi-button cbi-button-action', 'href': L.url('admin/services/easy_vless/maintenance') }, _('Update')),
+			' ',
+			E('button', { 'class': 'btn cbi-button', 'click': L.bind(function() {
+				this.setUpdateDismissed(res.latest);
+				if (box.parentNode)
+					box.parentNode.removeChild(box);
+			}, this) }, _('Later'))
+		]);
+		return box;
+	},
+
+	/* Hand a text to the browser as a file download. */
+	downloadText: function(filename, text) {
+		const url = window.URL.createObjectURL(new Blob([ text ], { type: 'application/json' }));
+		const a = E('a', { 'href': url, 'download': filename, 'style': 'display:none' });
+		document.body.appendChild(a);
+		a.click();
+		window.setTimeout(function() {
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+		}, 1000);
 	},
 
 	/* ---------- First Run Wizard ---------- */
@@ -208,22 +270,79 @@ return baseclass.extend({
 		}
 	},
 
-	/* "Active target" = where default traffic goes: global.node, or the
-	 * Main Router's Default target while the shunt is the main node. */
-	activeTarget: function() {
-		const node = uci.get(CONFIG, 'global', 'node');
-		if (node == ROUTER)
-			return uci.get(CONFIG, ROUTER, 'default_node') || '_direct';
-		return node || '';
+	isProxyTarget: function(sid) {
+		return !!sid && (this.isServer(sid) || this.isGroup(sid));
 	},
 
-	/* "Use": with the Main Router active, a server/group becomes its Default
-	 * target (rule entries are kept); otherwise it becomes the main node. */
+	/* The "selected VLESS node": the server / URL Test group the proxied
+	 * traffic goes to. Without the Main Router it is the main node. With it,
+	 * it is Default when Default is a server or group, else the target of the
+	 * first rule (in priority order) that points to a server or group - the
+	 * node the prepared rules got as "@active" (PROXY, QUIC, UDP) while
+	 * Default itself may be Direct. '' = no server or group is used. */
+	selectedNode: function() {
+		const node = uci.get(CONFIG, 'global', 'node');
+		if (node != ROUTER)
+			return this.isProxyTarget(node) ? node : '';
+		const def = uci.get(CONFIG, ROUTER, 'default_node');
+		if (this.isProxyTarget(def))
+			return def;
+		const rules = this.rules();
+		for (let i = 0; i < rules.length; i++) {
+			const t = uci.get(CONFIG, ROUTER, rules[i]['.name']);
+			if (this.isProxyTarget(t))
+				return t;
+		}
+		return '';
+	},
+
+	/* "Use": sid becomes the selected VLESS node. Without the Main Router it
+	 * becomes the main node. With it, every Main Router entry that points to
+	 * the previously selected node (rule targets and Default) is moved to sid
+	 * - not only Default: the rule targets hold a node id of their own, so
+	 * changing Default alone left PROXY / QUIC / UDP on the old server.
+	 * Entries with another target (Direct, Block, "Default target", Not used,
+	 * a different server or group) are kept. If no entry uses a server or
+	 * group yet, sid becomes Default (rules set to "Default target" follow).
+	 * Staged in uci; the caller commits. Returns the changed entries:
+	 * [{ entry: 'node' | 'default' | <rule id>, before, after }]. */
 	setActiveTarget: function(sid) {
-		if (this.shuntEnabled())
-			uci.set(CONFIG, ROUTER, 'default_node', sid);
-		else
-			uci.set(CONFIG, 'global', 'node', sid);
+		const changed = [];
+		const set = function(section, option, entry) {
+			const before = uci.get(CONFIG, section, option) || '';
+			if (before == sid)
+				return;
+			uci.set(CONFIG, section, option, sid);
+			changed.push({ entry: entry, before: before, after: sid });
+		};
+		if (!this.shuntEnabled()) {
+			set('global', 'node', 'node');
+			return changed;
+		}
+		this.ensureRouter();
+		const old = this.selectedNode();
+		if (!old) {
+			set(ROUTER, 'default_node', 'default');
+			return changed;
+		}
+		this.rules().forEach(function(r) {
+			if (uci.get(CONFIG, ROUTER, r['.name']) == old)
+				set(ROUTER, r['.name'], r['.name']);
+		});
+		if (uci.get(CONFIG, ROUTER, 'default_node') == old)
+			set(ROUTER, 'default_node', 'default');
+		return changed;
+	},
+
+	/* Names of the entries changed by setActiveTarget, for a message. */
+	changedEntries: function(changed) {
+		return changed.map(L.bind(function(c) {
+			if (c.entry == 'node')
+				return _('Main node');
+			if (c.entry == 'default')
+				return _('Default');
+			return uci.get(CONFIG, c.entry, 'remarks') || c.entry;
+		}, this));
 	},
 
 	/* Is a server used by the configuration (directly, via a group or as a
@@ -318,7 +437,7 @@ return baseclass.extend({
 			let done = false;
 			const finish = function(v) { if (!done) { done = true; ui.hideModal(); resolve(v); } };
 			ui.showModal(title, [
-				E('p', {}, text),
+				(typeof(text) == 'string') ? E('p', {}, text) : text,
 				E('div', { 'class': 'right' }, [
 					E('button', { 'class': 'btn', 'click': function() { finish(false); } }, _('Cancel')),
 					' ',
@@ -1070,7 +1189,7 @@ return baseclass.extend({
 		switch (r.status) {
 		case 'ok':
 			return { kind: 'ok', text: _('%d nodes received').format(r.found),
-				detail: _('before: %d, now: %d').format(r.before || 0, r.after || 0) + (r.format ? ' · ' + r.format : '') + via + ' · ' + when(r.time) };
+				detail: _('before: %d, now: %d').format(r.before || 0, r.after || 0) + this.subChangeText(r) + (r.format ? ' · ' + r.format : '') + via + ' · ' + when(r.time) };
 		case 'unchanged':
 			return { kind: 'ok', text: _('No changes'), detail: when(r.time) };
 		case 'no_nodes':
@@ -1088,6 +1207,34 @@ return baseclass.extend({
 			return { kind: 'idle', text: _('Skipped: Easy VLESS is not running'), detail: when(r.time) };
 		}
 		return { kind: 'bad', text: _('Update failed'), detail: _('see the log on Main') + ' · ' + when(r.time) };
+	},
+
+	/* What an update changed (0.9.0, nodes.lua merge): new / updated /
+	 * removed nodes and the ones not imported because the user deleted them. */
+	subChangeText: function(r) {
+		const parts = [];
+		if (r['new'] > 0) parts.push(_('new: %d').format(r['new']));
+		if (r.updated > 0) parts.push(_('updated: %d').format(r.updated));
+		if (r.removed > 0) parts.push(_('gone: %d').format(r.removed));
+		if (r.excluded > 0) parts.push(_('deleted by you: %d').format(r.excluded));
+		return parts.length ? ' (' + parts.join(', ') + ')' : '';
+	},
+
+	/* Why a node list action (rpcd "nodes") was refused. */
+	nodesError: function(res) {
+		if (res.rpc_error)
+			return res.error;
+		switch (res.error) {
+		case 'busy':
+			return _('A subscription update is running; try again when it has finished.');
+		case 'used':
+			return _('The server is still used by the routing; select another target there first.');
+		case 'unknown':
+			return _('It no longer exists on the router; reload the page.');
+		case 'dangling':
+			return _('The servers were deleted, but some entries still point to a missing node: %s. Check Main and the URL Test groups.').format(this.arr(res.dangling).join(', '));
+		}
+		return _('The router refused the request (%s); see the log on Main.').format(res.error || '?');
 	},
 
 	subResultCell: function(id) {

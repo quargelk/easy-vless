@@ -116,11 +116,64 @@ run "EVTEST zero" singbox-zero.json
 eq "zero: nodes" "$(count_of 'EVTEST zero')" 0
 logged "imported 0, skipped 1" && logged "No supported VLESS outbound" && ok "zero import reported (not claimed as success)" || bad "zero import not reported"
 
+echo "----- 10. node deleted by the user stays deleted, section ids are stable (0.9.0) -----"
+# node list actions of rpcd "nodes" (subscribe.lua + nodes.lua): one JSON object
+node_action() { wait_lock; lua $SUB "$@" 2>/dev/null; wait_lock; }
+jget() { jsonfilter -s "$1" -e "$2" 2>/dev/null; }
+run "EVTEST del" url-multi.txt
+eq "del: nodes" "$(count_of 'EVTEST del')" 3
+id1=$(node_by "EVTEST del" "URL 1"); id2=$(node_by "EVTEST del" "URL 2"); id3=$(node_by "EVTEST del" "URL 3")
+run "EVTEST del" url-multi.txt
+eq "same list again: URL 1 keeps its section id" "$(node_by 'EVTEST del' 'URL 1')" "$id1"
+eq "same list again: URL 3 keeps its section id" "$(node_by 'EVTEST del' 'URL 3')" "$id3"
+# a server that is still used is not deleted
+uci set $CONFIG.evtestgrp=nodes; uci set $CONFIG.evtestgrp.protocol=_urltest; uci set $CONFIG.evtestgrp.remarks='EVTEST group'
+uci add_list $CONFIG.evtestgrp.urltest_node="$id1"; uci commit $CONFIG
+out=$(node_action delete "$id1")
+eq "delete of a used server: refused" "$(jget "$out" '@.ok')" false
+eq "delete of a used server: reason" "$(jget "$out" '@.error')" used
+eq "delete of a used server: still there" "$(get "$id1" protocol)" vless
+uci -q delete $CONFIG.evtestgrp; uci commit $CONFIG
+out=$(node_action delete "$id2")
+eq "delete: ok" "$(jget "$out" '@.ok')" true
+eq "delete: remembered by the subscription" "$(jget "$out" '@.excluded')" true
+eq "delete: nodes left" "$(count_of 'EVTEST del')" 2
+get "$(sub_id 'EVTEST del')" excluded_node | grep -q "URL 2" && ok "excluded_node stored in the subscription" || bad "excluded_node missing: $(get "$(sub_id 'EVTEST del')" excluded_node)"
+get "$(sub_id 'EVTEST del')" excluded_node | grep -q "00000000-0000-4000-8000" && bad "excluded_node contains the UUID" || ok "excluded_node does not contain the UUID"
+run "EVTEST del" url-multi.txt
+eq "update: the deleted node is not imported again" "$(count_of 'EVTEST del')" 2
+[ -z "$(node_by 'EVTEST del' 'URL 2')" ] && ok "URL 2 stays deleted" || bad "URL 2 came back"
+eq "update: URL 1 keeps its section id" "$(node_by 'EVTEST del' 'URL 1')" "$id1"
+# the provider reorders the list, renames the deleted node and adds one
+run "EVTEST del" url-multi-reordered.txt
+eq "reordered list: nodes" "$(count_of 'EVTEST del')" 3
+[ -z "$(node_by 'EVTEST del' 'URL 2 renamed')" ] && ok "renamed and moved: still deleted" || bad "renamed node came back"
+[ -n "$(node_by 'EVTEST del' 'URL 4')" ] && ok "new node imported" || bad "new node missing"
+eq "reordered list: URL 1 keeps its section id" "$(node_by 'EVTEST del' 'URL 1')" "$id1"
+eq "reordered list: URL 3 keeps its section id" "$(node_by 'EVTEST del' 'URL 3')" "$id3"
+# a failed update neither deletes nodes nor forgets the deleted one
+run "EVTEST del" malformed-json.txt
+eq "failed update: nodes kept" "$(count_of 'EVTEST del')" 3
+get "$(sub_id 'EVTEST del')" excluded_node | grep -q . && ok "failed update: the deleted node is still remembered" || bad "failed update dropped excluded_node"
+# "Delete all nodes": the plan changes nothing
+before_all=$(uci -X show $CONFIG | md5sum)
+out=$(node_action delete_all_plan)
+eq "delete_all_plan: ok" "$(jget "$out" '@.ok')" true
+[ "$(jget "$out" '@.counts.subscription')" -ge 3 ] 2>/dev/null && ok "delete_all_plan counts the subscription servers" || bad "delete_all_plan counts: $out"
+eq "delete_all_plan: configuration unchanged" "$(uci -X show $CONFIG | md5sum)" "$before_all"
+# restore: the node is imported again
+out=$(node_action restore "$(sub_id 'EVTEST del')")
+eq "restore: ok" "$(jget "$out" '@.ok')" true
+eq "restore: one node" "$(jget "$out" '@.restored')" 1
+run "EVTEST del" url-multi-reordered.txt
+eq "after restore: nodes" "$(count_of 'EVTEST del')" 4
+[ -n "$(node_by 'EVTEST del' 'URL 2 renamed')" ] && ok "restored node imported again" || bad "restored node missing"
+
 echo "----- manual nodes untouched -----"
 eq "manual nodes fingerprint" "$(manual_fp)" "$MANUAL_BEFORE"
 
 echo "----- cleanup -----"
-for g in "EVTEST url1" "EVTEST url3" "EVTEST url3b" "EVTEST sb1" "EVTEST sb1b" "EVTEST sbm" "EVTEST arr" "EVTEST uns" "EVTEST zero"; do
+for g in "EVTEST url1" "EVTEST url3" "EVTEST url3b" "EVTEST sb1" "EVTEST sb1b" "EVTEST sbm" "EVTEST arr" "EVTEST uns" "EVTEST zero" "EVTEST del"; do
 	for n in $(nodes_of "$g"); do uci -q delete $CONFIG.$n; done
 	s=$(sub_id "$g"); [ -n "$s" ] && uci -q delete $CONFIG.$s
 done

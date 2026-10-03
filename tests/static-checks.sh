@@ -124,7 +124,7 @@ for f in proxy.txt russia.txt; do
 done
 
 echo "== screenshots"
-for img in main node-list nodelist-sort add-subscription rule-manage settings-dns settings-forwarding settings-advanced wizard-1 wizard-2 wizard-3 wizard-4 wizard-5 wizard-6 wizard-8; do
+for img in main node-list-09 nodelist-sort-09 add-subscription subscription-management rule-manage-09 route-explain diagnostics dns-diagnostics forwarding-diagnostics maintenance settings-dns settings-forwarding settings-advanced wizard-1 wizard-2 wizard-3 wizard-4 wizard-5 wizard-6 wizard-8; do
 	f="docs/images/${img}.png"
 	if [ -s "$f" ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
 		ok "screenshot $f"
@@ -153,6 +153,28 @@ echo "== tests"
 if sh tests/dnsmasq-nftset-test.sh >/dev/null 2>&1; then ok "dnsmasq nftset regression test"; else bad "dnsmasq nftset regression test"; sh tests/dnsmasq-nftset-test.sh; fi
 # Node List latency state and sorting (common.js, no browser needed)
 if out=$(node tests/node-list-sort-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Node List sorting test"; echo "$out" | grep -v '^PASS'; fi
+
+# Node List "Use": rule targets follow the selected server, not only Default
+if out=$(node tests/use-server-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Use server regression test"; echo "$out" | grep -v '^PASS'; fi
+# Rule Manage checks (rulecheck.js): shadowed / conflicting / impossible rules, targets
+if out=$(node tests/rule-check-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Rule Manage checks test"; echo "$out" | grep -v '^PASS'; fi
+# Diagnostics page: Route Explain rows, a text for every result code of the router
+if out=$(node tests/diagnostics-view-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Diagnostics view test"; echo "$out" | grep -v '^PASS'; fi
+# update mechanism (update.sh) with a fake release server and package database:
+# integrity, compatibility, failed update -> rollback
+if out=$(sh tests/update-test.sh 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "update test"; echo "$out" | grep -v '^PASS'; fi
+# Maintenance page: a text for every refusal of backup / import / update
+if out=$(node tests/maintenance-view-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Maintenance view test"; echo "$out" | grep -v '^PASS'; fi
+# node list state (nodes.lua): deleted subscription nodes, update merge, Delete all nodes
+LUA51=$(command -v lua5.1 || command -v lua || true)
+if [ -z "$LUA51" ]; then bad "no lua5.1/lua available for tests/nodes-test.lua"
+elif out=$("$LUA51" tests/nodes-test.lua 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "node list state test"; echo "$out" | grep -v '^PASS'; fi
+# Route Explain (explain.lua) and diagnostics (diagnose.lua): rule selection,
+# targets, DNS, forwarding, the connection panel
+for t in explain diagnose transfer; do
+	[ -n "$LUA51" ] || break
+	if out=$("$LUA51" "tests/${t}-test.lua" 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "${t} test"; echo "$out" | grep -v '^PASS'; fi
+done
 
 echo "== package metadata"
 PV=$(sed -n 's/^PKG_VERSION:=//p' Makefile); PR=$(sed -n 's/^PKG_RELEASE:=//p' Makefile)
