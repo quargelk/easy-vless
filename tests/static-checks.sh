@@ -124,7 +124,7 @@ for f in proxy.txt russia.txt; do
 done
 
 echo "== screenshots"
-for img in main node-list nodelist-sort add-subscription rule-manage settings-dns settings-forwarding settings-advanced wizard-1 wizard-2 wizard-3 wizard-4 wizard-5 wizard-6 wizard-8; do
+for img in main node-list-09 nodelist-sort-09 add-subscription subscription-management rule-manage-09 route-explain diagnostics dns-diagnostics forwarding-diagnostics maintenance settings-dns settings-forwarding settings-advanced wizard-1 wizard-2 wizard-3 wizard-4 wizard-5 wizard-6 wizard-8; do
 	f="docs/images/${img}.png"
 	if [ -s "$f" ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
 		ok "screenshot $f"
