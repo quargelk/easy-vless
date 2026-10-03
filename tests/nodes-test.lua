@@ -33,6 +33,7 @@ end
 -- ---------------------------------------------------------------- identity
 local fi, de, nl = vless("Finland", "fi.example.net"), vless("Germany", "de.example.net"), vless("Netherlands", "nl.example.net")
 check("key: 16 hex digits", N.key(fi):match("^%x+$") and #N.key(fi) == 16)
+check("key: fixed value (the same on every Lua build)", N.key(fi) == "6bb2b0bf03463baf")
 check("key: same node, same key", N.key(fi) == N.key(vless("Finland", "fi.example.net")))
 check("key: the name is not part of the identity", N.key(fi) == N.key(vless("Finland | 12 GB left", "fi.example.net")))
 check("key: the address is case-insensitive", N.key(fi) == N.key(vless("Finland", "FI.Example.NET")))

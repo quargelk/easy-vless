@@ -57,9 +57,15 @@ local function hash(s, seed, mul)
 	return h
 end
 
+-- 32 bit as 8 hex digits, 16 bit at a time: "%x" of the Lua on OpenWrt
+-- (integer patch) refuses numbers above 2^31
+local function hex32(n)
+	return string.format("%04x%04x", math.floor(n / 65536), n % 65536)
+end
+
 function M.key(node)
 	local id = M.identity(node)
-	return string.format("%08x%08x", hash(id, 5381, 33), hash(id, 2166136261, 131))
+	return hex32(hash(id, 5381, 33)) .. hex32(hash(id, 2166136261, 131))
 end
 
 function M.is_server(s)
