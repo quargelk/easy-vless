@@ -337,7 +337,8 @@ local function forwarding_state(st, s)
 		state.fw4 = false
 	else
 		local out = sh("nft list table inet " .. CONFIG)
-		if out:find("table inet " .. CONFIG, 1, true) then
+		-- the listing itself, not nft's error message (which repeats the command)
+		if out:find("^%s*table inet " .. CONFIG .. " {") then
 			state.nft = out
 		elseif not out:lower():find("no such file", 1, true) and not out:lower():find("does not exist", 1, true) and trim(out) ~= "" then
 			state.nft_error = trim(out):sub(1, 200)

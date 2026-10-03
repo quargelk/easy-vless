@@ -159,6 +159,8 @@ f = D.forwarding({ running = false, settings = copy(SET), nft = nil, rule4 = "0:
 check("stopped and clean: 'off', not a failure", f.status == "off" and find(f.groups.nftables.checks, "table").code == "stopped")
 f = D.forwarding({ running = false, settings = copy(SET), nft = nft_table(), rule4 = RULE4, route4 = ROUTE4, fw4 = true })
 check("stopped but the table and ip rule are still there: leftover warning", f.status == "warn" and find(f.groups.nftables.checks, "table").code == "table_leftover" and find(f.groups.tproxy.checks, "policy").code == "policy_leftover")
+f = D.forwarding({ running = false, settings = copy(SET), nft = "Error: No such file or directory\nlist table inet easy_vless\n           ^^^^^^^^^^\n", rule4 = "", route4 = "", fw4 = true })
+check("nft's error text (it repeats the table name) is not taken for the table", f.status == "off" and find(f.groups.nftables.checks, "table").code == "stopped")
 f = D.forwarding({ running = true, settings = copy(SET), fw4 = false })
 check("fw4 missing", find(f.groups.nftables.checks, "fw4").code == "fw4_missing" and f.status == "fail")
 f = D.forwarding({ running = true, settings = copy(SET), fw4 = true, nft_error = "Operation not permitted" })

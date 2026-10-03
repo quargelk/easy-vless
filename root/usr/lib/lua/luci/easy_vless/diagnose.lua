@@ -114,7 +114,7 @@ function M.forwarding(st)
 	local way = (s.tcp_proxy_way == "redirect") and "redirect" or "tproxy"
 	local ipv6 = on(s.ipv6_tproxy, "0")
 	local lan, router = on(s.client_proxy, "1"), on(s.localhost_proxy, "1")
-	local has_table = type(st.nft) == "string" and st.nft:find("table inet easy_vless", 1, true) ~= nil
+	local has_table = type(st.nft) == "string" and st.nft:find("table inet easy_vless {", 1, true) ~= nil
 	local nft = M.parse_nft(st.nft)
 
 	-- firewall backend
