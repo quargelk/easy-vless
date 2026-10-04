@@ -302,7 +302,9 @@ load_acl() {
 	log_i18n 1 "Access Control:"
 	acl_node
 	for sid in $(jsonfilter -s "${ACL_JSON}" -e '$.acl[*].flag'); do
-		eval $(cat "${TMP_ACL_PATH}/${sid}/var")
+		# name="value" lines written by app_acl.lua (values made shell-safe
+		# there); sourced, not "eval $(cat ...)": no word splitting, no globbing
+		. "${TMP_ACL_PATH}/${sid}/var"
 
 		[ -z "$(get_cache_var "node_${node}_gen_shunt_list")" ] && [ -n "${node}" ] && gen_shunt_list "${node}" shunt_list4 shunt_list6
 		[ -n "${use}" ] && local dns_redirect_port=$(get_cache_var "ACL_${use}_dns_port")

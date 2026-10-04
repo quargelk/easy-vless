@@ -1025,7 +1025,7 @@ local function curl(url, file, ua, mode, hwid)
 	}
 	if ua and ua ~= "" and ua ~= "curl" then
 		ua = (ua == "easy_vless") and ("easy_vless/" .. api.get_version()) or ua
-		curl_args[#curl_args + 1] = '--user-agent "' .. ua .. '"'
+		curl_args[#curl_args + 1] = "--user-agent " .. api.shellquote(ua)
 	end
 	if hwid == "1" then
 		curl_args[#curl_args + 1] = get_headers()
@@ -1499,6 +1499,26 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 
 		function nodeFilter(node)
 			if node then
+				-- Easy VLESS 1.0: a subscription is untrusted text. Control
+				-- characters (a line break in a name) never reach UCI, and the
+				-- port has to be a port.
+				for k, v in pairs(node) do
+					if type(v) == "string" then
+						node[k] = v:gsub("%c", "")
+					elseif type(v) == "table" then
+						for i, x in ipairs(v) do
+							if type(x) == "string" then v[i] = x:gsub("%c", "") end
+						end
+					end
+				end
+				if type(node.remarks) == "string" and #node.remarks > 200 then
+					-- cut at a character boundary (UTF-8)
+					node.remarks = node.remarks:sub(1, 200):gsub("[\192-\255][\128-\191]*$", "")
+				end
+				local port = tonumber(node.port)
+				if not node.error_msg and node.address and not (port and port >= 1 and port <= 65535 and port == math.floor(port)) then
+					node.error_msg = "invalid port " .. tostring(node.port):sub(1, 20)
+				end
 				if node.error_msg then
 					log(2, i18n.translatef("Discard node: %s, Reason:", node.remarks) .. " " .. node.error_msg)
 				elseif not node.type then
@@ -1684,7 +1704,7 @@ local execute = function()
 				rec.http_code = value.http_code
 				rec.request = (not ua or ua == "" or ua == "curl") and "curl" or ((ua == "HAPP") and "HAPP" or "custom")
 				if return_code ~= 0 then
-					luci.sys.call("rm -f " .. tmp_file)
+					luci.sys.call("rm -f " .. api.shellquote(tmp_file))
 					-- curl 35/51/60/77: TLS handshake / certificate / CA store
 					if return_code == 35 or return_code == 51 or return_code == 60 or return_code == 77 then
 						rec.status = "tls"
@@ -1701,13 +1721,13 @@ local execute = function()
 					return false
 				end
 				local ok = true
-				if luci.sys.call("[ -f " .. tmp_file .. " ] && sed -i -e '/^[ \t]*$/d' -e '/^[ \t]*\r$/d' " .. tmp_file) == 0 then
+				if luci.sys.call("[ -f " .. api.shellquote(tmp_file) .. " ] && sed -i -e '/^[ \t]*$/d' -e '/^[ \t]*\r$/d' " .. api.shellquote(tmp_file)) == 0 then
 					local f = io.open(tmp_file, "r")
 					local stdout = f:read("*all")
 					f:close()
 					local raw_data = api.trim(stdout)
 					local old_md5 = value.md5 or ""
-					local new_md5 = luci.sys.exec("md5sum " .. tmp_file .. " 2>/dev/null | awk '{print $1}'"):gsub("\n", "")
+					local new_md5 = luci.sys.exec("md5sum " .. api.shellquote(tmp_file) .. " 2>/dev/null | awk '{print $1}'"):gsub("\n", "")
 					if not manual_sub and old_md5 == new_md5 then
 						log(1, i18n.translatef("Subscription: [%s] No changes, no update required.", remark))
 						rec.status = "unchanged"
@@ -1727,7 +1747,7 @@ local execute = function()
 				if url_is_local then
 					value.http_code = 0
 				else
-					luci.sys.call("rm -f " .. tmp_file)
+					luci.sys.call("rm -f " .. api.shellquote(tmp_file))
 				end
 				return ok
 			end

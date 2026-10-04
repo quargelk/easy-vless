@@ -28,6 +28,15 @@ run_detached() {
 	( "$@" ) </dev/null >/dev/null 2>&1 &
 }
 
+# A UCI section id as it arrives in a request (node, subscription, group):
+# letters, digits and "_" only - it becomes part of uci and command arguments.
+valid_id() {
+	case "$1" in
+		""|*[!A-Za-z0-9_]*) return 1 ;;
+	esac
+	return 0
+}
+
 count_nodes() {
 	uci -q show ${CONFIG} | grep -c "=nodes$"
 }
@@ -72,7 +81,16 @@ method_status() {
 method_check() {
 	local node="$1" out code
 	[ -n "$node" ] || node=$(uci -q get ${CONFIG}.@global[0].node)
-	out=$($APP check $node 2>&1)
+	if [ -n "$node" ] && ! valid_id "$node"; then
+		json_init
+		json_add_int "code" 1
+		json_add_boolean "ok" 0
+		json_add_string "node" ""
+		json_add_string "output" "Unknown node."
+		json_dump
+		return
+	fi
+	out=$($APP check "$node" 2>&1)
 	code=$?
 	json_init
 	json_add_int "code" "$code"
@@ -137,13 +155,15 @@ method_urltest_node() {
 		return
 	fi
 	[ -n "$url" ] && kind=url
+	# test.sh answers "Unknown server." for an id that is not a node
+	valid_id "$node" || node=""
 	out=$($TEST url_test_json "$node" "$url")
 	case "$out" in
 		"{"*) ;;
 		*) json_init; json_add_boolean "ok" 0; json_add_string "error" "The test did not return a result."; json_dump; return ;;
 	esac
 	echo "$out"
-	[ "$(uci -q get ${CONFIG}.${node})" = "nodes" ] && $TEST test_store "$node" "$kind" "$out"
+	[ -n "$node" ] && [ "$(uci -q get "${CONFIG}.${node}")" = "nodes" ] && $TEST test_store "$node" "$kind" "$out"
 }
 
 # test <action> [kind] [nodes] (0.8.0): the Server Test / URL Test queue of
@@ -179,7 +199,11 @@ method_group_test() {
 		echo '{"ok":false,"error":"easy-vless-sing-box is not installed."}'
 		return
 	fi
-	url=$(uci -q get ${CONFIG}.${group}.urltest_url)
+	if ! valid_id "$group"; then
+		echo '{"ok":false,"error":"Unknown group."}'
+		return
+	fi
+	url=$(uci -q get "${CONFIG}.${group}.urltest_url")
 	lua "$CLASH_API" test "$group" "$url"
 }
 

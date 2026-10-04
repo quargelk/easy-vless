@@ -63,11 +63,27 @@ config_t_get() {
 	echo "${ret:=${3}}"
 }
 
+# eval_set_val name=value ...: set the (caller's local) variables. Easy VLESS
+# 1.0: the value is assigned, never evaluated - the arguments carry settings
+# and node options ("app.sh check" passes them as they are in UCI), and
+# "eval name=value" ran whatever followed a ";" or stood in "$( )". A value
+# written by app_acl.lua comes as name="value": the quotes are dropped.
 eval_set_val() {
-	for i in $@; do
-		for j in $i; do
-			eval $j
-		done
+	local __ev_arg __ev_key __ev_val
+	for __ev_arg in $@; do
+		case "$__ev_arg" in
+			*=*) ;;
+			*) continue ;;
+		esac
+		__ev_key=${__ev_arg%%=*}
+		__ev_val=${__ev_arg#*=}
+		case "$__ev_key" in
+			""|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+		esac
+		case "$__ev_val" in
+			\"*\") __ev_val=${__ev_val#\"}; __ev_val=${__ev_val%\"} ;;
+		esac
+		eval "$__ev_key=\$__ev_val"
 	done
 }
 
@@ -160,6 +176,17 @@ lua_api() {
 		return
 	}
 	echo $(lua -e "local api = require 'luci.easy_vless.api' print(api.${func})")
+}
+
+# lua_api_arg <function> <argument>: api.<function>(<argument>). The argument
+# (a setting, an address from the configuration) is handed over as data, in
+# the environment - never as part of the Lua source, where a quote in it
+# would end the string and the rest would run as code.
+lua_api_arg() {
+	case "$1" in
+		""|*[!A-Za-z0-9_]*) echo ""; return ;;
+	esac
+	echo $(EV_LUA_ARG="$2" lua -e "local api = require 'luci.easy_vless.api' print(api.$1(os.getenv('EV_LUA_ARG') or ''))")
 }
 
 check_host() {

@@ -358,6 +358,11 @@ end
 
 local DOMAIN_PREFIX = set({ "domain", "full", "regexp", "geosite", "rule-set", "rs" })
 
+-- a geosite / geoip code: letters, digits and - _ . ! @ (util_sing-box.lua)
+local function GEO_CODE(code)
+	return code:match("^[%w_%-%.!@]+$") ~= nil and not code:find("..", 1, true)
+end
+
 local VALIDATE = {}
 
 function VALIDATE.nodes(o)
@@ -389,6 +394,22 @@ function VALIDATE.rules(o)
 		for line in o.domain_list:gmatch("[^\r\n]+") do
 			local p = line:match("^%s*([%a%-]+):")
 			if p and not DOMAIN_PREFIX[p] and line:sub(1, 1) ~= "#" then return "domain_list" end
+			-- a geodata code becomes a file name and a command argument
+			local code = line:match("^%s*geosite:(.-)%s*$")
+			if code and not GEO_CODE(code) then return "domain_list" end
+		end
+	end
+	if o.ip_list then
+		for line in o.ip_list:gmatch("[^\r\n]+") do
+			local l = line:match("^%s*(.-)%s*$")
+			if l ~= "" and l:sub(1, 1) ~= "#" then
+				local code = l:match("^geoip:(.*)$")
+				if code then
+					if not GEO_CODE(code) then return "ip_list" end
+				elseif not (l:match("^[%x:%.]+$") or l:match("^[%x:%.]+/%d+$") or l:match("^rule%-set:%S+$") or l:match("^rs:%S+$")) then
+					return "ip_list"
+				end
+			end
 		end
 	end
 	for _, id in ipairs(o.domain_resource or {}) do

@@ -104,6 +104,42 @@ wizard_routing "$GOOD"
 r=$(call check)
 check "the configuration is valid" '[ "$(jget "$r" @.ok)" = true ]'
 
+echo "== settings and names are data, not shell code (1.0)"
+rm -f /tmp/ev10-pwned*
+SAVED_DOH=$(uci -q get $CONFIG.@global[0].remote_dns_doh)
+SAVED_DNS=$(uci -q get $CONFIG.@global[0].remote_dns)
+SAVED_HOSTS=$(uci -q get $CONFIG.@global[0].dns_hosts)
+uci set $CONFIG.@global[0].remote_dns_doh='https://1.1.1.1/dns-query;touch${IFS}/tmp/ev10-pwned-doh'
+uci set $CONFIG.@global[0].remote_dns="1.1.1.1') os.execute('touch /tmp/ev10-pwned-lua') --"
+uci set $CONFIG.@global[0].dns_hosts='example.invalid 192.0.2.1; touch /tmp/ev10-pwned-hosts'
+uci commit $CONFIG
+r=$(call check)
+check "check with hostile DNS settings: an answer, nothing was run" '[ -n "$(jget "$r" @.code)" ] && [ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+r=$(explain '{"input":"yandex.ru"}')
+check "Route Explain with hostile DNS settings: nothing was run" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+if [ -n "$SAVED_DOH" ]; then uci set $CONFIG.@global[0].remote_dns_doh="$SAVED_DOH"; else uci -q delete $CONFIG.@global[0].remote_dns_doh; fi
+if [ -n "$SAVED_DNS" ]; then uci set $CONFIG.@global[0].remote_dns="$SAVED_DNS"; else uci -q delete $CONFIG.@global[0].remote_dns; fi
+# a line of DNS hosts is read as "<domain> <address>", the rest is ignored
+uci set $CONFIG.@global[0].dns_hosts='example.invalid 192.0.2.1'
+uci commit $CONFIG
+r=$(call check)
+check "DNS hosts: a valid configuration" '[ "$(jget "$r" @.ok)" = true ]'
+check "DNS hosts: the entry is in the generated configuration" 'grep -q "\"example.invalid\": *\"192.0.2.1\"" /tmp/etc/${CONFIG}_check/config.json'
+if [ -n "$SAVED_HOSTS" ]; then uci set $CONFIG.@global[0].dns_hosts="$SAVED_HOSTS"; else uci -q delete $CONFIG.@global[0].dns_hosts; fi
+uci commit $CONFIG
+for bad_id in 'x;touch /tmp/ev10-pwned-id' '$(touch /tmp/ev10-pwned-id)' 'a b' '../x'; do
+	call check "$(req node "$bad_id")" >/dev/null
+	call urltest_node "$(req node "$bad_id")" >/dev/null
+	call group_test "$(req group "$bad_id")" >/dev/null
+	call subscribe "$(req action update id "$bad_id")" >/dev/null
+	call subscribe "$(req action truncate id "$bad_id")" >/dev/null
+done
+check "ids that are not section names are refused, nothing was run" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+r=$(call check "$(req node 'x;y')")
+check "check of an invalid node id: a clear refusal" '[ "$(jget "$r" @.ok)" = false ] && [ "$(jget "$r" @.output)" = "Unknown node." ]'
+r=$(call check)
+check "the configuration is still valid" '[ "$(jget "$r" @.ok)" = true ]'
+
 echo "== Route Explain: stopped - the configuration the saved settings generate"
 r=$(explain '{"input":"www.googlevideo.com"}')
 echo "$r" | cut -c1-600

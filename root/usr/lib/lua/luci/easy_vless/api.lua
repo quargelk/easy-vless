@@ -260,12 +260,19 @@ function domainToIPv4(domain, dns)
 	return nil
 end
 
+-- One argument of a shell command line, whatever it contains.
+function shellquote(v)
+	return "'" .. tostring(v):gsub("'", "'\\''") .. "'"
+end
+
 function curl_base(url, file, args)
 	if not args then args = {} end
 	if file then
-		args[#args + 1] = "-o " .. file
+		args[#args + 1] = "-o " .. shellquote(file)
 	end
-	local cmd = string.format('curl %s "%s"', table_join(args), url)
+	-- the URL is a setting (a subscription URL may come from an imported
+	-- file): one quoted argument, so "$( )" or a quote in it is only text
+	local cmd = string.format('curl %s %s', table_join(args), shellquote(url))
 	return exec_call(cmd)
 end
 

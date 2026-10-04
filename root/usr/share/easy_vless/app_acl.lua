@@ -17,9 +17,23 @@ local L = {
 	node_order = {}
 }
 
+-- Easy VLESS 1.0: the files written here are shell text. nftables.sh reads
+-- "<acl>/var" with eval, app.sh reads "acl_node_<flag>" with eval and passes
+-- its words on as arguments (utils.sh eval_set_val). The values come from
+-- the configuration - a node name comes from a subscription - so nothing in
+-- them may end the double quotes or start a substitution: " $ ` \ and
+-- control characters are removed. A run argument is one word: no white space.
+local function shell_value(v)
+	return (tostring(v):gsub('[%c"$`\\]', ""))
+end
+
+local function shell_word(v)
+	return (shell_value(v):gsub("%s", ""))
+end
+
 function add_args(t, k, v)
 	if not t or not k or not v then return end
-	table.insert(t, k .. "=" .. '"' .. v .. '"')
+	table.insert(t, k .. "=" .. '"' .. shell_word(v) .. '"')
 end
 
 function init_acl()
@@ -143,16 +157,16 @@ function acl_app(l)
 		local out = io.open(acl_path .. "/var", "a")
 		for k2, v2 in pairs(v) do
 			if type(v2) == "string" then
-				out:write(k2 .. "=" .. '"' .. v2 .. '"' .. "\n")
+				out:write(k2 .. "=" .. '"' .. shell_value(v2) .. '"' .. "\n")
 			end
 		end
 		if v.use then
 			local node = l.node[v.use]
 			if node.config then
-				out:write("node" .. "=" .. '"' .. node.config[".name"] .. '"' .. "\n")
-				out:write("node_remarks" .. "=" .. '"' .. node.config.remarks .. '"' .. "\n")
+				out:write("node" .. "=" .. '"' .. shell_word(node.config[".name"]) .. '"' .. "\n")
+				out:write("node_remarks" .. "=" .. '"' .. shell_value(node.config.remarks or node.config[".name"]) .. '"' .. "\n")
 			end
-			out:write("redir_port" .. "=" .. '"' .. node.redir_port .. '"' .. "\n")
+			out:write("redir_port" .. "=" .. '"' .. shell_word(node.redir_port) .. '"' .. "\n")
 		end
 		out:close()
 		local source_list = "any"

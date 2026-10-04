@@ -1,0 +1,4 @@
+vless://00000000-0000-4000-8000-000000000001@198.51.100.71:443?encryption=none&type=tcp&security=none#Hostile%20good
+vless://00000000-0000-4000-8000-000000000001@198.51.100.72:44x3?encryption=none&type=tcp&security=none#Hostile%20bad%20port
+vless://00000000-0000-4000-8000-000000000001@198.51.100.73:99999?encryption=none&type=tcp&security=none#Hostile%20port%20range
+vless://00000000-0000-4000-8000-000000000001@198.51.100.74:443?encryption=none&type=tcp&security=none#Line%0Abreak%20%24%28touch%20%2Ftmp%2Fevtest-pwned%29
