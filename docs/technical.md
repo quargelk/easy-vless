@@ -10,6 +10,7 @@
 - [Подписки: результат обновления и стратегия запроса](#подписки-результат-обновления-и-стратегия-запроса)
 - [Мастер настройки](#мастер-настройки)
 - [Маршрутизация и диагностика (0.9)](#маршрутизация-и-диагностика-09)
+- [Недоверенные данные и блокировки (1.0)](#недоверенные-данные-и-блокировки-10)
 - [Структура репозитория](#структура-репозитория)
 - [Файлы релиза и SHA256SUMS](#файлы-релиза-и-sha256sums)
 - [Системные требования подробно](#системные-требования-подробно)
@@ -127,6 +128,26 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 **Резервная копия и импорт** (`luci/easy_vless/transfer.lua`, `backup.lua`; rpcd `transfer`). Два формата: `easy-vless-backup` — всё состояние (файл UCI как есть, HWID, список прямых IP, SHA-256 содержимого), восстановление заменяет конфигурацию целиком; `easy-vless-export` — серверы, правила или подписки, импорт только добавляет записи. Файл полностью проверяется до изменений (`restore_check` / `import_check`), применяется отдельным запросом; перед восстановлением текущая конфигурация копируется в `/etc/easy_vless/restore-backup` (`rollback`). Из файла импорта берутся только известные параметры; запись с некорректным значением пропускается целиком.
 
 **Обновление** (`update.sh`, rpcd `update`). Устанавливается только по подтверждению пользователя. `check` сравнивает установленную версию с релизом, на который указывает `releases/latest` (ответ кэшируется на сутки в tmpfs; автоматическую проверку отключает `global.update_check = 0`). `install <tag>`: загрузка `SHA256SUMS`, `install.sh` и трёх пакетов по HTTPS; каждый файл должен быть указан в `SHA256SUMS` ровно один раз и совпадать, версия пакетов — соответствовать тегу, `install.sh` — быть установщиком этого релиза; `install.sh --check --local`; копия конфигурации в `/etc/easy_vless/update-backup`; загрузка и проверка пакетов установленной версии для отката; `install.sh --local --no-start`; проверка версий пакетов, конфигурации и `app.sh check`; перезапуск службы. При сбое установки или проверки возвращаются прежние пакеты и конфигурация. `SHA256SUMS` берётся из того же релиза: это проверка целостности и принадлежности файлов релизу, а не подпись автора.
+
+## Недоверенные данные и блокировки (1.0)
+
+**Значения конфигурации — данные, а не код.** Имя узла приходит из подписки, запись — из импортируемого файла, настройка — из восстановленной копии. По пути к sing-box они проходят через shell:
+
+| Место | Что сделано |
+|---|---|
+| `app_acl.lua` → файлы `acl/<id>/var` и `acl/acl_node_<flag>` | значения очищаются (`"`, `$`, `` ` ``, `\` и управляющие символы убираются; аргумент запуска — одно слово); `nftables.sh` читает файл через `.`, а не через `eval $(cat …)` |
+| `utils.sh` `eval_set_val` | присваивает `имя=значение`, значение не вычисляется (`app.sh check` передаёт настройки как есть) |
+| `utils.sh` `lua_api_arg` | настройка передаётся в Lua через окружение, а не подставляется в исходный текст (`parseDNS`, `get_domain_from_url`, `is_ip`, `resource_file`) |
+| `api.lua` `curl_base`, `subscribe.lua` `curl` | URL подписки и User-Agent — аргументы в одинарных кавычках (`api.shellquote`) |
+| `util_sing-box.lua` | строки `dns_hosts` разбираются в Lua; код `geosite:` / `geoip:` проверяется (`valid_geo_code`), команда `geoview` собирается из аргументов в кавычках |
+| `app.sh` `start_crontab` | в crontab попадают только числа (`cron_num`) |
+| `subscribe.lua` `nodeFilter` | из строковых полей узла убираются управляющие символы, из имени — `<` и `>`; порт — целое 1…65535, иначе узел отбрасывается с причиной в журнале |
+| `transfer.lua` | в импортируемых правилах проверяются коды geodata и строки списка IP |
+| rpcd-плагин | идентификатор секции из запроса — только `[A-Za-z0-9_]` (`valid_id`) |
+
+**Текст в LuCI — текст, а не HTML.** `E(tag, attrs, data)` в LuCI вставляет строку через `innerHTML`; так же вставляются заголовок модального окна, название опции формы и текст ячейки таблицы. Поэтому `common.js` даёт `ev.E` (строка становится текстовым узлом), а каждая страница начинает с `const E = ev.E;`; там, где HTML вставляет сам LuCI, значение экранируется `ev.esc()`. HTML с разметкой остаётся только в описаниях опций формы (переводы с `<code>`, `<b>`).
+
+**Блокировки с владельцем.** `/var/lock/easy_vless_subscribe.lock` и `/var/lock/easy_vless_update.lock/pid` хранят PID процесса. Блокировка, владелец которой завершился (сбой, `kill`), считается устаревшей: `subscribe.lua` забирает её, rpcd и `backup.lua` удаляют, `init.d restart` её не ждёт. Любое действие `subscribe.lua` выполняется под `xpcall` и освобождает блокировку при любой ошибке. Состояние обновления `running` без работающего обновления `update.sh state` превращает в `interrupted`.
 
 ## Структура репозитория
 
@@ -369,7 +390,7 @@ LuCI загружает `base.ru.lmo` вместе с нашим каталог�
 |---|---|---|
 | [`tests/static-checks.sh`](../tests/static-checks.sh) | CI job `checks`, локально | синтаксис shell/Lua/JS/JSON, переводы, ресурсы, screenshots, ссылки README, метаданные пакетов, поиск локальных путей и секретов |
 | [`tests/dnsmasq-nftset-test.sh`](../tests/dnsmasq-nftset-test.sh) | static checks | определение nftset по `dnsmasq --version` |
-| [`tests/subscription-formats-test.sh`](../tests/subscription-formats-test.sh) | CI, в OpenWrt | форматы подписок |
+| [`tests/subscription-formats-test.sh`](../tests/subscription-formats-test.sh) | CI, в OpenWrt | форматы подписок; удаление и восстановление узлов; враждебная подписка (перевод строки и команда в имени, неверный порт); блокировка, оставшаяся от завершившегося процесса |
 | [`tests/ci/openwrt-runtime-tests.sh`](../tests/ci/openwrt-runtime-tests.sh) | CI, каждая архитектура | установка собранных пакетов installer'ом в контейнере OpenWrt, затем тесты подписок |
 | [`tests/ci/installer-tests.sh`](../tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](../tests/ci/installer-scenarios.sh) | CI, каждая архитектура | сценарии installer'а: требования, время, HTTPS, архитектуры и репозитории, SHA256, офлайн-установка, откат `dnsmasq`, bootstrap `opkg`, обновление с прошлых версий, удаление |
 | [`tests/ci/ubifs-tests.sh`](../tests/ci/ubifs-tests.sh) | CI job `ubifs` | настоящий UBI/UBIFS (nandsim) с разметкой TR3000 v1 |
@@ -379,10 +400,12 @@ LuCI загружает `base.ru.lmo` вместе с нашим каталог�
 | [`tests/explain-test.lua`](../tests/explain-test.lua), [`tests/diagnose-test.lua`](../tests/diagnose-test.lua), [`tests/diagnostics-view-test.js`](../tests/diagnostics-view-test.js) | static checks | Route Explain (выбор правила, цель, DNS, «неизвестно»), диагностика перенаправления, DNS и панель соединения на образцах состояния; текст для каждого кода результата |
 | [`tests/rule-check-test.js`](../tests/rule-check-test.js) | static checks | проверки правил в «Правилах» |
 | [`tests/transfer-test.lua`](../tests/transfer-test.lua), [`tests/maintenance-view-test.js`](../tests/maintenance-view-test.js) | static checks | резервная копия и импорт: проверка файла до применения, причины отказа |
-| [`tests/update-test.sh`](../tests/update-test.sh) | static checks | обновление с подставными `curl` и `opkg`: целостность, совместимость, сбой установки и откат |
-| [`tests/ci/v09-backend-tests.sh`](../tests/ci/v09-backend-tests.sh) | CI, каждая архитектура | 0.9 через ubus в контейнере OpenWrt: Route Explain на настоящей конфигурации, диагностика, её одновременная работа с запуском, остановкой, проверкой и обновлением подписки, удаление узлов, резервная копия и импорт |
+| [`tests/update-test.sh`](../tests/update-test.sh) | static checks | обновление с подставными `curl` и `opkg`: целостность, совместимость, сбой установки и откат, блокировка живого и завершившегося процесса, прерванное обновление |
+| [`tests/shell-safety-test.sh`](../tests/shell-safety-test.sh) | static checks | настоящие `app_acl.lua` и `eval_set_val` на враждебных значениях (имя узла, настройки DNS): ни одна команда из значения не выполняется |
+| [`tests/html-safety-test.js`](../tests/html-safety-test.js) | static checks | `ev.E` и `ev.esc`, диалоги `common.js` с враждебным именем, использование `ev.E` на каждой странице |
+| [`tests/ci/v09-backend-tests.sh`](../tests/ci/v09-backend-tests.sh) | CI, каждая архитектура | 0.9 через ubus в контейнере OpenWrt: Route Explain на настоящей конфигурации, диагностика, её одновременная работа с запуском, остановкой, проверкой и обновлением подписки, удаление узлов, резервная копия и импорт; проверка, Route Explain и настоящий запуск с враждебными настройками и враждебным именем узла |
 | [`tests/ci/workflow-events.py`](../tests/ci/workflow-events.py) | CI job `checks` | какие jobs запускаются для pull request, push в main, тега |
-| [`tests/ci/wizard-tests.sh`](../tests/ci/wizard-tests.sh), [`tests/ci/wizard-backend-tests.sh`](../tests/ci/wizard-backend-tests.sh), [`tests/ci/sub-server.py`](../tests/ci/sub-server.py) | CI, каждая архитектура | мастер настройки через ubus с настоящим VLESS-сервером; очередь проверок (Test All, повторное нажатие, отмена, аварийное завершение, остановка и проверка конфигурации во время проверок); подписки на тестовом HTTP-сервере: форматы, ошибки с сохранением узлов, User-Agent / HAPP / HWID и число запросов, повторное обновление |
+| [`tests/ci/wizard-tests.sh`](../tests/ci/wizard-tests.sh), [`tests/ci/wizard-backend-tests.sh`](../tests/ci/wizard-backend-tests.sh), [`tests/ci/sub-server.py`](../tests/ci/sub-server.py) | CI, каждая архитектура | мастер настройки через ubus с настоящим VLESS-сервером; очередь проверок (Test All, повторное нажатие, отмена, аварийное завершение, остановка и проверка конфигурации во время проверок); `uci commit` из LuCI не перезапускает службу, запрос на перезапуск во время перезапуска не теряется; подписки на тестовом HTTP-сервере: форматы, ошибки с сохранением узлов, User-Agent / HAPP / HWID и число запросов, повторное обновление |
 | [`tests/ci/luci_wizard_e2e.py`](../tests/ci/luci_wizard_e2e.py) | CI, x86-64 | настоящий LuCI в headless Chromium: мастер от начала до конца (ссылка VLESS и ссылка на подписку), ошибки, восстановление, «Список узлов» (задержка, сортировка, фильтры, Test All, повторные нажатия, обновление подписки), ширина 375 px, русский каталог рядом с каталогом LuCI |
 | [`tests/tr3000-slice-smoke.sh`](../tests/tr3000-slice-smoke.sh) | вручную на роутере | запуск/остановка службы, nftables, ip rule; с таймером отката |
 
