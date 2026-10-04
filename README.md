@@ -4,7 +4,7 @@
 
 *A lightweight VLESS client for OpenWrt 24.10 with a LuCI web interface in Russian and English.*
 
-**Текущая версия: 0.9.0-r1** · OpenWrt **24.10.x** (`opkg`) · Лицензия **GPL-3.0-only** · [Релизы](https://github.com/quargelk/easy-vless/releases)
+**Текущая версия: 0.9.1-r1** · OpenWrt **24.10.x** (`opkg`) · Лицензия **GPL-3.0-only** · [Релизы](https://github.com/quargelk/easy-vless/releases)
 
 Easy VLESS направляет трафик роутера и всех устройств домашней сети через ваш VLESS-сервер. На телефонах, компьютерах и телевизорах ничего настраивать не нужно: роутер сам перехватывает соединения через nftables (прозрачный прокси TPROXY) и передаёт их в [sing-box](https://sing-box.sagernet.org/), который устанавливает VLESS-соединение с сервером. Правила решают, какой трафик идёт напрямую, а какой — через VLESS: например, российские сайты — напрямую, остальное — через сервер.
 
@@ -145,7 +145,7 @@ DNS: dnsmasq роутера → sing-box → прямой DNS или удалё�
 На роутере по SSH:
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.9.0/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.9.1/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -154,7 +154,7 @@ sh /tmp/install.sh
 - Без `--check` installer ставит `sing-box-tiny`, при необходимости заменяет `dnsmasq` на `dnsmasq-full` (сначала спросит), затем пакеты Easy VLESS. Каждый файл релиза проверяется по `SHA256SUMS`.
 - При ошибке installer останавливается и объясняет причину. Все параметры: `sh /tmp/install.sh --help`.
 
-Релиз `v0.9.0` содержит `easy-vless_0.9.0-r1_all.ipk`, `easy-vless-sing-box_0.9.0-r1_all.ipk`, `luci-app-easy-vless_0.9.0-r1_all.ipk`, `install.sh` и `SHA256SUMS`. Ручная установка и установка без интернета на роутере описаны в [технической документации](docs/technical.md).
+Релиз `v0.9.1` содержит `easy-vless_0.9.1-r1_all.ipk`, `easy-vless-sing-box_0.9.1-r1_all.ipk`, `luci-app-easy-vless_0.9.1-r1_all.ipk`, `install.sh` и `SHA256SUMS`. Ручная установка и установка без интернета на роутере описаны в [технической документации](docs/technical.md).
 
 ### HTTPS на новом роутере
 
