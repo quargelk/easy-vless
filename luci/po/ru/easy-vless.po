@@ -2030,6 +2030,10 @@ msgid "The update failed, and the previous version could not be put back complet
 msgstr "Обновление не удалось, и прежнюю версию не получилось вернуть полностью."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update was interrupted before it finished."
+msgstr "Обновление было прервано до завершения."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
 msgid "GitHub could not be reached over HTTPS, so it is not known whether there is a newer version. Check the internet connection and the router time."
 msgstr "Не удалось связаться с GitHub по HTTPS, поэтому неизвестно, есть ли новая версия. Проверьте подключение к интернету и время на роутере."
 

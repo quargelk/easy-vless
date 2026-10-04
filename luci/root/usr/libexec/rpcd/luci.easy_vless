@@ -656,7 +656,7 @@ method_update() {
 					return
 				;;
 			esac
-			if [ -d "/var/lock/${CONFIG}_update.lock" ]; then
+			if sh "$UPDATE" busy 2>/dev/null; then
 				echo '{"ok":false,"error":"busy"}'
 				return
 			fi
