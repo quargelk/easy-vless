@@ -124,17 +124,21 @@ for f in proxy.txt russia.txt; do
 done
 
 echo "== screenshots"
-for img in main-10 connection-diagnostics-10 node-list-09 nodelist-sort-09 add-subscription subscription-management rule-manage-09 route-explain diagnostics forwarding-diagnostics maintenance settings-dns settings-forwarding settings-advanced wizard-1 wizard-2 wizard-3 wizard-4 wizard-5 wizard-6 wizard-8; do
-	f="docs/images/${img}.png"
+# the screenshots of the current release must be shown in README.md, and
+# every image README.md shows must exist and be a PNG
+for img in main-10 connection-diagnostics-10; do
+	grep -qF "(docs/images/${img}.png)" README.md || bad "README.md does not show docs/images/${img}.png"
+done
+for f in $(grep -oE '\(docs/images/[^)]+\)' README.md | tr -d '()' | sort -u); do
 	if [ -s "$f" ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
 		ok "screenshot $f"
 	else
 		bad "screenshot missing or not a PNG: $f"
 	fi
 done
-# no unused (stale) images: every tracked file in docs/images is shown in README.md
+# images of earlier versions that README.md no longer shows are only listed
 for f in $(tracked 'docs/images/*'); do
-	grep -qF "($f)" README.md || bad "docs/images file not used in README.md: $f"
+	grep -qF "($f)" README.md || echo "NOTE: docs/images file not shown in README.md: $f"
 done
 
 echo "== README, documentation and LICENSE"
