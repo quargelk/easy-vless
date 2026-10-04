@@ -216,6 +216,11 @@ get_geoip() {
 	mkdir -p ${geo_output_path}
 	local geoip_code="$1"
 	local geoip_type_flag=""
+	# the codes come from a rule ("geoip:xx" lines, joined with commas) and
+	# become part of a file name: letters, digits and , - _ . ! @ only
+	case "$geoip_code" in
+		""|*[!A-Za-z0-9,_.!@-]*|*..*) echo ""; return ;;
+	esac
 	local output_path="${geo_output_path}/geoip-${geoip_code}-$2"
 	[ ! -s "${output_path}" ] && {
 		local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"

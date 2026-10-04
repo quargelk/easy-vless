@@ -12,12 +12,14 @@
 # same way they happen on a router (feeds, CA certificates, TLS library,
 # /etc/openwrt_release, removed opkg). RAM and free space limits are real
 # limits of the container (docker --memory, a size-limited tmpfs on
-# /overlay; see installer-tests.sh). Four test hooks of scripts/install.sh
+# /overlay; see installer-tests.sh). Five test hooks of scripts/install.sh
 # are used where the real event or hardware cannot exist in a container:
 #   EV_TEST_NOW                         clock value (the container cannot
 #                                       change the kernel clock)
 #   EV_TEST_FAIL_DNSMASQ_INSTALL        dnsmasq-full installation fails
 #   EV_TEST_SIGNAL_AFTER_DNSMASQ_REMOVE SIGTERM right after dnsmasq removal
+#   EV_TEST_FAIL_EV_INSTALL             opkg fails after the first of the
+#                                       three Easy VLESS packages
 #   EV_TEST_SYSROOT                     /proc and /sys files and the kernel
 #                                       log of a router's flash (MTD/UBI)
 #                                       layout, see make_sysroot
@@ -261,6 +263,23 @@ sc_rollback() {
 	expect_ok "normal run after the rollbacks" "dnsmasq-full installed" --local "$DIST" --replace-dnsmasq --yes --no-start
 	check "dnsmasq-full installed at the end" '[ -n "$(installed dnsmasq-full)" ] && dnsmasq --version | grep -q " nftset"'
 	check "Easy VLESS $V installed" "[ \"\$(installed easy-vless)\" = \"$V\" ]"
+
+	note "a failure between the Easy VLESS packages leaves no half-installed Easy VLESS (1.0)"
+	opkg remove luci-app-easy-vless easy-vless-sing-box easy-vless >"$LOG" 2>&1
+	check "packages removed for the test" '[ -z "$(installed easy-vless)" ]'
+	EV_TEST_FAIL_EV_INSTALL=1 expect_fail "new installation: opkg fails after the first package" "No Easy VLESS package is left installed" \
+		--local "$DIST" --no-start
+	check "the package that was installed is removed again" '[ -z "$(installed easy-vless)" ] && [ -z "$(installed easy-vless-sing-box)" ] && [ -z "$(installed luci-app-easy-vless)" ]'
+	check "sing-box and dnsmasq-full stay" '[ -n "$(installed sing-box-tiny)" ] && [ -n "$(installed dnsmasq-full)" ]'
+	no_leftovers "partial installation"
+	expect_ok "the installer runs normally afterwards" "Easy VLESS packages verified" --local "$DIST" --no-start
+	for p in easy-vless easy-vless-sing-box luci-app-easy-vless; do
+		check "$p $V installed" "[ \"\$(installed $p)\" = \"$V\" ]"
+	done
+	uci set easy_vless.global.ev_test_marker='kept'; uci commit easy_vless
+	EV_TEST_FAIL_EV_INSTALL=1 expect_fail "upgrade: opkg fails in the middle - nothing is removed, the state is named" "Installed now: easy-vless=$V easy-vless-sing-box=$V luci-app-easy-vless=$V" \
+		--local "$DIST" --no-start
+	check "the installed packages and the configuration are kept" "[ \"\$(installed easy-vless)\" = \"$V\" ] && [ \"\$(installed luci-app-easy-vless)\" = \"$V\" ] && [ \"\$(uci -q get easy_vless.global.ev_test_marker)\" = kept ]"
 }
 
 # ====================================================================== bootstrap
