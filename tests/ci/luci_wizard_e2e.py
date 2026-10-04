@@ -93,15 +93,19 @@ def wizard_state():
         return {}
 
 
-def outbound_ports(tags):
-    """server_port of the outbounds with these tags in the generated sing-box config"""
-    for f in sh("ls /tmp/etc/easy_vless/*.json 2>/dev/null").split():
+def outbound_ports(rules):
+    """server_port of the outbounds of these rules in the generated sing-box
+    config (the tag of a rule's outbound is "<rule id>:<server name>")"""
+    for f in sh("find /tmp/etc/easy_vless -name '*.json' 2>/dev/null").split():
         try:
-            obs = {o.get("tag"): o for o in json.loads(sh("cat " + shlex.quote(f))).get("outbounds", [])}
-        except ValueError:
+            obs = json.loads(sh("cat " + shlex.quote(f))).get("outbounds", [])
+        except (ValueError, AttributeError):
             continue
-        if all(t in obs for t in tags):
-            return [str(obs[t].get("server_port", "")) for t in tags]
+        ports = []
+        for r in rules:
+            ports += [str(o.get("server_port", "")) for o in obs if o.get("tag") == r or str(o.get("tag", "")).startswith(r + ":")][:1]
+        if len(ports) == len(rules):
+            return ports
     return []
 
 
