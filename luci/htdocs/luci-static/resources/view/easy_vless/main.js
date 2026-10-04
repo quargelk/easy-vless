@@ -15,6 +15,8 @@
  * (main_router.<rule id>, main_router.default_node).
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 const ROUTER = ev.ROUTER;
 
@@ -154,7 +156,8 @@ return view.extend({
 		const rules = ev.rules();
 		rules.forEach(function(r) {
 			const rid = r['.name'];
-			o = s.option(form.ListValue, '_shunt_' + rid, '* ' + (r.remarks || rid));
+			/* an option title is inserted as HTML by LuCI: the rule name is text */
+			o = s.option(form.ListValue, '_shunt_' + rid, '* ' + ev.esc(r.remarks || rid));
 			o.depends('node', ROUTER);
 			o.value('', _('Not used (rule off)'));
 			ev.addTargetValues(o, true);

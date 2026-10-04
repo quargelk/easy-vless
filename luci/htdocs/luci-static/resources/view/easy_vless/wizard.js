@@ -31,6 +31,8 @@
  * easy_vless.global.wizard_completed=1 after a successful Apply.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 const ROUTER = ev.ROUTER;
 const STORE = 'easy_vless.wizard';

@@ -27,6 +27,8 @@
  * are marked in the list - only what follows from the settings is claimed.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 const ROUTER = ev.ROUTER;
 let RESOURCES = [];        /* [{ id, name, type, entries, exists, path }] */
@@ -477,7 +479,7 @@ return view.extend({
 		ev.compactWhenEmpty(s, _('No rules yet. The quickest start: choose a prepared rule next to Add rule and press Add prepared rule.'));
 		ev.commitOnModalSave(s, _('Rule'));
 		s.modaltitle = function(section_id) {
-			return _('Rule') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New rule'));
+			return ev.esc(_('Rule') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New rule')));
 		};
 		s.handleAdd = function(ev_, name) {
 			/* Named section: the target is stored in main_router under the
@@ -534,7 +536,7 @@ return view.extend({
 
 		o = s.option(form.DummyValue, '_conditions', _('Conditions'));
 		o.modalonly = false;
-		o.textvalue = function(section_id) { return summary(section_id); };
+		o.textvalue = function(section_id) { return E('span', {}, summary(section_id)); };
 
 		o = s.option(ConditionsValue, '_cond', _('Conditions'));
 		o.modalonly = true;

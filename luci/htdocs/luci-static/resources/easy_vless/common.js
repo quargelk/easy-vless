@@ -57,6 +57,27 @@ const callUciCommit = rpc.declare({ object: 'uci', method: 'commit', params: [ '
 /* Drops changes staged in this LuCI session (a Save that failed half-way). */
 const callUciRevert = rpc.declare({ object: 'uci', method: 'revert', params: [ 'config' ] });
 
+/*
+ * E(tag, attrs, data) of LuCI inserts a string given as data as HTML
+ * (innerHTML). Almost everything these pages show is text that somebody else
+ * wrote: the name of a server comes from a subscription or a pasted link, a
+ * rule from an imported file, output and log lines from the router. This E
+ * - used by common.js and by every view (const E = ev.E) - takes a string as
+ * text: a "<" in a name is shown, never interpreted. HTML is built from
+ * nodes only.
+ */
+function safeE(tag, attrs, data) {
+	const base = (typeof(window) != 'undefined' && window.E) ? window.E : globalThis.E;
+	if (!(attrs instanceof Object) || Array.isArray(attrs)) {
+		data = attrs;
+		attrs = null;
+	}
+	if (typeof(data) == 'string' || typeof(data) == 'number' || typeof(data) == 'boolean')
+		data = [ String(data) ];
+	return base(tag, attrs || {}, data);
+}
+const E = safeE;
+
 function sleep(ms) {
 	return new Promise(function(resolve) { window.setTimeout(resolve, ms); });
 }
@@ -86,9 +107,16 @@ return baseclass.extend({
 	SERVER_TEST_URL: SERVER_TEST_URL,
 	URL_TEST_URL: URL_TEST_URL,
 
+	E: safeE,
 	sleep: sleep,
 	safe: safe,
 	lines: lines,
+
+	/* Text for a place where LuCI itself inserts HTML: the title of a modal
+	 * dialog, the text of a table cell (textvalue). */
+	esc: function(s) {
+		return '%h'.format(s == null ? '' : s);
+	},
 
 	callStatus: function(logFrom) { return safe(callStatus(logFrom || 0)); },
 	callCheck: function(node) { return safe(callCheck(node || '')); },
@@ -1461,7 +1489,7 @@ return baseclass.extend({
 		const note = E('span', { 'style': 'margin-right:1em' });
 		const qrBox = E('div', { 'style': 'text-align:center;margin:.5em 0' });
 
-		ui.showModal(_('VLESS URL') + ' » ' + (uci.get(CONFIG, sid, 'remarks') || sid), [
+		ui.showModal(this.esc(_('VLESS URL') + ' » ' + (uci.get(CONFIG, sid, 'remarks') || sid)), [
 			field,
 			r.warnings.length ? E('div', { 'class': 'alert-message warning' }, [
 				E('p', {}, _('Not included in the URL:')),

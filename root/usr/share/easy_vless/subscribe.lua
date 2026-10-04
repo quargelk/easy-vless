@@ -1511,6 +1511,10 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 						end
 					end
 				end
+				-- a name is shown in LuCI, where some places insert HTML: no tags
+				if type(node.remarks) == "string" then
+					node.remarks = node.remarks:gsub("[<>]", "")
+				end
 				if type(node.remarks) == "string" and #node.remarks > 200 then
 					-- cut at a character boundary (UTF-8)
 					node.remarks = node.remarks:sub(1, 200):gsub("[\192-\255][\128-\191]*$", "")

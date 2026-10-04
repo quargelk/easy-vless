@@ -21,6 +21,8 @@
  * result. A refused file leaves everything as it was.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 const KINDS = [ 'nodes', 'rules', 'subscriptions' ];
 

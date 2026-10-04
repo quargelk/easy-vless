@@ -22,6 +22,8 @@
  * All requests are read-only: nothing is started, stopped or saved.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 
 const MARK = {

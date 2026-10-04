@@ -166,6 +166,8 @@ if out=$(sh tests/update-test.sh 2>&1); then ok "$(echo "$out" | tail -n 1 | tr 
 # values of the configuration (node names of a subscription, settings of a
 # restored backup) never run as shell code: app_acl.lua, eval_set_val
 if out=$(sh tests/shell-safety-test.sh 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "shell safety test"; echo "$out" | grep -v '^PASS'; fi
+# names and router output are shown as text, never inserted as HTML
+if out=$(node tests/html-safety-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "HTML safety test"; echo "$out" | grep -v '^PASS'; fi
 # Maintenance page: a text for every refusal of backup / import / update
 if out=$(node tests/maintenance-view-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Maintenance view test"; echo "$out" | grep -v '^PASS'; fi
 # node list state (nodes.lua): deleted subscription nodes, update merge, Delete all nodes
