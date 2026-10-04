@@ -238,6 +238,8 @@ sh /tmp/install.sh
 
 Конфигурация `/etc/config/easy_vless` и HWID (`/etc/easy_vless/hwid`) сохраняются при обновлении и повторном запуске.
 
+Если `opkg` сбоит между тремя пакетами Easy VLESS (шаг 6), частично установленного Easy VLESS не остаётся: при новой установке уже поставленные пакеты удаляются, при обновлении ничего не удаляется, а сообщение называет версии, которые стоят сейчас (обновление из LuCI в этом случае само возвращает прежние пакеты).
+
 | Параметр | Назначение |
 |---|---|
 | `--check` | только проверки, ничего не устанавливать |
@@ -392,7 +394,7 @@ LuCI загружает `base.ru.lmo` вместе с нашим каталог�
 | [`tests/dnsmasq-nftset-test.sh`](../tests/dnsmasq-nftset-test.sh) | static checks | определение nftset по `dnsmasq --version` |
 | [`tests/subscription-formats-test.sh`](../tests/subscription-formats-test.sh) | CI, в OpenWrt | форматы подписок; удаление и восстановление узлов; враждебная подписка (перевод строки и команда в имени, неверный порт); блокировка, оставшаяся от завершившегося процесса |
 | [`tests/ci/openwrt-runtime-tests.sh`](../tests/ci/openwrt-runtime-tests.sh) | CI, каждая архитектура | установка собранных пакетов installer'ом в контейнере OpenWrt, затем тесты подписок |
-| [`tests/ci/installer-tests.sh`](../tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](../tests/ci/installer-scenarios.sh) | CI, каждая архитектура | сценарии installer'а: требования, время, HTTPS, архитектуры и репозитории, SHA256, офлайн-установка, откат `dnsmasq`, bootstrap `opkg`, обновление с прошлых версий, удаление |
+| [`tests/ci/installer-tests.sh`](../tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](../tests/ci/installer-scenarios.sh) | CI, каждая архитектура | сценарии installer'а: требования, время, HTTPS, архитектуры и репозитории, SHA256, офлайн-установка, откат `dnsmasq`, сбой между пакетами Easy VLESS, bootstrap `opkg`, обновление с прошлых версий, удаление |
 | [`tests/ci/ubifs-tests.sh`](../tests/ci/ubifs-tests.sh) | CI job `ubifs` | настоящий UBI/UBIFS (nandsim) с разметкой TR3000 v1 |
 | [`tests/node-list-sort-test.js`](../tests/node-list-sort-test.js) | static checks | состояние проверок и сортировка «Списка узлов» (`common.js`, без браузера) |
 | [`tests/use-server-test.js`](../tests/use-server-test.js) | static checks | «Выбрать» в «Списке узлов»: цели правил и «По умолчанию», разошедшиеся цели, чужие цели не меняются |
