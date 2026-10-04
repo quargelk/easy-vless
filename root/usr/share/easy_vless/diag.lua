@@ -579,4 +579,5 @@ else
 		result = { ok = false, error = "internal", detail = tostring(res):sub(1, 400) }
 	end
 end
-io.write(jsonc.stringify(result) .. "\n")
+-- D.plain: luci.jsonc drops a table that occurs a second time
+io.write(jsonc.stringify(D.plain(result)) .. "\n")

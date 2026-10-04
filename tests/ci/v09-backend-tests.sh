@@ -262,11 +262,35 @@ if [ "$NFT" = 1 ]; then
 	echo "$r" | cut -c1-900
 	check "DNS (running): answers with the DNS plan of the running configuration" '[ "$(jget "$r" @.ok)" = true ] && [ "$(jget "$r" @.running)" = true ] && [ -n "$(jget "$r" @.plan.a.match.action)" ]'
 	check "DNS: what the router cannot see is said, not claimed" 'jget "$r" "@.checks[*].code" | grep -qx client_secure_dns_unknown'
+	# 1.0: the "DNS used" check and the plan describe the same server; the JSON
+	# of the router must carry it in both places (a green "unknown" in LuCI)
+	check "DNS: the 'DNS used' check names its server (kind $(jget "$r" "@.checks[@.id='server'].server.kind"), plan $(jget "$r" @.plan.a.match.server.kind))" \
+		'[ -n "$(jget "$r" "@.checks[@.id=\"server\"].server.kind")" ] && [ "$(jget "$r" "@.checks[@.id=\"server\"].server.kind")" = "$(jget "$r" @.plan.a.match.server.kind)" ]'
+	check "DNS: the 'DNS used' check is ok only with a known server" '[ "$(jget "$r" "@.checks[@.id=\"server\"].code")" != dns_server ] || [ "$(jget "$r" "@.checks[@.id=\"server\"].kind")" != unknown ]'
 	r=$(diag connection)
 	echo "$r" | cut -c1-900
 	check "connection (running): seven items, core running" '[ "$(jget "$r" "@.items[*].id" | tr "\n" " ")" = "core dns nftables tproxy vless routing internet " ] && jget "$r" "@.items[0].checks[*].code" | grep -qx running'
 	check "connection: nftables and TPROXY items carry the forwarding checks" 'jget "$r" "@.items[2].checks[*].code" | grep -qx table_ok && jget "$r" "@.items[3].checks[*].code" | grep -qx policy_ok'
 	check "connection: routing - the running configuration has the four rules" 'jget "$r" "@.items[5].checks[*].code" | grep -qx running_config_ok'
+
+	echo "== a server with a hostile name as the main node (1.0)"
+	# the name of a node comes from a subscription; as the main node it is
+	# written into the shell files the start reads
+	rm -f /tmp/ev10-pwned*
+	NAME_BEFORE=$(uci -q get $CONFIG.$GOOD.remarks)
+	uci set $CONFIG.$GOOD.remarks='x"; touch /tmp/ev10-pwned-q; echo "$(touch /tmp/ev10-pwned-s)`touch /tmp/ev10-pwned-b` *'
+	uci set $CONFIG.@global[0].node="$GOOD"
+	uci commit $CONFIG
+	call start >/dev/null
+	if status_wait running 60; then ok "service running with a server as the main node"; else bad "service not running with the hostile node name"; call status; fi
+	check "the node name was not run by the start" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+	r=$(diag forwarding)
+	check "forwarding is complete with that name (TCP $(jget "$r" @.tcp), UDP $(jget "$r" @.udp))" '[ "$(jget "$r" @.tcp)" = ok ] && [ "$(jget "$r" @.udp)" = ok ] && [ "$(jget "$r" @.status)" != fail ]'
+	uci set $CONFIG.$GOOD.remarks="$NAME_BEFORE"
+	uci set $CONFIG.@global[0].node='main_router'
+	uci commit $CONFIG
+	call start >/dev/null; status_wait running 60 || bad "service not running after the restart"
+	check "nothing was run by the stop and the restart either" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
 
 	echo "== concurrency with the running service"
 	( diag connection >$RACE.1 ) &

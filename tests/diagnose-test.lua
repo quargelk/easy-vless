@@ -236,6 +236,46 @@ d = dns({ settings = { remote_dns_client_ip = "203.0.113.0/24" } })
 check("EDNS Client Subnet shown", find(d.checks, "ecs").subnet == "203.0.113.0/24")
 d = dns({ plan = { a = { certain = false, match = { kind = "final", action = "route", server = remote } } } , lookup = { a = { status = "ok", addresses = { "1.2.3.4" } } } })
 check("uncertain DNS rule (geodata) is marked", find(d.checks, "server").code == "dns_server_uncertain" and find(d.checks, "server").status == "warn")
+-- 1.0: "DNS used" must never be a green "unknown"
+d = dns({ plan = plan({ kind = "unknown", tag = "gone" }) })
+check("DNS rule names a server the configuration does not have: a warning, not ok",
+	find(d.checks, "server").status == "warn" and find(d.checks, "server").code == "dns_server_unknown" and find(d.checks, "server").tag == "gone" and d.status ~= "ok")
+d = dns({ plan = { a = { certain = true, match = { kind = "rule", action = "route" } } } })
+check("DNS rule without a server description: a warning, not ok", find(d.checks, "server").status == "warn" and find(d.checks, "server").code == "dns_server_unknown")
+
+-- 1.0: the JSON encoder of the router writes a table it meets a second time
+-- as null. The DNS answer carries the plan and the checks built from it:
+-- after D.plain no table may occur twice, and nothing may be lost.
+local function shared_tables(v, seen, path, out)
+	if type(v) ~= "table" then return out end
+	if seen[v] then out[#out + 1] = path .. " = " .. seen[v] return out end
+	seen[v] = path
+	for k, x in pairs(v) do shared_tables(x, seen, path .. "." .. tostring(k), out) end
+	return out
+end
+local function same(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+	for k, x in pairs(a) do if not same(x, b[k]) then return false end end
+	for k in pairs(b) do if a[k] == nil then return false end end
+	return true
+end
+local st = { running = true, domain = "example.org", settings = copy(SET), forwarding = { dns_redirect = true },
+	plan = plan(remote, { kind = "rule", action = "route", server = remote }),
+	lookup = { a = { status = "ok", addresses = { "198.18.0.9" }, ms = 30 }, aaaa = { status = "noanswer", addresses = {} } } }
+local answer = D.dns(st)
+answer.plan = st.plan   -- what diag.lua prints for "diag dns"
+check("regression: the DNS answer shares tables between the plan and the checks (" .. #shared_tables(answer, {}, "res", {}) .. ")", #shared_tables(answer, {}, "res", {}) > 0)
+local printed = D.plain(answer)
+local dup = shared_tables(printed, {}, "res", {})
+check("D.plain: no table occurs twice in what is printed" .. (dup[1] and (" - " .. dup[1]) or ""), #dup == 0)
+check("D.plain: nothing is lost or changed", same(printed, answer) and printed ~= answer)
+check("D.plain: the 'DNS used' check keeps its server (" .. tostring(find(printed.checks, "server").server and find(printed.checks, "server").server.kind) .. ")",
+	find(printed.checks, "server").server.kind == "remote" and find(printed.checks, "server").server.address == remote.address
+	and printed.plan.a.match.server.kind == "remote")
+check("D.plain: both checks that show the answered addresses keep them",
+	#find(printed.checks, "resolve").addresses == 1 and #find(printed.checks, "fakedns").addresses == 1)
+check("D.plain: scalars and nil pass through", D.plain(5) == 5 and D.plain("x") == "x" and D.plain(nil) == nil and D.plain(false) == false)
+
 d = D.dns({ running = false, lookup = { a = { status = "ok", addresses = { "93.184.216.34" }, ms = 15 } } })
 check("stopped: the router's own DNS is checked, Easy VLESS DNS is 'off'", d.status == "ok" and find(d.checks, "service").code == "dns_stopped" and find(d.checks, "resolve").code == "resolve_ok_system")
 

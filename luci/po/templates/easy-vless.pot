@@ -1348,6 +1348,10 @@ msgid "not certain: a DNS rule with geodata could apply first."
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not known: the DNS rule for this name uses a DNS server that is not part of the running configuration (%s). Restart Easy VLESS; if it stays, see the log on Main."
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "The running configuration could not be read; which DNS server is used is not known."
 msgstr ""
 

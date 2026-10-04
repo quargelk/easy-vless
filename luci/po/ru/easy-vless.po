@@ -1349,6 +1349,10 @@ msgid "not certain: a DNS rule with geodata could apply first."
 msgstr "не наверняка: раньше может сработать правило DNS с геоданными."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not known: the DNS rule for this name uses a DNS server that is not part of the running configuration (%s). Restart Easy VLESS; if it stays, see the log on Main."
+msgstr "Неизвестно: правило DNS для этого имени использует DNS-сервер, которого нет в работающей конфигурации (%s). Перезапустите Easy VLESS; если не поможет, смотрите журнал на «Главной»."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "The running configuration could not be read; which DNS server is used is not known."
 msgstr "Не удалось прочитать работающую конфигурацию; какой DNS-сервер используется, неизвестно."
 

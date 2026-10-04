@@ -27,6 +27,23 @@ local function add(list, id, status, code, params)
 	return c
 end
 
+-- A copy of a result in which no table occurs twice. The JSON encoder of the
+-- router (luci.jsonc) writes a table it has already seen as null, so a value
+-- shared by two places - the DNS server of the plan and of the "server"
+-- check, the addresses of two checks - would silently lose its second copy
+-- ("DNS used: unknown" next to a green mark). Everything diag.lua prints goes
+-- through this.
+function M.plain(v, depth)
+	if type(v) ~= "table" then return v end
+	depth = depth or 0
+	if depth > 40 then return nil end
+	local out = {}
+	for k, x in pairs(v) do
+		out[k] = M.plain(x, depth + 1)
+	end
+	return out
+end
+
 -- Worst status of a list of checks ("off" only if nothing else is there).
 function M.worst(checks)
 	local best
@@ -397,8 +414,14 @@ function M.dns(st)
 	-- what answers
 	if pa then
 		local kind = pa.action == "predefined" and "blocked" or (pa.server and pa.server.kind or "unknown")
-		add(checks, "server", plan.a.certain == false and "warn" or "ok", plan.a.certain == false and "dns_server_uncertain" or "dns_server",
-			{ kind = kind, server = pa.server, client_subnet = pa.client_subnet })
+		if kind == "unknown" then
+			-- the rule names a DNS server the configuration does not have (or an
+			-- action this module does not know): that is not a working state
+			add(checks, "server", "warn", "dns_server_unknown", { kind = kind, tag = pa.server and pa.server.tag, action = pa.action })
+		else
+			add(checks, "server", plan.a.certain == false and "warn" or "ok", plan.a.certain == false and "dns_server_uncertain" or "dns_server",
+				{ kind = kind, server = pa.server, client_subnet = pa.client_subnet })
+		end
 	else
 		add(checks, "server", "info", "dns_plan_unavailable")
 	end
