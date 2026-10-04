@@ -126,20 +126,36 @@ elseif cmd == "test" then
 	local dir = os.tmpname()
 	os.remove(dir)
 	os.execute("mkdir -p " .. shellquote(dir))
-	local cmds = {}
-	for i, m in ipairs(group.members) do
-		cmds[#cmds + 1] = string.format("curl -s -m 8 -H %s %s > %s 2>/dev/null &",
-			shellquote("Authorization: Bearer " .. secret),
-			shellquote("http://127.0.0.1:" .. port .. "/proxies/" .. urlencode(m.tag) .. "/delay?timeout=5000&url=" .. urlencode(url)),
-			shellquote(dir .. "/" .. i))
+	-- At most BATCH requests at a time (1.0): one curl process per member of
+	-- a large group - a subscription with a hundred servers - is more than a
+	-- small router has memory for. A batch takes 8 s at most; batches are
+	-- started only within the time one rpcd request may take.
+	local BATCH, BUDGET = 16, 20
+	local t0 = os.time()
+	local started = 0
+	while started < #group.members and (started == 0 or os.time() - t0 < BUDGET) do
+		local cmds = {}
+		for i = started + 1, math.min(started + BATCH, #group.members) do
+			local m = group.members[i]
+			cmds[#cmds + 1] = string.format("curl -s -m 8 -H %s %s > %s 2>/dev/null &",
+				shellquote("Authorization: Bearer " .. secret),
+				shellquote("http://127.0.0.1:" .. port .. "/proxies/" .. urlencode(m.tag) .. "/delay?timeout=5000&url=" .. urlencode(url)),
+				shellquote(dir .. "/" .. i))
+		end
+		started = started + #cmds
+		os.execute(table.concat(cmds, "\n") .. "\nwait")
 	end
-	os.execute(table.concat(cmds, "\n") .. "\nwait")
 	local tested = {}
 	for i, m in ipairs(group.members) do
-		local f = io.open(dir .. "/" .. i, "r")
-		local r = f and jsonc.parse(f:read("*a") or "") or nil
-		if f then f:close() end
-		tested[#tested + 1] = { id = m.id, tag = m.tag, delay = r and tonumber(r.delay) or 0, error = r and r.message or nil }
+		if i > started then
+			tested[#tested + 1] = { id = m.id, tag = m.tag, skipped = true,
+				error = "Not tested in this run: the group is large. Run the test again." }
+		else
+			local f = io.open(dir .. "/" .. i, "r")
+			local r = f and jsonc.parse(f:read("*a") or "") or nil
+			if f then f:close() end
+			tested[#tested + 1] = { id = m.id, tag = m.tag, delay = r and tonumber(r.delay) or 0, error = r and r.message or nil }
+		end
 	end
 	os.execute("rm -rf " .. shellquote(dir))
 	local g2, err2 = groups()
