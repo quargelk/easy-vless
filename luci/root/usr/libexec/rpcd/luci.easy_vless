@@ -288,7 +288,10 @@ method_wizard() {
 				return
 			fi
 			uci -q revert ${CONFIG}
-			if ! cp -f "$WIZARD_BACKUP" /etc/config/${CONFIG}; then
+			# through a copy next to the target and a rename: an interruption
+			# never leaves a half-written configuration behind
+			if ! { cp -f "$WIZARD_BACKUP" "${WIZARD_BACKUP}.restore" && mv -f "${WIZARD_BACKUP}.restore" /etc/config/${CONFIG}; }; then
+				rm -f "${WIZARD_BACKUP}.restore"
 				json_add_boolean "ok" 0
 				json_add_string "error" "Cannot restore /etc/config/${CONFIG} from ${WIZARD_BACKUP}."
 				json_dump
