@@ -94,7 +94,8 @@ function targetKind(t) {
 function findings() {
 	return rc.analyze({
 		rules: ev.rules().map(function(r) {
-			return { id: r['.name'], name: r.remarks || r['.name'], target: uci.get(CONFIG, ROUTER, r['.name']) || '', cond: readConditions(r['.name']) };
+			return { id: r['.name'], name: r.remarks || r['.name'], target: uci.get(CONFIG, ROUTER, r['.name']) || '', cond: readConditions(r['.name']),
+				opaque: uci.get(CONFIG, r['.name'], 'invert') == '1' };
 		}),
 		defaultTarget: uci.get(CONFIG, ROUTER, 'default_node') || '_direct',
 		targetKind: targetKind,

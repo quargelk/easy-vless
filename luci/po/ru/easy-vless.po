@@ -793,6 +793,10 @@ msgid "it matches a source port, which is not known in advance"
 msgstr "оно проверяет порт источника, а он заранее неизвестен"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it has a condition Route Explain does not evaluate (%s)"
+msgstr "в нём есть условие, которое Route Explain не вычисляет (%s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "Not intercepted: Client Proxy and Localhost Proxy are both off (Main). The connection leaves the router directly; the rules are not applied."
 msgstr "Не перехватывается: «Проксировать устройства LAN» и «Проксировать сам роутер» выключены («Главная»). Соединение уходит с роутера напрямую; правила не применяются."
 

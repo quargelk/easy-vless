@@ -193,6 +193,8 @@ function unknownText(r) {
 		return _('it matches a source address and none was given (enter one under "More")');
 	case 'source_port_unknown':
 		return _('it matches a source port, which is not known in advance');
+	case 'unsupported':
+		return _('it has a condition Route Explain does not evaluate (%s)').format(r.item);
 	}
 	return r.code;
 }

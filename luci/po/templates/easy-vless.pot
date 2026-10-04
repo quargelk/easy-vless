@@ -792,6 +792,10 @@ msgid "it matches a source port, which is not known in advance"
 msgstr ""
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it has a condition Route Explain does not evaluate (%s)"
+msgstr ""
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "Not intercepted: Client Proxy and Localhost Proxy are both off (Main). The connection leaves the router directly; the rules are not applied."
 msgstr ""
 
