@@ -1025,7 +1025,7 @@ local function curl(url, file, ua, mode, hwid)
 	}
 	if ua and ua ~= "" and ua ~= "curl" then
 		ua = (ua == "easy_vless") and ("easy_vless/" .. api.get_version()) or ua
-		curl_args[#curl_args + 1] = '--user-agent "' .. ua .. '"'
+		curl_args[#curl_args + 1] = "--user-agent " .. api.shellquote(ua)
 	end
 	if hwid == "1" then
 		curl_args[#curl_args + 1] = get_headers()
@@ -1499,6 +1499,30 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 
 		function nodeFilter(node)
 			if node then
+				-- Easy VLESS 1.0: a subscription is untrusted text. Control
+				-- characters (a line break in a name) never reach UCI, and the
+				-- port has to be a port.
+				for k, v in pairs(node) do
+					if type(v) == "string" then
+						node[k] = v:gsub("%c", "")
+					elseif type(v) == "table" then
+						for i, x in ipairs(v) do
+							if type(x) == "string" then v[i] = x:gsub("%c", "") end
+						end
+					end
+				end
+				-- a name is shown in LuCI, where some places insert HTML: no tags
+				if type(node.remarks) == "string" then
+					node.remarks = node.remarks:gsub("[<>]", "")
+				end
+				if type(node.remarks) == "string" and #node.remarks > 200 then
+					-- cut at a character boundary (UTF-8)
+					node.remarks = node.remarks:sub(1, 200):gsub("[\192-\255][\128-\191]*$", "")
+				end
+				local port = tonumber(node.port)
+				if not node.error_msg and node.address and not (port and port >= 1 and port <= 65535 and port == math.floor(port)) then
+					node.error_msg = "invalid port " .. tostring(node.port):sub(1, 20)
+				end
 				if node.error_msg then
 					log(2, i18n.translatef("Discard node: %s, Reason:", node.remarks) .. " " .. node.error_msg)
 				elseif not node.type then
@@ -1684,7 +1708,7 @@ local execute = function()
 				rec.http_code = value.http_code
 				rec.request = (not ua or ua == "" or ua == "curl") and "curl" or ((ua == "HAPP") and "HAPP" or "custom")
 				if return_code ~= 0 then
-					luci.sys.call("rm -f " .. tmp_file)
+					luci.sys.call("rm -f " .. api.shellquote(tmp_file))
 					-- curl 35/51/60/77: TLS handshake / certificate / CA store
 					if return_code == 35 or return_code == 51 or return_code == 60 or return_code == 77 then
 						rec.status = "tls"
@@ -1701,13 +1725,13 @@ local execute = function()
 					return false
 				end
 				local ok = true
-				if luci.sys.call("[ -f " .. tmp_file .. " ] && sed -i -e '/^[ \t]*$/d' -e '/^[ \t]*\r$/d' " .. tmp_file) == 0 then
+				if luci.sys.call("[ -f " .. api.shellquote(tmp_file) .. " ] && sed -i -e '/^[ \t]*$/d' -e '/^[ \t]*\r$/d' " .. api.shellquote(tmp_file)) == 0 then
 					local f = io.open(tmp_file, "r")
 					local stdout = f:read("*all")
 					f:close()
 					local raw_data = api.trim(stdout)
 					local old_md5 = value.md5 or ""
-					local new_md5 = luci.sys.exec("md5sum " .. tmp_file .. " 2>/dev/null | awk '{print $1}'"):gsub("\n", "")
+					local new_md5 = luci.sys.exec("md5sum " .. api.shellquote(tmp_file) .. " 2>/dev/null | awk '{print $1}'"):gsub("\n", "")
 					if not manual_sub and old_md5 == new_md5 then
 						log(1, i18n.translatef("Subscription: [%s] No changes, no update required.", remark))
 						rec.status = "unchanged"
@@ -1727,7 +1751,7 @@ local execute = function()
 				if url_is_local then
 					value.http_code = 0
 				else
-					luci.sys.call("rm -f " .. tmp_file)
+					luci.sys.call("rm -f " .. api.shellquote(tmp_file))
 				end
 				return ok
 			end
@@ -1838,22 +1862,37 @@ local function node_action(action, a1, a2)
 	return { ok = false, error = "action" }
 end
 
+-- The lock of everything that rewrites the node list (an update, an import,
+-- the node list actions of LuCI, backup.lua's import). Easy VLESS 1.0: the
+-- file holds the PID of its owner. A lock whose owner is gone - the process
+-- was killed, or ended with an error - is stale and is taken over, instead
+-- of answering "busy" until the next reboot.
+local SUB_LOCK = api.LOCK_PREFIX .. "_subscribe.lock"
+
+local function lock_stale()
+	local pid = readfile(SUB_LOCK)
+	return pid ~= nil and pid:match("^%d+$") ~= nil and not fs.access("/proc/" .. pid)
+end
+
 local function check_instance(action)
-	local sub_lock = api.LOCK_PREFIX .. "_subscribe.lock"
 	local rule_lock = api.LOCK_PREFIX .. "_rule_update.lock"
 
 	if action == "start" then
 		math.randomseed(os.time() + math.floor(os.clock() * 1000))
 		api.nixio.nanosleep(0, math.random(100, 1000) * 1000000)
-		if fs.access(sub_lock) then
+		if fs.access(SUB_LOCK) and not lock_stale() then
 			log(0, i18n.translatef("[Subscription] instance is running; please try again later.") .. "\n")
 			os.exit(0)
 		else
-			luci.sys.call("touch " .. sub_lock)
+			local f = io.open(SUB_LOCK, "w")
+			if f then
+				f:write(tostring(api.nixio.getpid()) .. "\n")
+				f:close()
+			end
 			uci:revert(c_config)
 		end
 	elseif action == "end" then
-		luci.sys.call("rm -f " .. sub_lock)
+		os.remove(SUB_LOCK)
 		return
 	end
 
@@ -1868,32 +1907,43 @@ end
 if arg[1] then
 	check_instance("start")
 
-	if arg[1] == "start" then
-		log(0, i18n.translatef("Start subscribing..."))
-		xpcall(execute, function(e)
-			log(1, e)
-			log(1, debug.traceback())
-			log(1, i18n.translatef("Error, restoring service."))
-		end)
-		write_sub_records()
-		log(0, i18n.translatef("Subscription complete...") .. "\n")
-	elseif arg[1] == "add" then
-		local f = assert(io.open("/tmp/links.conf", 'r'))
-		local raw = f:read('*all')
-		f:close()
-		parse_link(raw, "1", arg[2])
-		update_node(1)
-		luci.sys.call("rm -f /tmp/links.conf")
-	elseif arg[1] == "truncate" then
-		truncate_nodes(arg[2])
-	elseif arg[1] == "delete" or arg[1] == "delete_all" or arg[1] == "delete_all_plan" or arg[1] == "restore" then
-		local ok, res = pcall(node_action, arg[1], arg[2], arg[3])
-		if not ok then
-			log(1, tostring(res))
-			res = { ok = false, error = "internal", detail = tostring(res) }
+	-- whatever happens below, the lock is released (check_instance "end")
+	local ok, err = xpcall(function()
+		if arg[1] == "start" then
+			log(0, i18n.translatef("Start subscribing..."))
+			xpcall(execute, function(e)
+				log(1, e)
+				log(1, debug.traceback())
+				log(1, i18n.translatef("Error, restoring service."))
+			end)
+			write_sub_records()
+			log(0, i18n.translatef("Subscription complete...") .. "\n")
+		elseif arg[1] == "add" then
+			local f = assert(io.open("/tmp/links.conf", 'r'))
+			local raw = f:read('*all')
+			f:close()
+			parse_link(raw, "1", arg[2])
+			update_node(1)
+			os.remove("/tmp/links.conf")
+		elseif arg[1] == "truncate" then
+			truncate_nodes(arg[2])
+		elseif arg[1] == "delete" or arg[1] == "delete_all" or arg[1] == "delete_all_plan" or arg[1] == "restore" then
+			local ok, res = pcall(node_action, arg[1], arg[2], arg[3])
+			if not ok then
+				log(1, tostring(res))
+				res = { ok = false, error = "internal", detail = tostring(res) }
+			end
+			io.write(jsonStringify(res) .. "\n")
 		end
-		io.write(jsonStringify(res) .. "\n")
-	end
+	end, function(e)
+		return tostring(e) .. "\n" .. debug.traceback()
+	end)
 
 	check_instance("end")
+	if not ok then
+		log(1, tostring(err))
+		-- changes that were not committed do not stay behind for the next run
+		pcall(function() uci:revert(c_config) end)
+		os.exit(1)
+	end
 end

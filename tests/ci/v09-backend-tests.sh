@@ -104,6 +104,42 @@ wizard_routing "$GOOD"
 r=$(call check)
 check "the configuration is valid" '[ "$(jget "$r" @.ok)" = true ]'
 
+echo "== settings and names are data, not shell code (1.0)"
+rm -f /tmp/ev10-pwned*
+SAVED_DOH=$(uci -q get $CONFIG.@global[0].remote_dns_doh)
+SAVED_DNS=$(uci -q get $CONFIG.@global[0].remote_dns)
+SAVED_HOSTS=$(uci -q get $CONFIG.@global[0].dns_hosts)
+uci set $CONFIG.@global[0].remote_dns_doh='https://1.1.1.1/dns-query;touch${IFS}/tmp/ev10-pwned-doh'
+uci set $CONFIG.@global[0].remote_dns="1.1.1.1') os.execute('touch /tmp/ev10-pwned-lua') --"
+uci set $CONFIG.@global[0].dns_hosts='example.invalid 192.0.2.1; touch /tmp/ev10-pwned-hosts'
+uci commit $CONFIG
+r=$(call check)
+check "check with hostile DNS settings: an answer, nothing was run" '[ -n "$(jget "$r" @.code)" ] && [ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+r=$(explain '{"input":"yandex.ru"}')
+check "Route Explain with hostile DNS settings: nothing was run" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+if [ -n "$SAVED_DOH" ]; then uci set $CONFIG.@global[0].remote_dns_doh="$SAVED_DOH"; else uci -q delete $CONFIG.@global[0].remote_dns_doh; fi
+if [ -n "$SAVED_DNS" ]; then uci set $CONFIG.@global[0].remote_dns="$SAVED_DNS"; else uci -q delete $CONFIG.@global[0].remote_dns; fi
+# a line of DNS hosts is read as "<domain> <address>", the rest is ignored
+uci set $CONFIG.@global[0].dns_hosts='example.invalid 192.0.2.1'
+uci commit $CONFIG
+r=$(call check)
+check "DNS hosts: a valid configuration" '[ "$(jget "$r" @.ok)" = true ]'
+check "DNS hosts: the entry is in the generated configuration" 'grep -q "\"example.invalid\": *\"192.0.2.1\"" /tmp/etc/${CONFIG}_check/config.json'
+if [ -n "$SAVED_HOSTS" ]; then uci set $CONFIG.@global[0].dns_hosts="$SAVED_HOSTS"; else uci -q delete $CONFIG.@global[0].dns_hosts; fi
+uci commit $CONFIG
+for bad_id in 'x;touch /tmp/ev10-pwned-id' '$(touch /tmp/ev10-pwned-id)' 'a b' '../x'; do
+	call check "$(req node "$bad_id")" >/dev/null
+	call urltest_node "$(req node "$bad_id")" >/dev/null
+	call group_test "$(req group "$bad_id")" >/dev/null
+	call subscribe "$(req action update id "$bad_id")" >/dev/null
+	call subscribe "$(req action truncate id "$bad_id")" >/dev/null
+done
+check "ids that are not section names are refused, nothing was run" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+r=$(call check "$(req node 'x;y')")
+check "check of an invalid node id: a clear refusal" '[ "$(jget "$r" @.ok)" = false ] && [ "$(jget "$r" @.output)" = "Unknown node." ]'
+r=$(call check)
+check "the configuration is still valid" '[ "$(jget "$r" @.ok)" = true ]'
+
 echo "== Route Explain: stopped - the configuration the saved settings generate"
 r=$(explain '{"input":"www.googlevideo.com"}')
 echo "$r" | cut -c1-600
@@ -262,11 +298,35 @@ if [ "$NFT" = 1 ]; then
 	echo "$r" | cut -c1-900
 	check "DNS (running): answers with the DNS plan of the running configuration" '[ "$(jget "$r" @.ok)" = true ] && [ "$(jget "$r" @.running)" = true ] && [ -n "$(jget "$r" @.plan.a.match.action)" ]'
 	check "DNS: what the router cannot see is said, not claimed" 'jget "$r" "@.checks[*].code" | grep -qx client_secure_dns_unknown'
+	# 1.0: the "DNS used" check and the plan describe the same server; the JSON
+	# of the router must carry it in both places (a green "unknown" in LuCI)
+	check "DNS: the 'DNS used' check names its server (kind $(jget "$r" "@.checks[@.id='server'].server.kind"), plan $(jget "$r" @.plan.a.match.server.kind))" \
+		'[ -n "$(jget "$r" "@.checks[@.id=\"server\"].server.kind")" ] && [ "$(jget "$r" "@.checks[@.id=\"server\"].server.kind")" = "$(jget "$r" @.plan.a.match.server.kind)" ]'
+	check "DNS: the 'DNS used' check is ok only with a known server" '[ "$(jget "$r" "@.checks[@.id=\"server\"].code")" != dns_server ] || [ "$(jget "$r" "@.checks[@.id=\"server\"].kind")" != unknown ]'
 	r=$(diag connection)
 	echo "$r" | cut -c1-900
 	check "connection (running): seven items, core running" '[ "$(jget "$r" "@.items[*].id" | tr "\n" " ")" = "core dns nftables tproxy vless routing internet " ] && jget "$r" "@.items[0].checks[*].code" | grep -qx running'
 	check "connection: nftables and TPROXY items carry the forwarding checks" 'jget "$r" "@.items[2].checks[*].code" | grep -qx table_ok && jget "$r" "@.items[3].checks[*].code" | grep -qx policy_ok'
 	check "connection: routing - the running configuration has the four rules" 'jget "$r" "@.items[5].checks[*].code" | grep -qx running_config_ok'
+
+	echo "== a server with a hostile name as the main node (1.0)"
+	# the name of a node comes from a subscription; as the main node it is
+	# written into the shell files the start reads
+	rm -f /tmp/ev10-pwned*
+	NAME_BEFORE=$(uci -q get $CONFIG.$GOOD.remarks)
+	uci set $CONFIG.$GOOD.remarks='x"; touch /tmp/ev10-pwned-q; echo "$(touch /tmp/ev10-pwned-s)`touch /tmp/ev10-pwned-b` *'
+	uci set $CONFIG.@global[0].node="$GOOD"
+	uci commit $CONFIG
+	call start >/dev/null
+	if status_wait running 60; then ok "service running with a server as the main node"; else bad "service not running with the hostile node name"; call status; fi
+	check "the node name was not run by the start" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
+	r=$(diag forwarding)
+	check "forwarding is complete with that name (TCP $(jget "$r" @.tcp), UDP $(jget "$r" @.udp))" '[ "$(jget "$r" @.tcp)" = ok ] && [ "$(jget "$r" @.udp)" = ok ] && [ "$(jget "$r" @.status)" != fail ]'
+	uci set $CONFIG.$GOOD.remarks="$NAME_BEFORE"
+	uci set $CONFIG.@global[0].node='main_router'
+	uci commit $CONFIG
+	call start >/dev/null; status_wait running 60 || bad "service not running after the restart"
+	check "nothing was run by the stop and the restart either" '[ -z "$(ls /tmp/ev10-pwned* 2>/dev/null)" ]'
 
 	echo "== concurrency with the running service"
 	( diag connection >$RACE.1 ) &

@@ -21,6 +21,8 @@
  * TLS, Reality, uTLS), are exposed.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 let liveGroups = null;      /* Clash API /proxies (groups with members) */
 let liveError = null;
@@ -678,7 +680,7 @@ return view.extend({
 		/* the add button lives in the page toolbar (Add VLESS) */
 		s.renderSectionAdd = function() { return E([]); };
 		s.modaltitle = function(section_id) {
-			return 'VLESS » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New server'));
+			return ev.esc('VLESS » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New server')));
 		};
 		s.filter = function(section_id) {
 			return ev.isServer(section_id);
@@ -767,7 +769,7 @@ return view.extend({
 		o.default = 'tcp';
 		o.textvalue = function(section_id) {
 			const v = this.cfgvalue(section_id) || 'tcp';
-			return { raw: 'TCP', tcp: 'TCP', ws: 'WebSocket', grpc: 'gRPC', httpupgrade: 'HTTPUpgrade' }[v] || v;
+			return { raw: 'TCP', tcp: 'TCP', ws: 'WebSocket', grpc: 'gRPC', httpupgrade: 'HTTPUpgrade' }[v] || ev.esc(v);
 		};
 
 		o = s.option(form.Value, 'ws_host', _('WebSocket Host'));
@@ -879,7 +881,7 @@ return view.extend({
 		ev.compactWhenEmpty(s, _('No subscriptions. If your provider gave you a subscription link (https://...), add it with Add subscription.'));
 		ev.commitOnModalSave(s, _('Subscription'));
 		s.modaltitle = function(section_id) {
-			return _('URL Subscription') + ' » ' + (uci.get(CONFIG, section_id, 'remark') || _('New subscription'));
+			return ev.esc(_('URL Subscription') + ' » ' + (uci.get(CONFIG, section_id, 'remark') || _('New subscription')));
 		};
 		s.handleRemove = function(section_id, ev_) {
 			const name = uci.get(CONFIG, section_id, 'remark') || section_id;
@@ -1033,7 +1035,7 @@ return view.extend({
 		ev.compactWhenEmpty(s, _('No URL Test groups. A group is optional: it switches automatically to the fastest of several servers.'));
 		ev.commitOnModalSave(s, _('URL Test group'));
 		s.modaltitle = function(section_id) {
-			return _('URL Test group') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New group'));
+			return ev.esc(_('URL Test group') + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New group')));
 		};
 		s.filter = function(section_id) {
 			return ev.isGroup(section_id);

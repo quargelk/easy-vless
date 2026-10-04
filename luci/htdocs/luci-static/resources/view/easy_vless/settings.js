@@ -12,6 +12,8 @@
  * util_sing-box.lua). Changes apply on the next (re)start (Save & Apply).
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 
 function portsValidate(section_id, value) {

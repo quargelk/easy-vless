@@ -231,6 +231,27 @@ check "while Easy VLESS starts or stops: refused" '[ "$rc" != 0 ] && [ "$(state 
 reset 0.9.0-r1; mkdir -p "$T/root/var/lock/easy_vless_update.lock"
 out=$(run install v0.9.1 2>/dev/null); rc=$?
 check "a second update while one runs: refused as busy, the running one keeps its lock" '[ "$rc" != 0 ] && echo "$out" | grep -q "\"error\":\"busy\"" && [ -d "$T/root/var/lock/easy_vless_update.lock" ] && [ "$(ver)" = "0.9.0-r1" ]'
+# 1.0: the lock names its process; one left behind by a killed update does not block
+reset 0.9.0-r1; mkdir -p "$T/root/var/lock/easy_vless_update.lock"; echo $$ > "$T/root/var/lock/easy_vless_update.lock/pid"
+out=$(run install v0.9.1 2>/dev/null); rc=$?
+check "lock of a live update: refused as busy" '[ "$rc" != 0 ] && echo "$out" | grep -q "\"error\":\"busy\"" && [ "$(ver)" = "0.9.0-r1" ]'
+run busy >/dev/null 2>&1; rc=$?
+check "busy: exit status 0 while an update runs" '[ "$rc" = 0 ]'
+reset 0.9.0-r1; mkdir -p "$T/root/var/lock/easy_vless_update.lock"; echo 4194999 > "$T/root/var/lock/easy_vless_update.lock/pid"
+run busy >/dev/null 2>&1; rc=$?
+check "lock of a process that is gone: not busy, the lock is removed" '[ "$rc" != 0 ] && [ ! -d "$T/root/var/lock/easy_vless_update.lock" ]'
+mkdir -p "$T/root/var/lock/easy_vless_update.lock"; echo 4194999 > "$T/root/var/lock/easy_vless_update.lock/pid"
+run install v0.9.1 >/dev/null 2>&1; rc=$?
+check "lock of a process that is gone: the update runs" '[ "$rc" = 0 ] && [ "$(state phase)" = done ] && [ "$(ver)" = "0.9.1-r1" ] && [ ! -d "$T/root/var/lock/easy_vless_update.lock" ]'
+# an update that was cut off does not stay "Installing…" for ever
+reset 0.9.0-r1; mkdir -p "$T/root/var/run/easy_vless_update"
+printf '{"phase":"install","status":"running","message":"installing Easy VLESS 0.9.1-r1","time":1}\n' > "$T/root/var/run/easy_vless_update/state.json"
+out=$(run state)
+check "a 'running' state without a running update is reported as interrupted" 'echo "$out" | grep -q "\"phase\":\"interrupted\"" && echo "$out" | grep -q "\"status\":\"failed\"" && echo "$out" | grep -q "\"busy\":false" && state message | grep -q "interrupted"'
+mkdir -p "$T/root/var/lock/easy_vless_update.lock"; echo $$ > "$T/root/var/lock/easy_vless_update.lock/pid"
+printf '{"phase":"install","status":"running","message":"installing Easy VLESS 0.9.1-r1","time":1}\n' > "$T/root/var/run/easy_vless_update/state.json"
+out=$(run state)
+check "a 'running' state of a running update is left alone" 'echo "$out" | grep -q "\"phase\":\"install\"" && echo "$out" | grep -q "\"busy\":true"'
 
 # ---------------------------------------------------------------- install: failure after the change -> rollback
 reset 0.9.0-r1; before=$(cfg_sum); touch "$T/install_fails"

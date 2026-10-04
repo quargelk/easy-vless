@@ -7,7 +7,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=0.9.1
+PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -271,9 +271,6 @@ define Package/easy-vless/install
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/easy-vless $(1)/etc/uci-defaults/easy-vless
 
-	$(INSTALL_DIR) $(1)/usr/share/ucitrack
-	$(INSTALL_DATA) ./root/usr/share/ucitrack/easy-vless.json $(1)/usr/share/ucitrack/easy-vless.json
-
 	# sysupgrade keeps the persisted subscription HWID (/etc/easy_vless/hwid)
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) ./root/lib/upgrade/keep.d/easy-vless $(1)/lib/upgrade/keep.d/easy-vless
@@ -308,8 +305,9 @@ endef
 define Package/easy-vless/postrm
 #!/bin/sh
 # After a real removal only (on an upgrade the new app.sh is already in
-# place): drop the fw4 include and the ucitrack entry added by
-# /etc/uci-defaults/easy-vless, so no stale reference is left behind.
+# place): drop the fw4 include added by /etc/uci-defaults/easy-vless and a
+# ucitrack entry left by a version before 1.0, so no stale reference is
+# left behind.
 [ -n "$${IPKG_INSTROOT}" ] || [ -e /usr/share/easy_vless/app.sh ] || {
 	uci -q delete firewall.easy_vless && uci -q commit firewall
 	if [ -e /etc/config/ucitrack ]; then

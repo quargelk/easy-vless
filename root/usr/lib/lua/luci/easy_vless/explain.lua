@@ -527,6 +527,32 @@ local function match_destination(rule, q, ctx, dns)
 	return any_of(res)
 end
 
+-- What a rule of the generated configuration may contain. The generator
+-- (util_sing-box.lua) writes only these; a rule with anything else - a
+-- logical rule, a condition of a newer sing-box, a hand-made configuration -
+-- is not evaluated as if that part were not there: it is "unknown".
+local function set(list)
+	local t = {}
+	for _, k in ipairs(list) do t[k] = true end
+	return t
+end
+local ROUTE_CONDITIONS = set({ "inbound", "network", "protocol", "port", "port_range", "source_ip_cidr", "source_ip_is_private",
+	"source_port", "source_port_range", "domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr", "ip_is_private", "rule_set" })
+local DNS_CONDITIONS = set({ "query_type", "inbound", "domain", "domain_suffix", "domain_keyword", "domain_regex", "rule_set" })
+-- not conditions: what the rule does when it matches
+local RULE_OPTIONS = set({ "action", "outbound", "invert", "server", "disable_cache", "rewrite_ttl", "client_subnet", "rcode",
+	"strategy", "method", "no_drop", "sniffer", "timeout", "override_address", "override_port", "udp_timeout" })
+
+-- The first key of a rule that is neither a condition this module evaluates
+-- nor an option (sorted: the same answer every time), or nil.
+local function unsupported_key(rule, conditions)
+	local bad
+	for k in pairs(rule) do
+		if type(k) == "string" and not conditions[k] and not RULE_OPTIONS[k] and (bad == nil or k < bad) then bad = k end
+	end
+	return bad
+end
+
 -- Evaluate one route rule. Returns result (yes / no / unknown), reasons:
 -- for "yes" the conditions that matched, for "no" the first group that did
 -- not, for "unknown" what could not be computed.
@@ -546,6 +572,10 @@ function M.match_rule(rule, q, ctx)
 		end
 	end
 
+	local extra = unsupported_key(rule, ROUTE_CONDITIONS)
+	if extra then
+		group(UNKNOWN, { code = "unsupported", item = extra })
+	end
 	if has(rule.inbound) then
 		local ok = false
 		for _, t in ipairs(list(rule.inbound)) do
@@ -790,6 +820,12 @@ function M.dns(config, meta, host, qtype)
 			end
 			if rule.invert then
 				if result == YES then result = NO elseif result == NO then result = YES why = { { code = "invert" } } end
+			end
+			-- a condition this module does not evaluate: the rule may apply or not
+			local extra = unsupported_key(rule, DNS_CONDITIONS)
+			if extra then
+				result = UNKNOWN
+				why = { { code = "unsupported", item = extra } }
 			end
 		end
 		local entry = { kind = "rule", index = i, action = rule.action or "route", reasons = why,

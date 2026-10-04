@@ -288,5 +288,24 @@ i = X.interception(with({ client_proxy = "0" }), { network = "tcp", port = 443 }
 check("interception: only the router's own traffic", i.intercepted == "yes" and i.lan == false and i.router == true)
 check("ports_cover: lists and ranges", X.ports_cover("80,443,1000:2000", 1500) and X.ports_cover("1:65535", 7) and not X.ports_cover("80,443", 81) and X.ports_cover("", 5))
 
+-- 1.0: a rule with something this module does not evaluate is "unknown", never a silent match
+do
+	local cfg = { outbounds = { { type = "direct", tag = "direct" }, { type = "vless", tag = "srv" } },
+		route = { final = "direct", rules = {
+			{ action = "route", outbound = "srv", type = "logical", mode = "and", rules = { { network = "udp" }, { port = 443 } } },
+			{ action = "route", outbound = "srv", domain_suffix = { "example.org" } } } },
+		dns = { servers = { { tag = "direct", type = "udp", server = "192.0.2.53" }, { tag = "remote", type = "udp", server = "1.1.1.1", detour = "srv" } },
+			final = "direct", rules = { { action = "route", server = "remote", ip_accept_any = true } } } }
+	local res = X.route(cfg, {}, { host = "example.org", port = 443, network = "tcp", inbound = "tproxy" })
+	check("a logical rule is not taken for a rule without conditions: unknown, the answer is not certain",
+		res.certain == false and #res.possible == 1 and res.possible[1].reasons[1].code == "unsupported" and res.possible[1].reasons[1].item == "mode")
+	check("the rule after it is still evaluated", res.match.kind == "rule" and res.match.index == 2 and res.match.target.kind == "server")
+	local d = X.dns(cfg, {}, "example.org", "A")
+	check("a DNS rule with a condition that is not evaluated: unknown, DNS not certain",
+		d.certain == false and #d.possible == 1 and d.possible[1].reasons[1].code == "unsupported" and d.possible[1].reasons[1].item == "ip_accept_any" and d.match.kind == "final")
+	local y, why = X.match_rule({ action = "route", outbound = "srv", network = { "tcp" }, clash_mode = "global" }, { network = "udp" })
+	check("a rule that does not match for a known reason stays 'no' (the unknown part cannot change that)", y == X.NO and why[1].code == "network")
+end
+
 print(string.format("\n===== Route Explain: %d passed, %d failed =====", pass, fail))
 os.exit(fail == 0 and 0 or 1)

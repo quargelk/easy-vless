@@ -61,20 +61,54 @@ stop() {
 	unset_lock
 }
 
+config_sum() {
+	md5sum /etc/config/${CONFIG} 2>/dev/null | cut -d ' ' -f 1
+}
+
+# The subscription lock holds the PID of its owner (subscribe.lua); a lock
+# left behind by a process that is gone is not waited for.
+sub_lock_held() {
+	local pid
+	[ -f "$1" ] || return 1
+	pid=$(cat "$1" 2>/dev/null)
+	case "$pid" in
+		""|*[!0-9]*) return 0 ;;
+	esac
+	[ -d "/proc/$pid" ]
+}
+
 restart() {
+	local again=${LOCK_FILE_DIR}/${CONFIG}_restart_again mode=$1 sum
 	set_lock
-	[ $? == 1 ] && log_i18n 0 "The script is already running, do not run it again. Exit." && exit 0
+	if [ $? == 1 ]; then
+		# A restart is running already. It may have read the configuration
+		# before the change this request is about, so the request is not
+		# simply dropped (1.0): the running restart finds this note when it
+		# has finished and runs once more if the configuration is not the one
+		# it started with.
+		touch "$again"
+		log_i18n 0 "The script is already running, do not run it again. Exit."
+		exit 0
+	fi
 	rule_lock=${LOCK_FILE_DIR}/${CONFIG}_rule_update.lock
 	sub_lock=${LOCK_FILE_DIR}/${CONFIG}_subscribe.lock
 	for i in $(seq 1 300); do
-		if [ ! -f "$rule_lock" ] && [ ! -f "$sub_lock" ]; then
+		if [ ! -f "$rule_lock" ] && ! sub_lock_held "$sub_lock"; then
 			break
 		fi
 		sleep 2
 	done
 	rm -f "$rule_lock" "$sub_lock"
-	$APP_FILE stop
-	$APP_FILE start $1
+	while :; do
+		rm -f "$again"
+		sum=$(config_sum)
+		$APP_FILE stop
+		$APP_FILE start $mode
+		[ -f "$again" ] && [ "$(config_sum)" != "$sum" ] || break
+		# "boot" (subscriptions updated on boot) belongs to the first run only
+		mode=""
+	done
+	rm -f "$again"
 	unset_lock
 }
 

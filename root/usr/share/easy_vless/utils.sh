@@ -38,10 +38,10 @@ EV_CLASH_API_DEFAULT_PORT="9095"
 # "easy_vless/" process, which also hit the config generator
 # (luci/easy_vless/util_sing-box.lua) of a check running at that moment:
 # "Killed", an empty config.json, "decode config ...: EOF". They overlap in
-# practice because every uci commit from LuCI (Save, Save & Start, Check
-# config) also reloads the service in the background: ucitrack
-# (/usr/share/ucitrack/easy-vless.json) -> procd -> init.d reload. These
-# operations therefore take this lock and wait for each other.
+# practice: a restart after a subscription update, a WAN reconnect (hotplug)
+# or a scheduled task runs at any time, and up to 0.9 every uci commit from
+# LuCI reloaded the service in the background as well (ucitrack; removed in
+# 1.0). These operations therefore take this lock and wait for each other.
 EV_OP_LOCK_FILE="${LOCK_PATH}/${CONFIG}_op.lock"
 EV_OP_LOCK_WAIT=90
 
@@ -63,11 +63,27 @@ config_t_get() {
 	echo "${ret:=${3}}"
 }
 
+# eval_set_val name=value ...: set the (caller's local) variables. Easy VLESS
+# 1.0: the value is assigned, never evaluated - the arguments carry settings
+# and node options ("app.sh check" passes them as they are in UCI), and
+# "eval name=value" ran whatever followed a ";" or stood in "$( )". A value
+# written by app_acl.lua comes as name="value": the quotes are dropped.
 eval_set_val() {
-	for i in $@; do
-		for j in $i; do
-			eval $j
-		done
+	local __ev_arg __ev_key __ev_val
+	for __ev_arg in $@; do
+		case "$__ev_arg" in
+			*=*) ;;
+			*) continue ;;
+		esac
+		__ev_key=${__ev_arg%%=*}
+		__ev_val=${__ev_arg#*=}
+		case "$__ev_key" in
+			""|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+		esac
+		case "$__ev_val" in
+			\"*\") __ev_val=${__ev_val#\"}; __ev_val=${__ev_val%\"} ;;
+		esac
+		eval "$__ev_key=\$__ev_val"
 	done
 }
 
@@ -162,6 +178,17 @@ lua_api() {
 	echo $(lua -e "local api = require 'luci.easy_vless.api' print(api.${func})")
 }
 
+# lua_api_arg <function> <argument>: api.<function>(<argument>). The argument
+# (a setting, an address from the configuration) is handed over as data, in
+# the environment - never as part of the Lua source, where a quote in it
+# would end the string and the rest would run as code.
+lua_api_arg() {
+	case "$1" in
+		""|*[!A-Za-z0-9_]*) echo ""; return ;;
+	esac
+	echo $(EV_LUA_ARG="$2" lua -e "local api = require 'luci.easy_vless.api' print(api.$1(os.getenv('EV_LUA_ARG') or ''))")
+}
+
 check_host() {
 	local f=${1}
 	a=$(echo $f | grep "\/")
@@ -189,6 +216,11 @@ get_geoip() {
 	mkdir -p ${geo_output_path}
 	local geoip_code="$1"
 	local geoip_type_flag=""
+	# the codes come from a rule ("geoip:xx" lines, joined with commas) and
+	# become part of a file name: letters, digits and , - _ . ! @ only
+	case "$geoip_code" in
+		""|*[!A-Za-z0-9,_.!@-]*|*..*) echo ""; return ;;
+	esac
 	local output_path="${geo_output_path}/geoip-${geoip_code}-$2"
 	[ ! -s "${output_path}" ] && {
 		local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"

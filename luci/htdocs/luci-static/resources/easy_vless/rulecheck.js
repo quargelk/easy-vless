@@ -24,7 +24,13 @@
  *   input = {
  *     rules: [{ id, name, target, cond: { domain_resource: [ids],
  *               domain_list, ip_list, network, port, source, sourcePort,
- *               protocol, inbound } }]     in priority order
+ *               protocol, inbound },
+ *               opaque }]                  in priority order; opaque = the
+ *                                          rule is inverted (option invert,
+ *                                          not offered by the editor): what
+ *                                          it matches cannot be compared
+ *                                          with other rules, so nothing is
+ *                                          claimed about it or because of it
  *     defaultTarget,
  *     targetKind: function(id) -> 'direct' | 'block' | 'default' | 'server'
  *                 | 'group' | 'empty_group' | null (does not exist)
@@ -193,7 +199,7 @@ return baseclass.extend({
 	analyze: function(input) {
 		const out = [];
 		const rules = (input.rules || []).map(function(r) {
-			return { id: r.id, name: r.name || r.id, target: r.target || '', n: norm(r.cond), cond: r.cond };
+			return { id: r.id, name: r.name || r.id, target: r.target || '', n: norm(r.cond), cond: r.cond, opaque: !!r.opaque };
 		});
 		const kindOf = input.targetKind || function() { return 'server'; };
 		const effective = function(t) { return t == '_default' ? (input.defaultTarget || '_direct') : t; };
@@ -214,7 +220,7 @@ return baseclass.extend({
 				if (input.resourceOk && !input.resourceOk(id))
 					add('error', 'resource_missing', { resource: id });
 			});
-			const bad = contradiction(r.cond);
+			const bad = r.opaque ? null : contradiction(r.cond);
 			if (bad)
 				add('warn', bad.code, bad);
 
@@ -229,6 +235,9 @@ return baseclass.extend({
 				add('error', 'target_empty_group', { target: r.target });
 			else if (r.target == '_default' && defKind == null)
 				add('error', 'target_default_missing');
+
+			if (r.opaque)
+				return;
 
 			/* an earlier active rule that matches everything this one matches */
 			const above = active.filter(function(a) { return covers(a.n, r.n); })[0];

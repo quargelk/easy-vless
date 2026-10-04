@@ -1,13 +1,20 @@
 #!/bin/sh
 
+# Easy VLESS 1.0: a saved configuration is applied by Easy VLESS itself
+# (Save & Apply, Save & Start: sing-box check first, then the restart with a
+# result). Up to 0.9 a ucitrack entry also restarted the service in the
+# background after every "uci commit" of LuCI - also after a plain Save,
+# without the check and without a result. Drop what older versions added:
+# the entry of the old /etc/config/ucitrack and the trigger the ucitrack
+# service still holds (its file /usr/share/ucitrack/easy-vless.json is no
+# longer part of the package).
 if [ -e "/etc/config/ucitrack" ]; then
-	uci -q batch <<-EOF
-		delete ucitrack.@easy_vless[-1]
-		add ucitrack easy_vless
-		set ucitrack.@easy_vless[-1].init=easy_vless
-		commit ucitrack
-EOF
+	while uci -q get ucitrack.@easy_vless[-1] >/dev/null; do
+		uci -q delete ucitrack.@easy_vless[-1]
+	done
+	uci -q commit ucitrack
 fi
+[ -x /etc/init.d/ucitrack ] && ubus -t 2 list service >/dev/null 2>&1 && /etc/init.d/ucitrack restart >/dev/null 2>&1
 
 uci -q batch <<-EOF
 	delete firewall.easy_vless

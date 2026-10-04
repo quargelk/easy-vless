@@ -229,5 +229,25 @@ for _, kind in ipairs({ "nodes", "rules", "subscriptions" }) do
 	check("round trip " .. kind .. ": every exported entry imports", r.ok and #r.skipped == 0 and #r.add == #T.export(sections, kind).items)
 end
 
+-- 1.0: what an imported rule carries into command lines and file names
+do
+	local function rule(o)
+		o.remarks = o.remarks or "R"
+		return T.check_import({ format = T.EXPORT_FORMAT, version = 1, kind = "rules", items = { o } }, {}, "rules")
+	end
+	local r = rule({ domain_list = "geosite:google\ndomain:example.org\ngeosite:category-ads@cn" })
+	check("import rule: ordinary geosite codes are accepted", r.ok and #r.add == 1)
+	r = rule({ domain_list = "geosite:$(reboot)" })
+	check("import rule: a geosite code with shell characters is refused", r.ok and #r.add == 0 and r.skipped[1].reason == "invalid" and r.skipped[1].field == "domain_list")
+	r = rule({ domain_list = "geosite:../../etc/passwd" })
+	check("import rule: a geosite code that is a path is refused", #r.add == 0 and r.skipped[1].field == "domain_list")
+	r = rule({ ip_list = "10.0.0.0/8\n2001:db8::/32\n192.0.2.1\ngeoip:private\n# a comment\ngeoip:ru" })
+	check("import rule: addresses, networks and geoip codes are accepted", r.ok and #r.add == 1)
+	r = rule({ ip_list = "192.0.2.1 } ; flush ruleset" })
+	check("import rule: an IP line with anything else in it is refused", #r.add == 0 and r.skipped[1].field == "ip_list")
+	r = rule({ ip_list = "geoip:`reboot`" })
+	check("import rule: a geoip code with shell characters is refused", #r.add == 0 and r.skipped[1].field == "ip_list")
+end
+
 print(string.format("\n===== backup and import: %d passed, %d failed =====", pass, fail))
 os.exit(fail == 0 and 0 or 1)

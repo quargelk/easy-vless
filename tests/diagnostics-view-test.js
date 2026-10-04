@@ -152,6 +152,12 @@ while ((m = reId.exec(diag))) ids[m[1]] = true;
 const noTitle = Object.keys(ids).filter(function(id) { return view.checkTitle(id) === id && id != 'nftables'; });
 check('every check has a title' + (noTitle.length ? ' - missing: ' + noTitle.join(', ') : ''), noTitle.length == 0);
 
+/* 1.0: an unknown DNS server is said as such, with what to do - never a bare "unknown" */
+check('"DNS used" unknown: the missing server is named, with what to do',
+	/not part of the running configuration \(gone\)/.test(view.checkText({ code: 'dns_server_unknown', tag: 'gone' })) && /Restart/.test(view.checkText({ code: 'dns_server_unknown', tag: 'gone' })));
+check('"DNS used" ok: the server and its route are shown',
+	/^Remote DNS \(udp:\/\/1\.1\.1\.1:53\) — through the proxy: VLESS: Finland #1$/.test(view.checkText({ code: 'dns_server', kind: 'remote', server: sample.server })));
+
 /* failing checks say what to do */
 [ 'table_missing', 'policy_rule_missing', 'redirect_rule_missing', 'lan_jump_missing', 'upstream_unreachable', 'dns_not_forwarded', 'enabled_not_running', 'dangling', 'internet_failed' ].forEach(function(c) {
 	const t = view.checkText(Object.assign({ code: c, which: 'remote', via: 'Finland', through: 'proxy' }, sample));

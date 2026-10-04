@@ -100,7 +100,12 @@ local function sections()
 end
 
 local function busy()
-	if fs.access(SUB_LOCK) then return "subscription" end
+	if fs.access(SUB_LOCK) then
+		-- the lock names its owner (subscribe.lua); one left behind by a
+		-- process that is gone does not block
+		local pid = (readfile(SUB_LOCK) or ""):match("^%s*(%d+)%s*$")
+		if not pid or fs.access("/proc/" .. pid) then return "subscription" end
+	end
 	if fs.access(INIT_LOCK) then return "service" end
 	return nil
 end
@@ -246,7 +251,7 @@ local function cmd_import_apply(data, kind)
 	end
 	local b = busy()
 	if b then return { ok = false, error = { code = "busy", what = b } } end
-	call("touch " .. q(SUB_LOCK))
+	writefile(SUB_LOCK, tostring(api.nixio.getpid()) .. "\n")
 	local ok, e = pcall(function()
 		api.uci:revert(CONFIG)
 		local router

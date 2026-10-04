@@ -133,6 +133,17 @@ check('Default points to a missing node: error for Default and for rules that fo
 f = analyze([], 'egrp');
 check('Default is an empty group', f[0].code == 'default_empty_group');
 
+/* ---- 1.0: an inverted rule (option invert) matches what its conditions do NOT match ---- */
+const inverted = function(id, target, cond) { const r = rule(id, target, cond); r.opaque = true; return r; };
+f = analyze([ inverted('NOTRU', '_direct', { domain_resource: [ 'russia' ] }), rule('B', 'srv', { domain_resource: [ 'russia' ] }) ]);
+check('an inverted rule above does not "cover" the same conditions below (they match the opposite)', of(f, 'B') == '' && of(f, 'NOTRU') == '');
+f = analyze([ rule('ALL', 'srv', {}), inverted('NOTUDP', '_direct', { network: 'udp' }) ]);
+check('nothing is claimed about an inverted rule below a match-all rule', of(f, 'NOTUDP') == '');
+f = analyze([ inverted('X', '_direct', { network: 'udp', protocol: 'tls' }) ]);
+check('contradictory conditions of an inverted rule are not "never applies" (inverted, they always apply)', of(f, 'X') == '');
+f = analyze([ inverted('X', 'gone', { network: 'udp' }) ]);
+check('a missing target of an inverted rule is still an error', of(f, 'X') == 'error:target_missing');
+
 /* ---- helper ---- */
 check('covers(): port lists and ranges', rc.covers({ port: '1000:2000' }, { port: '1500', network: 'tcp' }) && !rc.covers({ port: '1000:2000' }, { port: '999' }) && !rc.covers({ port: '80' }, {}));
 check('ipCovers(): CIDR containment', rc.ipCovers('192.168.0.0/16', '192.168.5.0/24') && !rc.ipCovers('192.168.5.0/24', '192.168.0.0/16') && rc.ipCovers('geoip:ru', 'geoip:ru') && !rc.ipCovers('geoip:ru', '5.255.255.70'));

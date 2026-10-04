@@ -21,6 +21,8 @@
  * result. A refused file leaves everything as it was.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 const KINDS = [ 'nodes', 'rules', 'subscriptions' ];
 
@@ -120,6 +122,7 @@ function updateHeadline(st) {
 	case 'refused': return _('The update was not started.');
 	case 'rolled_back': return _('The update failed and was rolled back: Easy VLESS %s is installed again, with the saved configuration.').format(st.version || '');
 	case 'rollback_failed': return _('The update failed, and the previous version could not be put back completely.');
+	case 'interrupted': return _('The update was interrupted before it finished.');
 	}
 	return st.phase || '';
 }
@@ -143,7 +146,7 @@ function updateError(res) {
 }
 
 function updateFinished(st) {
-	return !st || [ 'done', 'refused', 'rolled_back', 'rollback_failed' ].indexOf(st.phase) > -1 || st.status == 'failed';
+	return !st || [ 'done', 'refused', 'rolled_back', 'rollback_failed', 'interrupted' ].indexOf(st.phase) > -1 || st.status == 'failed';
 }
 
 return view.extend({

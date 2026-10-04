@@ -22,6 +22,8 @@
  * All requests are read-only: nothing is started, stopped or saved.
  */
 
+/* strings are text, not HTML (see ev.E in common.js) */
+const E = ev.E;
 const CONFIG = ev.CONFIG;
 
 const MARK = {
@@ -191,6 +193,8 @@ function unknownText(r) {
 		return _('it matches a source address and none was given (enter one under "More")');
 	case 'source_port_unknown':
 		return _('it matches a source port, which is not known in advance');
+	case 'unsupported':
+		return _('it has a condition Route Explain does not evaluate (%s)').format(r.item);
 	}
 	return r.code;
 }
@@ -438,6 +442,7 @@ function checkText(c) {
 	case 'dns_server': return (c.kind == 'blocked' ? _('A DNS rule answers empty.') : dnsServerText(c.server)) +
 		(c.server && dnsRouteText(c.server) && c.kind != 'fakeip' ? ' — ' + dnsRouteText(c.server) : '');
 	case 'dns_server_uncertain': return dnsServerText(c.server) + ' — ' + _('not certain: a DNS rule with geodata could apply first.');
+	case 'dns_server_unknown': return _('Not known: the DNS rule for this name uses a DNS server that is not part of the running configuration (%s). Restart Easy VLESS; if it stays, see the log on Main.').format(c.tag || c.action || '?');
 	case 'dns_plan_unavailable': return _('The running configuration could not be read; which DNS server is used is not known.');
 	case 'fake_ok': return _('In use for this name, as configured.');
 	case 'fake_off': return _('Off (Settings → DNS).');

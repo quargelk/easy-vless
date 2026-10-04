@@ -3,6 +3,7 @@
 #
 #   update.sh check            is a newer release available? (JSON; cached)
 #   update.sh state            progress / result of the last installation (JSON)
+#   update.sh busy             exit status 0 while an installation runs
 #   update.sh install <tag>    download, verify and install that release
 #
 # Nothing is ever installed on its own: "install" runs only when the user
@@ -164,7 +165,24 @@ write_state() { # phase status [message] [extra json fields]
 
 cleanup() {
 	[ -n "$WORK" ] && rm -rf "${WORK:?}"
+	rm -f "$LOCK_DIR/pid"
 	rmdir "$LOCK_DIR" 2>/dev/null
+}
+
+# lock_held: an installation is running. The lock names its process (1.0); a
+# lock whose process is gone - it was killed - is removed, instead of
+# answering "an update is already running" until the next reboot.
+lock_held() {
+	local pid
+	[ -d "$LOCK_DIR" ] || return 1
+	pid=$(cat "$LOCK_DIR/pid" 2>/dev/null)
+	case "$pid" in
+		""|*[!0-9]*) return 0 ;;
+	esac
+	[ -d "/proc/$pid" ] && return 0
+	rm -f "$LOCK_DIR/pid"
+	rmdir "$LOCK_DIR" 2>/dev/null
+	return 1
 }
 
 # ---------------------------------------------------------------- check
@@ -187,7 +205,7 @@ do_check() {
 		fi
 	fi
 	fail() {
-		printf '{"ok":false,"error":"%s","detail":"%s","current":"%s","time":%s}\n' "$1" "$(json_escape "$2")" "${cur:-}" "$now" > "$CHECK_FILE.tmp" \
+		printf '{"ok":false,"error":"%s","detail":"%s","current":"%s","time":%s}\n' "$1" "$(json_escape "$2")" "$(json_escape "${cur:-}")" "$now" > "$CHECK_FILE.tmp" \
 			&& mv -f "$CHECK_FILE.tmp" "$CHECK_FILE"
 		cat "$CHECK_FILE"
 	}
@@ -210,7 +228,12 @@ do_check() {
 
 do_state() {
 	local busy=false
-	[ -d "$LOCK_DIR" ] && busy=true
+	lock_held && busy=true
+	# a state that still says "running" although nothing runs: the update was
+	# cut off (killed). Say so, instead of showing "Installing…" for ever.
+	if [ "$busy" = false ] && grep -q '"status":"running"' "$STATE_FILE" 2>/dev/null; then
+		write_state interrupted failed "the update was interrupted before it finished - check the installed version (Check for updates) and run the update again; the update log is ${LOG_FILE}" "\"version\":\"$(json_escape "$(installed_version)")\""
+	fi
 	printf '{"ok":true,"busy":%s,"state":%s,"check":%s,"log":"%s"}\n' "$busy" \
 		"$( [ -s "$STATE_FILE" ] && cat "$STATE_FILE" || echo null )" \
 		"$( [ -s "$CHECK_FILE" ] && cat "$CHECK_FILE" || echo null )" \
@@ -299,12 +322,13 @@ do_install() {
 		return 1
 	fi
 	mkdir -p "${LOCK_DIR%/*}"
-	if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+	if lock_held || ! mkdir "$LOCK_DIR" 2>/dev/null; then
 		echo '{"ok":false,"error":"busy"}'
 		return 1
 	fi
+	echo $$ > "$LOCK_DIR/pid"
 	trap cleanup EXIT
-	trap 'exit 1' INT TERM
+	trap 'write_state interrupted failed "the update was interrupted before it finished - check the installed version (Check for updates) and run the update again; the update log is ${LOG_FILE}"; exit 1' INT TERM
 	mkdir -p "${LOG_FILE%/*}"
 	: > "$LOG_FILE"
 	log "update to ${tag} requested (installed: ${cur})"
@@ -389,6 +413,7 @@ do_install() {
 case "${1:-}" in
 	check) do_check "${2:-}" ;;
 	state) do_state ;;
+	busy) lock_held ;;
 	install) do_install "${2:-}" ;;
 	*)
 		echo '{"ok":false,"error":"action"}'

@@ -315,27 +315,64 @@ n0=$(stops)
 race_check "check during app.sh stop" "/usr/share/easy_vless/app.sh stop"
 check "the competing stop did run" '[ "$(stops)" -gt "$n0" ]'
 
-# The same through the real trigger: rpcd uci commit (as LuCI's Save) ->
-# config.change -> procd/ucitrack -> /etc/init.d/easy_vless reload.
+# 1.0: a commit through rpcd (LuCI's Save) does not restart the service any
+# more. Up to 0.9 ucitrack reloaded it in the background after every commit:
+# a plain Save restarted a running service without the sing-box check and
+# without a result. The trigger is gone - also the one an installed 0.9
+# registered (uci-defaults restarts the ucitrack service).
+check "no ucitrack trigger file is installed" '[ ! -e /usr/share/ucitrack/easy-vless.json ]'
 if ubus -t 2 list service >/dev/null 2>&1 && [ -x /etc/init.d/ucitrack ]; then
 	/etc/init.d/easy_vless enabled || /etc/init.d/easy_vless enable
 	/etc/init.d/ucitrack restart >/dev/null 2>&1
 	sleep 1
-	check "ucitrack registered the easy_vless reload trigger" 'ubus call service list "{\"name\":\"ucitrack\",\"verbose\":true}" | grep -q "easy_vless"'
+	check "ucitrack has no easy_vless reload trigger" '! ubus call service list "{\"name\":\"ucitrack\",\"verbose\":true}" | grep -q "easy_vless"'
 	n0=$(stops)
-	race_check "check during the reload after a LuCI commit" "ubus call uci commit '{\"config\":\"$CONFIG\"}'" 8
-	i=0; while [ "$(stops)" -le "$n0" ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i + 1)); done
-	check "the commit reloaded the service (ucitrack), after the check" '[ "$(stops)" -gt "$n0" ]'
-	status_wait stopped 60 || true
-	# later tests (and the LuCI end-to-end test) commit through rpcd: no
-	# background reloads there
-	/etc/init.d/ucitrack stop >/dev/null 2>&1
+	ubus call uci commit "{\"config\":\"$CONFIG\"}" >/dev/null 2>&1
+	uci set $CONFIG.@global[0].ev_test_marker=1
+	ubus call uci commit "{\"config\":\"$CONFIG\"}" >/dev/null 2>&1
+	sleep 8
+	check "a commit through rpcd (LuCI Save) does not restart the service" '[ "$(stops)" = "$n0" ]'
+	uci -q delete $CONFIG.@global[0].ev_test_marker; uci commit $CONFIG
 elif [ "$NFT" = 0 ]; then
 	SKIP=$((SKIP + 1))
-	echo "SKIP: check during the reload after a LuCI commit - procd (ucitrack triggers) does not run under QEMU user emulation ($(uname -m)); tested on x86-64 (the app.sh stop case above runs here)"
+	echo "SKIP: no restart after a LuCI commit - procd (ucitrack triggers) does not run under QEMU user emulation ($(uname -m)); tested on x86-64"
 else
-	bad "procd service object or /etc/init.d/ucitrack missing: the commit -> reload path cannot be tested"
+	bad "procd service object or /etc/init.d/ucitrack missing: the commit path cannot be tested"
 fi
+
+# A restart requested while another restart runs is not lost (1.0): the
+# running one starts over when the configuration changed meanwhile.
+AGAIN=/var/lock/${CONFIG}_restart_again
+rm -f "$AGAIN"
+( exec 999>/var/lock/$CONFIG.lock; flock -x 999; exec sleep 6 ) &
+ph=$!
+sleep 1
+/etc/init.d/easy_vless restart >/dev/null 2>&1
+check "a restart during a running restart leaves a note for it" '[ -f "$AGAIN" ]'
+kill "$ph" 2>/dev/null; wait "$ph" 2>/dev/null
+rm -f /var/lock/$CONFIG.lock
+n0=$(stops)
+/etc/init.d/easy_vless restart >/dev/null 2>&1
+check "a restart without a changed configuration runs once and clears the note" '[ "$(( $(stops) - n0 ))" = 1 ] && [ ! -f "$AGAIN" ] && [ ! -f /var/lock/$CONFIG.lock ]'
+# the note arrives while the restart runs and the configuration changed: one
+# more run. The restart is held at its first step (the operation lock), so
+# the order does not depend on timing.
+n0=$(stops)
+( exec 7>>/var/lock/${CONFIG}_op.lock; flock -x 7; exec sleep 6 ) &
+ph=$!
+sleep 1
+/etc/init.d/easy_vless restart >/dev/null 2>&1 &
+pr=$!
+sleep 2
+uci set $CONFIG.@global[0].ev_test_marker=1; uci commit $CONFIG
+/etc/init.d/easy_vless restart >/dev/null 2>&1
+check "the second request left its note while the first restart waits" '[ -f "$AGAIN" ]'
+wait "$ph" 2>/dev/null
+wait "$pr" 2>/dev/null
+n1=$(stops)
+uci -q delete $CONFIG.@global[0].ev_test_marker; uci commit $CONFIG
+check "a change during a restart is applied by exactly one more run ($((n1 - n0)) runs)" '[ "$((n1 - n0))" = 2 ] && [ ! -f "$AGAIN" ] && [ ! -f /var/lock/$CONFIG.lock ]'
+status_wait stopped 60 || true
 
 # Server Test while the service is stopped: its temporary instance was
 # killed by the stop in 0.7.1.

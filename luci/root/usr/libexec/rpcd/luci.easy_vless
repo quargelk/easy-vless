@@ -28,6 +28,15 @@ run_detached() {
 	( "$@" ) </dev/null >/dev/null 2>&1 &
 }
 
+# A UCI section id as it arrives in a request (node, subscription, group):
+# letters, digits and "_" only - it becomes part of uci and command arguments.
+valid_id() {
+	case "$1" in
+		""|*[!A-Za-z0-9_]*) return 1 ;;
+	esac
+	return 0
+}
+
 count_nodes() {
 	uci -q show ${CONFIG} | grep -c "=nodes$"
 }
@@ -72,7 +81,16 @@ method_status() {
 method_check() {
 	local node="$1" out code
 	[ -n "$node" ] || node=$(uci -q get ${CONFIG}.@global[0].node)
-	out=$($APP check $node 2>&1)
+	if [ -n "$node" ] && ! valid_id "$node"; then
+		json_init
+		json_add_int "code" 1
+		json_add_boolean "ok" 0
+		json_add_string "node" ""
+		json_add_string "output" "Unknown node."
+		json_dump
+		return
+	fi
+	out=$($APP check "$node" 2>&1)
 	code=$?
 	json_init
 	json_add_int "code" "$code"
@@ -137,13 +155,15 @@ method_urltest_node() {
 		return
 	fi
 	[ -n "$url" ] && kind=url
+	# test.sh answers "Unknown server." for an id that is not a node
+	valid_id "$node" || node=""
 	out=$($TEST url_test_json "$node" "$url")
 	case "$out" in
 		"{"*) ;;
 		*) json_init; json_add_boolean "ok" 0; json_add_string "error" "The test did not return a result."; json_dump; return ;;
 	esac
 	echo "$out"
-	[ "$(uci -q get ${CONFIG}.${node})" = "nodes" ] && $TEST test_store "$node" "$kind" "$out"
+	[ -n "$node" ] && [ "$(uci -q get "${CONFIG}.${node}")" = "nodes" ] && $TEST test_store "$node" "$kind" "$out"
 }
 
 # test <action> [kind] [nodes] (0.8.0): the Server Test / URL Test queue of
@@ -179,7 +199,11 @@ method_group_test() {
 		echo '{"ok":false,"error":"easy-vless-sing-box is not installed."}'
 		return
 	fi
-	url=$(uci -q get ${CONFIG}.${group}.urltest_url)
+	if ! valid_id "$group"; then
+		echo '{"ok":false,"error":"Unknown group."}'
+		return
+	fi
+	url=$(uci -q get "${CONFIG}.${group}.urltest_url")
 	lua "$CLASH_API" test "$group" "$url"
 }
 
@@ -264,7 +288,10 @@ method_wizard() {
 				return
 			fi
 			uci -q revert ${CONFIG}
-			if ! cp -f "$WIZARD_BACKUP" /etc/config/${CONFIG}; then
+			# through a copy next to the target and a rename: an interruption
+			# never leaves a half-written configuration behind
+			if ! { cp -f "$WIZARD_BACKUP" "${WIZARD_BACKUP}.restore" && mv -f "${WIZARD_BACKUP}.restore" /etc/config/${CONFIG}; }; then
+				rm -f "${WIZARD_BACKUP}.restore"
 				json_add_boolean "ok" 0
 				json_add_string "error" "Cannot restore /etc/config/${CONFIG} from ${WIZARD_BACKUP}."
 				json_dump
@@ -321,6 +348,16 @@ method_import() {
 			return
 		;;
 	esac
+	# the import changes the node list like an update does (subscribe.lua
+	# would leave without a word while its lock is taken): say why
+	if sub_busy; then
+		json_add_int "code" 1
+		json_add_int "found" 0
+		json_add_int "added" 0
+		json_add_string "output" "A subscription update is running; try again when it has finished."
+		json_dump
+		return
+	fi
 	found=$(printf '%s\n' "$links" | grep -c '://')
 	before=$(count_nodes)
 	local ids_before=$(node_ids)
@@ -364,8 +401,20 @@ method_import() {
 
 # An update runs: subscribe.lua holds its lock, or has just been started and
 # not taken it yet (it takes it after loading and a short random delay).
+# The lock holds the PID of its owner (1.0): one left behind by a process
+# that is gone (killed, ended with an error) is removed here instead of
+# answering "busy" until the next reboot.
 sub_busy() {
-	[ -f /var/lock/${CONFIG}_subscribe.lock ] || busybox pgrep -f "subscribe\.lua start" >/dev/null 2>&1
+	local lock=/var/lock/${CONFIG}_subscribe.lock pid
+	if [ -f "$lock" ]; then
+		pid=$(cat "$lock" 2>/dev/null)
+		case "$pid" in
+			""|*[!0-9]*) return 0 ;;
+		esac
+		[ -d "/proc/$pid" ] && return 0
+		rm -f "$lock"
+	fi
+	busybox pgrep -f "subscribe\.lua start" >/dev/null 2>&1
 }
 
 # Subscriptions (config subscribe_list): "update" downloads and parses the
@@ -374,6 +423,12 @@ sub_busy() {
 method_subscribe() {
 	local action="$1" id="$2" remark
 	json_init
+	if [ -n "$id" ] && ! valid_id "$id"; then
+		json_add_int "code" 1
+		json_add_string "output" "Unknown subscription."
+		json_dump
+		return
+	fi
 	case "$action" in
 		update)
 			[ -n "$id" ] || id=all
@@ -604,7 +659,7 @@ method_update() {
 					return
 				;;
 			esac
-			if [ -d "/var/lock/${CONFIG}_update.lock" ]; then
+			if sh "$UPDATE" busy 2>/dev/null; then
 				echo '{"ok":false,"error":"busy"}'
 				return
 			fi

@@ -259,10 +259,10 @@ run_xray() {
 			;;
 			doh)
 				local _doh_url=$(echo $remote_dns_doh | awk -F ',' '{print $1}')
-				local _doh_host_port=$(lua_api "get_domain_from_url(\"${_doh_url}\")")
+				local _doh_host_port=$(lua_api_arg get_domain_from_url "${_doh_url}")
 				#local _doh_host_port=$(echo $_doh_url | sed "s/https:\/\///g" | awk -F '/' '{print $1}')
 				local _doh_host=$(echo $_doh_host_port | awk -F ':' '{print $1}')
-				local is_ip=$(lua_api "is_ip(\"${_doh_host}\")")
+				local is_ip=$(lua_api_arg is_ip "${_doh_host}")
 				local _doh_port=$(echo $_doh_host_port | awk -F ':' '{print $2}')
 				[ -z "${_doh_port}" ] && _doh_port=443
 				local _doh_bootstrap=$(echo $remote_dns_doh | cut -d ',' -sf 2-)
@@ -420,10 +420,10 @@ run_singbox() {
 			doh|\
 			http3)
 				local _doh_url=$(echo $remote_dns_doh | awk -F ',' '{print $1}')
-				local _doh_host_port=$(lua_api "get_domain_from_url(\"${_doh_url}\")")
+				local _doh_host_port=$(lua_api_arg get_domain_from_url "${_doh_url}")
 				#local _doh_host_port=$(echo $_doh_url | sed "s/https:\/\///g" | awk -F '/' '{print $1}')
 				local _doh_host=$(echo $_doh_host_port | awk -F ':' '{print $1}')
-				local is_ip=$(lua_api "is_ip(\"${_doh_host}\")")
+				local is_ip=$(lua_api_arg is_ip "${_doh_host}")
 				local _doh_port=$(echo $_doh_host_port | awk -F ':' '{print $2}')
 				[ -z "${_doh_port}" ] && _doh_port=443
 				local _doh_bootstrap=$(echo $remote_dns_doh | cut -d ',' -sf 2-)
@@ -726,12 +726,19 @@ clean_crontab() {
 	rm -rf /tmp/lock/${CONFIG}_tasks.lock
 }
 
-start_crontab() {
-	if [ "$ENABLED_DEFAULT_ACL" == 1 ] || [ "$ENABLED_ACLS" == 1 ]; then
-		start_daemon=$(config_n_get @global_delay[0] start_daemon 0)
-		[ "$start_daemon" = "1" ] && { $APP_PATH/monitor.sh > /dev/null 2>&1 & }
-	fi
+# A number taken from the configuration for a crontab line: digits only (the
+# line is run by cron as root; a restored backup must not add a command).
+cron_num() {
+	case "$1" in
+		""|*[!0-9]*) return 1 ;;
+	esac
+	return 0
+}
 
+start_crontab() {
+	# PassWall2's monitor.sh (process watchdog) and tasks.sh (update loop) are
+	# not part of Easy VLESS; nothing is started for start_daemon or for the
+	# week mode "8".
 	[ -f "/tmp/lock/${CONFIG}_cron.lock" ] && {
 		rm -rf "/tmp/lock/${CONFIG}_cron.lock"
 		log_i18n 0 "The task is currently running automatically as a scheduled task; no reconfiguration of the scheduled task is required."
@@ -747,9 +754,9 @@ start_crontab() {
 
 	stop_week_mode=$(config_n_get @global_delay[0] stop_week_mode)
 	stop_time_mode=$(config_n_get @global_delay[0] stop_time_mode)
-	if [ -n "$stop_week_mode" ]; then
-		stop_time_hh=$(echo $stop_time_mode | awk -F ':' '{print $1}')
-		stop_time_mm=$(echo $stop_time_mode | awk -F ':' '{print $2}')
+	stop_time_hh=$(echo $stop_time_mode | awk -F ':' '{print $1}')
+	stop_time_mm=$(echo $stop_time_mode | awk -F ':' '{print $2}')
+	if cron_num "$stop_week_mode" && cron_num "$stop_time_hh" && cron_num "$stop_time_mm"; then
 		local t="$stop_time_mm $stop_time_hh * * $stop_week_mode"
 		[ "$stop_week_mode" = "7" ] && t="$stop_time_mm $stop_time_hh * * *"
 		echo "$t /etc/init.d/$CONFIG stop > /dev/null 2>&1 &" >>/etc/crontabs/root
@@ -758,9 +765,9 @@ start_crontab() {
 
 	start_week_mode=$(config_n_get @global_delay[0] start_week_mode)
 	start_time_mode=$(config_n_get @global_delay[0] start_time_mode)
-	if [ -n "$start_week_mode" ]; then
-		start_time_hh=$(echo $start_time_mode | awk -F ':' '{print $1}')
-		start_time_mm=$(echo $start_time_mode | awk -F ':' '{print $2}')
+	start_time_hh=$(echo $start_time_mode | awk -F ':' '{print $1}')
+	start_time_mm=$(echo $start_time_mode | awk -F ':' '{print $2}')
+	if cron_num "$start_week_mode" && cron_num "$start_time_hh" && cron_num "$start_time_mm"; then
 		local t="$start_time_mm $start_time_hh * * $start_week_mode"
 		[ "$start_week_mode" = "7" ] && t="$start_time_mm $start_time_hh * * *"
 		echo "$t /etc/init.d/$CONFIG start > /dev/null 2>&1 &" >>/etc/crontabs/root
@@ -769,17 +776,15 @@ start_crontab() {
 
 	restart_week_mode=$(config_n_get @global_delay[0] restart_week_mode)
 	restart_time_mode=$(config_n_get @global_delay[0] restart_time_mode)
-	if [ -n "$restart_week_mode" ]; then
-		restart_time_hh=$(echo $restart_time_mode | awk -F ':' '{print $1}')
-		restart_time_mm=$(echo $restart_time_mode | awk -F ':' '{print $2}')
+	restart_time_hh=$(echo $restart_time_mode | awk -F ':' '{print $1}')
+	restart_time_mm=$(echo $restart_time_mode | awk -F ':' '{print $2}')
+	if cron_num "$restart_week_mode" && cron_num "$restart_time_hh" && cron_num "$restart_time_mm"; then
 		local t="$restart_time_mm $restart_time_hh * * $restart_week_mode"
 		[ "$restart_week_mode" = "7" ] && t="$restart_time_mm $restart_time_hh * * *"
-		if [ "$restart_week_mode" = "8" ]; then
-			update_loop=1
-		else
+		if [ "$restart_week_mode" != "8" ]; then
 			echo "$t /etc/init.d/$CONFIG restart > /dev/null 2>&1 &" >>/etc/crontabs/root
+			log_i18n 0 "Scheduled tasks: Auto restart service."
 		fi
-		log_i18n 0 "Scheduled tasks: Auto restart service."
 	fi
 
 	# rule_update.lua (PassWall2's live GitHub geoip.dat/geosite.dat
@@ -796,9 +801,10 @@ start_crontab() {
 	mkdir -p $TMP_SUB_PATH
 	for item in $(uci show ${CONFIG} | grep "=subscribe_list" | cut -d '.' -sf 2 | cut -d '=' -sf 1); do
 		sub_update_week_mode=$(config_n_get $item update_week_mode)
-		if [ -n "$sub_update_week_mode" ]; then
+		sub_update_time_mode=$(config_n_get $item update_time_mode)
+		# both become a file name here and a crontab line below
+		if cron_num "$sub_update_week_mode" && cron_num "$(echo "$sub_update_time_mode" | tr -d ':')"; then
 			remark=$(config_n_get $item remark)
-			sub_update_time_mode=$(config_n_get $item update_time_mode)
 			echo "$item" >> $TMP_SUB_PATH/${sub_update_week_mode}_${sub_update_time_mode}
 			log_i18n 0 "Scheduled tasks: Auto update [%s] subscription." "${remark}"
 		fi
@@ -830,21 +836,14 @@ start_crontab() {
 			sub_update_time_mm=$(echo $sub_update_time_mode | awk -F ':' '{print $2}')
 			local t="$sub_update_time_mm $sub_update_time_hh * * $sub_update_week_mode"
 			[ "$sub_update_week_mode" = "7" ] && t="$sub_update_time_mm $sub_update_time_hh * * *"
-			if [ "$sub_update_week_mode" = "8" ]; then
-				update_loop=1
-			else
+			if [ "$sub_update_week_mode" != "8" ]; then
 				echo "$t lua $APP_PATH/subscribe.lua start $cfgids cron > /dev/null 2>&1 &" >>/etc/crontabs/root
 			fi
 		done
 		rm -rf $TMP_SUB_PATH
 	}
 
-	if [ "$ENABLED_DEFAULT_ACL" == 1 ] || [ "$ENABLED_ACLS" == 1 ]; then
-		[ "$update_loop" = "1" ] && {
-			$APP_PATH/tasks.sh > /dev/null 2>&1 &
-			log_i18n 0 "Auto updates: Starts a cyclical update process."
-		}
-	else
+	if [ "$ENABLED_DEFAULT_ACL" != 1 ] && [ "$ENABLED_ACLS" != 1 ]; then
 		log_i18n 0 "Running in no proxy mode, it only allows scheduled tasks for starting and stopping services."
 	fi
 
@@ -1215,7 +1214,7 @@ check_routing_config() {
 			rfile=""
 			case "$rid" in
 				*[!A-Za-z0-9_-]*) ;;
-				*) rfile=$(lua_api "resource_file(\"${rid}\")") ;;
+				*) rfile=$(lua_api_arg resource_file "${rid}") ;;
 			esac
 			if [ -z "$rfile" ] || [ ! -s "$rfile" ]; then
 				EV_ROUTING_ERROR="Rule [$(config_n_get $rule remarks $rule)] uses the domain resource '${rid}', which is not installed (${rfile:-unknown resource id}). Reinstall easy-vless or remove the resource from the rule."
@@ -1267,22 +1266,28 @@ check_config() {
 	rm -rf "$check_dir"
 	mkdir -p "$check_dir" "$TMP_PATH"
 	get_direct_dns
+	# "<server> <port>" of Remote DNS; the setting is data for parseDNS, its
+	# answer is split here and never evaluated
 	local dns_server dns_port
-	eval $(lua -e "local api = require 'luci.easy_vless.api'
-		local s, p = api.parseDNS('$(config_n_get @global[0] remote_dns 1.1.1.1:53)')
-		print(string.format('dns_server=%q dns_port=%q', s or '', p or ''))")
+	dns_server=$(lua_api_arg parseDNS "$(config_n_get @global[0] remote_dns 1.1.1.1:53)")
+	dns_port=${dns_server##* }
+	dns_server=${dns_server%% *}
+	[ "$dns_port" = "$dns_server" ] && dns_port=53
 	TCP_PROXY_WAY=$(config_n_get @global_forwarding[0] tcp_proxy_way tproxy)
 	_error_log_file=""
+	# every argument is one name=value word (as app_acl.lua writes them for a
+	# start): a setting with white space in it must not become a second argument
+	global_word() { config_n_get @global[0] "$1" "$2" | tr -d ' \t\r\n'; }
 	run_singbox flag=ev_check node=${node} no_run=1 \
 		redir_port=1041 dns_listen_port=1042 \
-		direct_dns_query_strategy=$(config_n_get @global[0] direct_dns_query_strategy UseIP) \
-		remote_dns_protocol=$(config_n_get @global[0] remote_dns_protocol tcp) \
+		direct_dns_query_strategy=$(global_word direct_dns_query_strategy UseIP) \
+		remote_dns_protocol=$(global_word remote_dns_protocol tcp) \
 		remote_dns_tcp_server=${dns_server} remote_dns_tcp_port=${dns_port} \
 		remote_dns_udp_server=${dns_server} remote_dns_udp_port=${dns_port} \
-		remote_dns_doh=$(config_n_get @global[0] remote_dns_doh https://1.1.1.1/dns-query) \
-		remote_dns_detour=$(config_n_get @global[0] remote_dns_detour remote) \
-		remote_dns_query_strategy=$(config_n_get @global[0] remote_dns_query_strategy UseIPv4) \
-		remote_fakedns=$(config_n_get @global[0] remote_fakedns 0) \
+		remote_dns_doh=$(global_word remote_dns_doh https://1.1.1.1/dns-query) \
+		remote_dns_detour=$(global_word remote_dns_detour remote) \
+		remote_dns_query_strategy=$(global_word remote_dns_query_strategy UseIPv4) \
+		remote_fakedns=$(global_word remote_fakedns 0) \
 		config_file=${check_dir}/config.json log_file=${check_dir}/check.log loglevel=warn
 	local status=$?
 	if [ "$status" = 0 ]; then
@@ -1397,7 +1402,7 @@ get_direct_dns() {
 	local direct_dns_protocol=$(config_n_get @global[0] direct_dns_protocol)
 	if [ "${direct_dns_protocol}" = "tcp" ] || [ "${direct_dns_protocol}" = "udp" ]; then
 		local DIRECT_DNS=$(config_n_get @global[0] direct_dns)
-		local result=$(lua_api "parseDNS(\"${DIRECT_DNS}\")")
+		local result=$(lua_api_arg parseDNS "${DIRECT_DNS}")
 		[ "${result}" != "nil" ] && {
 			DIRECT_DNS_PROTO="${direct_dns_protocol}"
 			DIRECT_DNS_SERVER=$(echo ${result} | awk '{print $1}')

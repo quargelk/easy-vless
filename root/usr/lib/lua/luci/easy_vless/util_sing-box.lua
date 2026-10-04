@@ -31,6 +31,16 @@ local GEO_VAR = {
 	TO_SRS_PATH = CACHE_PATH .. "/singbox_srss/"
 }
 
+-- one argument of a shell command line, whatever it contains
+local function shellquote(v)
+	return "'" .. tostring(v):gsub("'", "'\\''") .. "'"
+end
+
+-- a geodata code: letters, digits and - _ . ! @ (attributes as in "google@cn")
+function valid_geo_code(code)
+	return type(code) == "string" and code:match("^[%w_%-%.!@]+$") ~= nil and not code:find("..", 1, true)
+end
+
 function check_geoview()
 	if not GEO_VAR.OK then
 		-- Only get once
@@ -56,11 +66,18 @@ function geo_convert_srs(var)
 	local geo_path = var["geo_path"]
 	local prefix = var["prefix"]
 	local rule_name = var["rule_name"]
+	-- the code of a "geosite:" / "geoip:" entry comes from a rule (which may
+	-- come from an imported file): it names an entry of the .dat file and
+	-- becomes part of a file name and of a command line
+	if not valid_geo_code(rule_name) then
+		api.log(0, string.format("  - %s:%s is not a valid geodata code, skipped", tostring(prefix), tostring(rule_name):sub(1, 40)))
+		return
+	end
 	local output_srs_file = GEO_VAR.TO_SRS_PATH .. prefix .. "-" .. rule_name .. ".srs"
 	local bin = api.finded_com("geoview")
 	if not fs.access(output_srs_file) and bin then
-		local cmd = string.format("%q -type %q -action convert -input %q -list %q -output %q -lowmem=true",
-			bin, prefix, geo_path, rule_name, output_srs_file)
+		local cmd = string.format("%s -type %s -action convert -input %s -list %s -output %s -lowmem=true",
+			shellquote(bin), shellquote(prefix), shellquote(geo_path), shellquote(rule_name), shellquote(output_srs_file))
 		sys.call(cmd)
 		local status = fs.access(output_srs_file) and "success." or "failed!"
 		if status == "failed!" then
@@ -831,7 +848,12 @@ function gen_config(var)
 							bind_interface = node.iface,
 							routing_mark = 255,
 						}
-						sys.call(string.format("mkdir -p %s && touch %s/%s", api.TMP_IFACE_PATH, api.TMP_IFACE_PATH, node.iface))
+						-- an interface name, not a path and not shell text
+						if node.iface:match("^[%w_%.%-]+$") then
+							fs.mkdirr(api.TMP_IFACE_PATH)
+							local f = io.open(api.TMP_IFACE_PATH .. "/" .. node.iface, "a")
+							if f then f:close() end
+						end
 					end
 				else
 					if tag == "default" then
@@ -1203,9 +1225,10 @@ function gen_config(var)
 				predefined = {}
 			}
 			string.gsub(dns_host, '[^' .. "\r\n" .. ']+', function(w)
-				local host = sys.exec(string.format("echo -n $(echo %s | awk -F ' ' '{print $1}')", w))
-				local key = sys.exec(string.format("echo -n $(echo %s | awk -F ' ' '{print $2}')", w))
-				if host ~= "" and key ~= "" then
+				-- "<domain> <address>": the first two words of the line (the
+				-- line is a setting, it is never handed to a shell)
+				local host, key = w:match("^%s*(%S+)%s+(%S+)")
+				if host and key then
 					hosts_server.predefined[host] = key
 					table.insert(domains, host)
 				end

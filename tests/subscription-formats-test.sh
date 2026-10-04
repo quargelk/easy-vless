@@ -169,11 +169,40 @@ run "EVTEST del" url-multi-reordered.txt
 eq "after restore: nodes" "$(count_of 'EVTEST del')" 4
 [ -n "$(node_by 'EVTEST del' 'URL 2 renamed')" ] && ok "restored node imported again" || bad "restored node missing"
 
+echo "----- 11. a subscription is untrusted text (1.0) -----"
+rm -f /tmp/evtest-pwned
+run "EVTEST hostile" url-hostile.txt
+eq "hostile: only the nodes with a real port are imported" "$(count_of 'EVTEST hostile')" 2
+[ -n "$(node_by 'EVTEST hostile' 'Hostile good')" ] && ok "hostile: the valid node is imported" || bad "hostile: the valid node is missing"
+logged "invalid port" && ok "hostile: the refused port is reported in the log" || bad "hostile: no 'invalid port' in the log"
+n=$(nodes_of "EVTEST hostile" | while read x; do [ "$(get "$x" address)" = 198.51.100.74 ] && echo "$x"; done | head -1)
+eq "hostile: the line break is removed from the node name" "$(get "$n" remarks)" 'Linebreak $(touch /tmp/evtest-pwned)'
+eq "hostile: the name stays one line in UCI" "$(get "$n" remarks | wc -l)" 1
+[ ! -e /tmp/evtest-pwned ] && ok "hostile: nothing of the node name was run" || bad "hostile: the node name was executed"
+
+echo "----- 12. a lock left behind by a dead process does not block (1.0) -----"
+wait_lock
+# a PID that cannot exist: the owner of this lock is gone
+echo 4194999 > /var/lock/${CONFIG}_subscribe.lock
+out=$(lua $SUB delete_all_plan 2>/dev/null)
+eq "stale lock: the action runs" "$(jget "$out" '@.ok')" true
+[ ! -f /var/lock/${CONFIG}_subscribe.lock ] && ok "stale lock: released afterwards" || { bad "stale lock: still there"; rm -f /var/lock/${CONFIG}_subscribe.lock; }
+# a live owner still blocks: no answer, nothing changed
+echo $$ > /var/lock/${CONFIG}_subscribe.lock
+out=$(lua $SUB delete_all_plan 2>/dev/null)
+eq "lock of a live process: the action is refused" "$out" ""
+[ "$(cat /var/lock/${CONFIG}_subscribe.lock 2>/dev/null)" = "$$" ] && ok "lock of a live process: left alone" || bad "lock of a live process was taken over"
+rm -f /var/lock/${CONFIG}_subscribe.lock
+# an action that fails still releases the lock (0.9: it stayed until a reboot)
+rm -f /tmp/links.conf
+lua $SUB add "" >/dev/null 2>&1
+[ ! -f /var/lock/${CONFIG}_subscribe.lock ] && ok "failed action: the lock is released" || { bad "failed action left the lock behind"; rm -f /var/lock/${CONFIG}_subscribe.lock; }
+
 echo "----- manual nodes untouched -----"
 eq "manual nodes fingerprint" "$(manual_fp)" "$MANUAL_BEFORE"
 
 echo "----- cleanup -----"
-for g in "EVTEST url1" "EVTEST url3" "EVTEST url3b" "EVTEST sb1" "EVTEST sb1b" "EVTEST sbm" "EVTEST arr" "EVTEST uns" "EVTEST zero" "EVTEST del"; do
+for g in "EVTEST url1" "EVTEST url3" "EVTEST url3b" "EVTEST sb1" "EVTEST sb1b" "EVTEST sbm" "EVTEST arr" "EVTEST uns" "EVTEST zero" "EVTEST del" "EVTEST hostile"; do
 	for n in $(nodes_of "$g"); do uci -q delete $CONFIG.$n; done
 	s=$(sub_id "$g"); [ -n "$s" ] && uci -q delete $CONFIG.$s
 done

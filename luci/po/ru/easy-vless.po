@@ -793,6 +793,10 @@ msgid "it matches a source port, which is not known in advance"
 msgstr "оно проверяет порт источника, а он заранее неизвестен"
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "it has a condition Route Explain does not evaluate (%s)"
+msgstr "в нём есть условие, которое Route Explain не вычисляет (%s)"
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "Not intercepted: Client Proxy and Localhost Proxy are both off (Main). The connection leaves the router directly; the rules are not applied."
 msgstr "Не перехватывается: «Проксировать устройства LAN» и «Проксировать сам роутер» выключены («Главная»). Соединение уходит с роутера напрямую; правила не применяются."
 
@@ -1347,6 +1351,10 @@ msgstr "Правило DNS отвечает пустым ответом."
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "not certain: a DNS rule with geodata could apply first."
 msgstr "не наверняка: раньше может сработать правило DNS с геоданными."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
+msgid "Not known: the DNS rule for this name uses a DNS server that is not part of the running configuration (%s). Restart Easy VLESS; if it stays, see the log on Main."
+msgstr "Неизвестно: правило DNS для этого имени использует DNS-сервер, которого нет в работающей конфигурации (%s). Перезапустите Easy VLESS; если не поможет, смотрите журнал на «Главной»."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/diagnostics.js
 msgid "The running configuration could not be read; which DNS server is used is not known."
@@ -2024,6 +2032,10 @@ msgstr "Обновление не удалось и было откачено: �
 #: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
 msgid "The update failed, and the previous version could not be put back completely."
 msgstr "Обновление не удалось, и прежнюю версию не получилось вернуть полностью."
+
+#: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
+msgid "The update was interrupted before it finished."
+msgstr "Обновление было прервано до завершения."
 
 #: luci/htdocs/luci-static/resources/view/easy_vless/maintenance.js
 msgid "GitHub could not be reached over HTTPS, so it is not known whether there is a newer version. Check the internet connection and the router time."

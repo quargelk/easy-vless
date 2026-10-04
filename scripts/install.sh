@@ -4,7 +4,7 @@
 # https://github.com/quargelk/easy-vless
 #
 # A plain, readable shell script: download it, read it, then run it as root.
-#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.9.1/install.sh
+#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.0.0/install.sh
 #   sh /tmp/install.sh --check          # only check the router, install nothing
 #   sh /tmp/install.sh                  # install
 #
@@ -55,8 +55,8 @@
 
 set -u
 
-EV_VERSION="0.9.1-r1"
-EV_TAG="v0.9.1"
+EV_VERSION="1.0.0-r1"
+EV_TAG="v1.0.0"
 EV_REPO="quargelk/easy-vless"
 EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 # Release date of this installer: a system clock before this date is certainly
@@ -1308,9 +1308,40 @@ fi
 OLD_EV="$(installed_version easy-vless)"
 say "installing easy-vless, easy-vless-sing-box, luci-app-easy-vless ${EV_VERSION}${OLD_EV:+ (installed now: ${OLD_EV})} ..."
 IPKS=""
-for p in $EV_PACKAGES; do IPKS="$IPKS $PKGDIR/${p}_${EV_VERSION}_all.ipk"; done
-# shellcheck disable=SC2086
-opkg install $IPKS || die "opkg install of the Easy VLESS packages failed"
+WAS_INSTALLED=""
+for p in $EV_PACKAGES; do
+	IPKS="$IPKS $PKGDIR/${p}_${EV_VERSION}_all.ipk"
+	[ -n "$(installed_version "$p")" ] && WAS_INSTALLED="$WAS_INSTALLED $p"
+done
+# fault injection for the partial installation test (tests/ci/installer-
+# scenarios.sh): only the first package gets installed, then opkg "fails"
+ev_install() {
+	if [ "${EV_TEST_FAIL_EV_INSTALL:-0}" = "1" ]; then
+		# shellcheck disable=SC2086
+		set -- $IPKS
+		opkg install "$1"
+		return 1
+	fi
+	# shellcheck disable=SC2086
+	opkg install $IPKS
+}
+if ! ev_install; then
+	# opkg installs the three packages one after another: a failure in the
+	# middle must not leave a part of Easy VLESS behind
+	NOW=""
+	for p in $EV_PACKAGES; do NOW="$NOW ${p}=$(installed_version "$p")"; done
+	if [ -z "$WAS_INSTALLED" ]; then
+		warn "opkg install of the Easy VLESS packages failed - removing the part that was installed"
+		for p in luci-app-easy-vless easy-vless-sing-box easy-vless; do
+			[ -n "$(installed_version "$p")" ] && opkg remove "$p" >&2
+		done
+		LEFT=""
+		for p in $EV_PACKAGES; do [ -n "$(installed_version "$p")" ] && LEFT="$LEFT $p"; done
+		[ -z "$LEFT" ] || die "opkg install of the Easy VLESS packages failed, and these could not be removed again:${LEFT}. Remove them with 'opkg remove${LEFT}', fix the problem shown above and run the installer again"
+		die "opkg install of the Easy VLESS packages failed. No Easy VLESS package is left installed (sing-box and dnsmasq-full stay). Fix the problem shown above and run the installer again"
+	fi
+	die "opkg install of the Easy VLESS packages failed during the upgrade${OLD_EV:+ from ${OLD_EV}}. Installed now:${NOW} (the three packages must have the same version). The configuration is kept. Fix the problem shown above and run this installer again; to go back, run the install.sh of the previous release"
+fi
 for p in $EV_PACKAGES; do
 	[ "$(installed_version "$p")" = "$EV_VERSION" ] || die "$p is not installed in version $EV_VERSION after opkg install"
 done
