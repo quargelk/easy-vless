@@ -93,6 +93,22 @@ def wizard_state():
         return {}
 
 
+def outbound_ports(rules):
+    """server_port of the outbounds of these rules in the generated sing-box
+    config (the tag of a rule's outbound is "<rule id>:<server name>")"""
+    for f in sh("find /tmp/etc/easy_vless -name '*.json' 2>/dev/null").split():
+        try:
+            obs = json.loads(sh("cat " + shlex.quote(f))).get("outbounds", [])
+        except (ValueError, AttributeError):
+            continue
+        ports = []
+        for r in rules:
+            ports += [str(o.get("server_port", "")) for o in obs if o.get("tag") == r or str(o.get("tag", "")).startswith(r + ":")][:1]
+        if len(ports) == len(rules):
+            return ports
+    return []
+
+
 def fault(kind):
     sh("/bin/ash /w/tests/ci/wizard-backend-tests.sh fault " + kind)
 
@@ -723,6 +739,27 @@ def main():
         txt = page.inner_text("#ev-sub-" + sub_id)
         check("failed update: reason and 'existing nodes kept' shown (%s)" % txt.replace("\n", " "), "500" in txt and "existing nodes kept" in txt)
         check("failed update: the subscription servers are still there", len(servers_of(remark)) == 2)
+        # "Use" (0.9.1): Default and the prepared rules point to different
+        # servers (what "Use" of 0.8 left behind) - the selected server has to
+        # get PROXY / QUIC / UDP too, in UCI and in the running sing-box config
+        sh("uci set easy_vless.main_router.default_node=%s; for r in PROXY QUIC UDP; do uci set easy_vless.main_router.$r=%s; done; uci commit easy_vless" % (manual_id, bad_sub))
+        page.reload()
+        page.wait_for_selector("#ev-nodelist", timeout=60000)
+        click(page, 'tr[data-sid="%s"] button.cbi-button-apply' % good_sub)
+        targets = lambda: [uci("main_router." + o) for o in ("PROXY", "QUIC", "UDP", "default_node")]
+        for _ in range(120):
+            if targets() == [good_sub] * 4 and outbound_ports(("PROXY", "QUIC", "UDP")) == [uci(good_sub + ".port")] * 3:
+                break
+            time.sleep(1)
+        check("Use: PROXY, QUIC, UDP and Default are the chosen server after the commit (%s)" % targets(), targets() == [good_sub] * 4)
+        check("Use: the Direct rule is kept", uci("main_router.RUSSIA") == "_direct")
+        check("Use: the running sing-box config sends PROXY / QUIC / UDP to the chosen server (ports %s)" % outbound_ports(("PROXY", "QUIC", "UDP")),
+              outbound_ports(("PROXY", "QUIC", "UDP")) == [uci(good_sub + ".port")] * 3 and uci(good_sub + ".port") != uci(bad_sub + ".port"))
+        page.wait_for_function("document.body.innerText.includes('is now the target of')", timeout=120000)
+        check("Use: the service is running after the change", status().get("running") is True)
+        page.reload()
+        page.wait_for_selector("#ev-nodelist", timeout=60000)
+        check("Use: still assigned after a reload (%s)" % targets(), targets() == [good_sub] * 4)
         # Main: target test through the same queue
         page.goto(EV + "/main")
         page.wait_for_selector("#ev-main-tests", timeout=60000)

@@ -100,7 +100,7 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 
 Устройство функций, добавленных в 0.9; как ими пользоваться — в [README](../README.md).
 
-**Выбранный узел и «Выбрать» в «Списке узлов».** Цели правил хранятся в `main_router.<id правила>` как идентификаторы узлов: мастер и «Добавить готовое правило» подставляют туда сервер, выбранный на тот момент. Поэтому «Выбрать» (`ev.setActiveTarget` в `common.js`) при основном узле «По правилам» переносит на новый узел все записи `main_router`, указывавшие на прежний выбранный узел (цели правил и «По умолчанию»), а не только `default_node`. Выбранный узел (`ev.selectedNode`) — это `default_node`, если он сервер или группа, иначе цель первого по порядку правила, указывающая на сервер или группу. Записи с другой целью («Напрямую», «Блокировать», «Цель по умолчанию», другой сервер) не меняются.
+**Выбранный узел и «Выбрать» в «Списке узлов».** Цели правил хранятся в `main_router.<id правила>` как идентификаторы узлов: мастер и «Добавить готовое правило» подставляют туда сервер, выбранный на тот момент. Поэтому «Выбрать» (`ev.setActiveTarget` в `common.js`) при основном узле «По правилам» переносит на новый узел все записи `main_router`, указывавшие на прежний выбранный узел (цели правил и «По умолчанию»), а не только `default_node`. Выбранный узел (`ev.selectedNode`) — это `default_node`, если он сервер или группа, иначе цель первого по порядку правила, указывающая на сервер или группу. Прежним выбранным узлом считается ещё и узел первого готового правила с целью `@active` (`rule_templates` в `manifest.json`: PROXY, QUIC, UDP; правило находится по имени, как в «Добавить готовое правило»), указывающего на сервер или группу. После мастера оба узла совпадают, но расходятся, если раньше менялся только `default_node` («Выбрать» в 0.8, «По умолчанию» на «Главной»): сравнение с одним `ev.selectedNode` (0.9.0) в такой конфигурации продолжало переносить только «По умолчанию». Записи с другой целью («Напрямую», «Блокировать», «Цель по умолчанию», третий сервер, в том числе в пользовательских правилах) не меняются.
 
 **Узлы подписок** (`luci/easy_vless/nodes.lua`, используется `subscribe.lua`). Идентичность узла — адрес, порт, UUID, транспорт, SNI и путь/host транспорта; имя, порядок в списке и идентификатор секции в неё не входят. Ключ узла — 16 шестнадцатеричных цифр от этих полей (UUID по ключу не восстановить).
 
@@ -142,13 +142,13 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 
 ## Файлы релиза и SHA256SUMS
 
-Релиз `v0.9.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
+Релиз `v0.9.1` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_0.9.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_0.9.0-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_0.9.0-r1_all.ipk` | интерфейс LuCI и его переводы |
+| `easy-vless_0.9.1-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_0.9.1-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_0.9.1-r1_all.ipk` | интерфейс LuCI и его переводы |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 файлов релиза |
 
@@ -197,7 +197,7 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 ## Installer
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.9.0/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v0.9.1/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -253,8 +253,8 @@ Installer проверит подпись и SHA256, установит TLS-би
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_0.9.0-r1_all.ipk easy-vless-sing-box_0.9.0-r1_all.ipk luci-app-easy-vless_0.9.0-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v0.9.0/$f"
+for f in SHA256SUMS easy-vless_0.9.1-r1_all.ipk easy-vless-sing-box_0.9.1-r1_all.ipk luci-app-easy-vless_0.9.1-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v0.9.1/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -264,9 +264,9 @@ sha256sum -c SHA256SUMS
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_0.9.0-r1_all.ipk
-opkg install ./easy-vless-sing-box_0.9.0-r1_all.ipk
-opkg install ./luci-app-easy-vless_0.9.0-r1_all.ipk
+opkg install ./easy-vless_0.9.1-r1_all.ipk
+opkg install ./easy-vless-sing-box_0.9.1-r1_all.ipk
+opkg install ./luci-app-easy-vless_0.9.1-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
@@ -372,7 +372,7 @@ LuCI загружает `base.ru.lmo` вместе с нашим каталог�
 | [`tests/ci/installer-tests.sh`](../tests/ci/installer-tests.sh), [`tests/ci/installer-scenarios.sh`](../tests/ci/installer-scenarios.sh) | CI, каждая архитектура | сценарии installer'а: требования, время, HTTPS, архитектуры и репозитории, SHA256, офлайн-установка, откат `dnsmasq`, bootstrap `opkg`, обновление с прошлых версий, удаление |
 | [`tests/ci/ubifs-tests.sh`](../tests/ci/ubifs-tests.sh) | CI job `ubifs` | настоящий UBI/UBIFS (nandsim) с разметкой TR3000 v1 |
 | [`tests/node-list-sort-test.js`](../tests/node-list-sort-test.js) | static checks | состояние проверок и сортировка «Списка узлов» (`common.js`, без браузера) |
-| [`tests/use-server-test.js`](../tests/use-server-test.js) | static checks | «Выбрать» в «Списке узлов»: цели правил и «По умолчанию» |
+| [`tests/use-server-test.js`](../tests/use-server-test.js) | static checks | «Выбрать» в «Списке узлов»: цели правил и «По умолчанию», разошедшиеся цели, чужие цели не меняются |
 | [`tests/nodes-test.lua`](../tests/nodes-test.lua) | static checks | идентичность узлов подписок, удалённые пользователем узлы, слияние обновления, «Удалить все узлы» |
 | [`tests/explain-test.lua`](../tests/explain-test.lua), [`tests/diagnose-test.lua`](../tests/diagnose-test.lua), [`tests/diagnostics-view-test.js`](../tests/diagnostics-view-test.js) | static checks | Route Explain (выбор правила, цель, DNS, «неизвестно»), диагностика перенаправления, DNS и панель соединения на образцах состояния; текст для каждого кода результата |
 | [`tests/rule-check-test.js`](../tests/rule-check-test.js) | static checks | проверки правил в «Правилах» |

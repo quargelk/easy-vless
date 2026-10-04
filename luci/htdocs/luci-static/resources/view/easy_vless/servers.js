@@ -25,6 +25,7 @@ const CONFIG = ev.CONFIG;
 let liveGroups = null;      /* Clash API /proxies (groups with members) */
 let liveError = null;
 let lastGroupTest = {};     /* member tag -> result of the last manual group test */
+let TEMPLATES = [];         /* prepared rule templates from the manifest ("Use") */
 
 /* Status = real usage (not "configured"): Active = the service is running
  * and this server is the main node / Default target; Selected = same, but the
@@ -134,7 +135,8 @@ return view.extend({
 			ev.callStatus(),
 			ev.callGroups(),
 			ev.refreshTests(),
-			ev.callSubscribe('state')
+			ev.callSubscribe('state'),
+			ev.callResources()
 		]);
 	},
 
@@ -257,7 +259,7 @@ return view.extend({
 
 	handleUse: function(sid) {
 		return ev.exclusive(_('Use'), L.bind(function() {
-			const changed = ev.setActiveTarget(sid);
+			const changed = ev.setActiveTarget(sid, TEMPLATES);
 			if (!changed.length) {
 				ev.notify(_('%s is already the selected node; nothing was changed.').format(ev.label(sid)));
 				return;
@@ -656,6 +658,7 @@ return view.extend({
 		const status = data[1] || {};
 		this.setGroups(data[2]);
 		ev.setSubState(data[4]);
+		TEMPLATES = (data[5] && data[5].ok) ? L.toArray(data[5].rule_templates) : [];
 		ev.lastStatus = status;
 		let m, s, o;
 		const view_ = this;

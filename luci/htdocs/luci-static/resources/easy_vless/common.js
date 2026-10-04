@@ -296,17 +296,33 @@ return baseclass.extend({
 		return '';
 	},
 
+	/* Ids of the rules made from the prepared templates with target "@active"
+	 * (PROXY, QUIC, UDP), in priority order. A rule is matched by its name,
+	 * like applyTemplate does. templates = rule_templates of the manifest. */
+	activeRules: function(templates) {
+		const names = L.toArray(templates).filter(function(t) { return t.target == '@active'; })
+			.map(function(t) { return t.remarks; });
+		return this.rules().filter(function(r) { return names.indexOf(r.remarks || '') > -1; })
+			.map(function(r) { return r['.name']; });
+	},
+
 	/* "Use": sid becomes the selected VLESS node. Without the Main Router it
 	 * becomes the main node. With it, every Main Router entry that points to
-	 * the previously selected node (rule targets and Default) is moved to sid
+	 * a previously selected node (rule targets and Default) is moved to sid
 	 * - not only Default: the rule targets hold a node id of their own, so
 	 * changing Default alone left PROXY / QUIC / UDP on the old server.
+	 * Previously selected = selectedNode() and the node of the first prepared
+	 * "@active" rule that points to a server or group: the two are the same
+	 * after the wizard, but differ in a configuration where only Default was
+	 * moved ("Use" of 0.8, Default changed on Main) - comparing with
+	 * selectedNode() alone kept moving Default alone there.
 	 * Entries with another target (Direct, Block, "Default target", Not used,
 	 * a different server or group) are kept. If no entry uses a server or
 	 * group yet, sid becomes Default (rules set to "Default target" follow).
+	 * templates = rule_templates of the manifest (none: selectedNode() only).
 	 * Staged in uci; the caller commits. Returns the changed entries:
 	 * [{ entry: 'node' | 'default' | <rule id>, before, after }]. */
-	setActiveTarget: function(sid) {
+	setActiveTarget: function(sid, templates) {
 		const changed = [];
 		const set = function(section, option, entry) {
 			const before = uci.get(CONFIG, section, option) || '';
@@ -320,16 +336,23 @@ return baseclass.extend({
 			return changed;
 		}
 		this.ensureRouter();
-		const old = this.selectedNode();
-		if (!old) {
+		const old = [];
+		const selected = this.selectedNode();
+		if (selected)
+			old.push(selected);
+		const prepared = this.activeRules(templates).map(function(id) { return uci.get(CONFIG, ROUTER, id); })
+			.filter(L.bind(this.isProxyTarget, this))[0];
+		if (prepared && old.indexOf(prepared) < 0)
+			old.push(prepared);
+		if (!old.length) {
 			set(ROUTER, 'default_node', 'default');
 			return changed;
 		}
 		this.rules().forEach(function(r) {
-			if (uci.get(CONFIG, ROUTER, r['.name']) == old)
+			if (old.indexOf(uci.get(CONFIG, ROUTER, r['.name'])) > -1)
 				set(ROUTER, r['.name'], r['.name']);
 		});
-		if (uci.get(CONFIG, ROUTER, 'default_node') == old)
+		if (old.indexOf(uci.get(CONFIG, ROUTER, 'default_node')) > -1)
 			set(ROUTER, 'default_node', 'default');
 		return changed;
 	},
