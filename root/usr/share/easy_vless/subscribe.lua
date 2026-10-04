@@ -1838,22 +1838,37 @@ local function node_action(action, a1, a2)
 	return { ok = false, error = "action" }
 end
 
+-- The lock of everything that rewrites the node list (an update, an import,
+-- the node list actions of LuCI, backup.lua's import). Easy VLESS 1.0: the
+-- file holds the PID of its owner. A lock whose owner is gone - the process
+-- was killed, or ended with an error - is stale and is taken over, instead
+-- of answering "busy" until the next reboot.
+local SUB_LOCK = api.LOCK_PREFIX .. "_subscribe.lock"
+
+local function lock_stale()
+	local pid = readfile(SUB_LOCK)
+	return pid ~= nil and pid:match("^%d+$") ~= nil and not fs.access("/proc/" .. pid)
+end
+
 local function check_instance(action)
-	local sub_lock = api.LOCK_PREFIX .. "_subscribe.lock"
 	local rule_lock = api.LOCK_PREFIX .. "_rule_update.lock"
 
 	if action == "start" then
 		math.randomseed(os.time() + math.floor(os.clock() * 1000))
 		api.nixio.nanosleep(0, math.random(100, 1000) * 1000000)
-		if fs.access(sub_lock) then
+		if fs.access(SUB_LOCK) and not lock_stale() then
 			log(0, i18n.translatef("[Subscription] instance is running; please try again later.") .. "\n")
 			os.exit(0)
 		else
-			luci.sys.call("touch " .. sub_lock)
+			local f = io.open(SUB_LOCK, "w")
+			if f then
+				f:write(tostring(api.nixio.getpid()) .. "\n")
+				f:close()
+			end
 			uci:revert(c_config)
 		end
 	elseif action == "end" then
-		luci.sys.call("rm -f " .. sub_lock)
+		os.remove(SUB_LOCK)
 		return
 	end
 
@@ -1868,32 +1883,43 @@ end
 if arg[1] then
 	check_instance("start")
 
-	if arg[1] == "start" then
-		log(0, i18n.translatef("Start subscribing..."))
-		xpcall(execute, function(e)
-			log(1, e)
-			log(1, debug.traceback())
-			log(1, i18n.translatef("Error, restoring service."))
-		end)
-		write_sub_records()
-		log(0, i18n.translatef("Subscription complete...") .. "\n")
-	elseif arg[1] == "add" then
-		local f = assert(io.open("/tmp/links.conf", 'r'))
-		local raw = f:read('*all')
-		f:close()
-		parse_link(raw, "1", arg[2])
-		update_node(1)
-		luci.sys.call("rm -f /tmp/links.conf")
-	elseif arg[1] == "truncate" then
-		truncate_nodes(arg[2])
-	elseif arg[1] == "delete" or arg[1] == "delete_all" or arg[1] == "delete_all_plan" or arg[1] == "restore" then
-		local ok, res = pcall(node_action, arg[1], arg[2], arg[3])
-		if not ok then
-			log(1, tostring(res))
-			res = { ok = false, error = "internal", detail = tostring(res) }
+	-- whatever happens below, the lock is released (check_instance "end")
+	local ok, err = xpcall(function()
+		if arg[1] == "start" then
+			log(0, i18n.translatef("Start subscribing..."))
+			xpcall(execute, function(e)
+				log(1, e)
+				log(1, debug.traceback())
+				log(1, i18n.translatef("Error, restoring service."))
+			end)
+			write_sub_records()
+			log(0, i18n.translatef("Subscription complete...") .. "\n")
+		elseif arg[1] == "add" then
+			local f = assert(io.open("/tmp/links.conf", 'r'))
+			local raw = f:read('*all')
+			f:close()
+			parse_link(raw, "1", arg[2])
+			update_node(1)
+			os.remove("/tmp/links.conf")
+		elseif arg[1] == "truncate" then
+			truncate_nodes(arg[2])
+		elseif arg[1] == "delete" or arg[1] == "delete_all" or arg[1] == "delete_all_plan" or arg[1] == "restore" then
+			local ok, res = pcall(node_action, arg[1], arg[2], arg[3])
+			if not ok then
+				log(1, tostring(res))
+				res = { ok = false, error = "internal", detail = tostring(res) }
+			end
+			io.write(jsonStringify(res) .. "\n")
 		end
-		io.write(jsonStringify(res) .. "\n")
-	end
+	end, function(e)
+		return tostring(e) .. "\n" .. debug.traceback()
+	end)
 
 	check_instance("end")
+	if not ok then
+		log(1, tostring(err))
+		-- changes that were not committed do not stay behind for the next run
+		pcall(function() uci:revert(c_config) end)
+		os.exit(1)
+	end
 end

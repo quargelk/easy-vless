@@ -321,6 +321,16 @@ method_import() {
 			return
 		;;
 	esac
+	# the import changes the node list like an update does (subscribe.lua
+	# would leave without a word while its lock is taken): say why
+	if sub_busy; then
+		json_add_int "code" 1
+		json_add_int "found" 0
+		json_add_int "added" 0
+		json_add_string "output" "A subscription update is running; try again when it has finished."
+		json_dump
+		return
+	fi
 	found=$(printf '%s\n' "$links" | grep -c '://')
 	before=$(count_nodes)
 	local ids_before=$(node_ids)
@@ -364,8 +374,20 @@ method_import() {
 
 # An update runs: subscribe.lua holds its lock, or has just been started and
 # not taken it yet (it takes it after loading and a short random delay).
+# The lock holds the PID of its owner (1.0): one left behind by a process
+# that is gone (killed, ended with an error) is removed here instead of
+# answering "busy" until the next reboot.
 sub_busy() {
-	[ -f /var/lock/${CONFIG}_subscribe.lock ] || busybox pgrep -f "subscribe\.lua start" >/dev/null 2>&1
+	local lock=/var/lock/${CONFIG}_subscribe.lock pid
+	if [ -f "$lock" ]; then
+		pid=$(cat "$lock" 2>/dev/null)
+		case "$pid" in
+			""|*[!0-9]*) return 0 ;;
+		esac
+		[ -d "/proc/$pid" ] && return 0
+		rm -f "$lock"
+	fi
+	busybox pgrep -f "subscribe\.lua start" >/dev/null 2>&1
 }
 
 # Subscriptions (config subscribe_list): "update" downloads and parses the
@@ -374,6 +396,12 @@ sub_busy() {
 method_subscribe() {
 	local action="$1" id="$2" remark
 	json_init
+	if [ -n "$id" ] && ! valid_id "$id"; then
+		json_add_int "code" 1
+		json_add_string "output" "Unknown subscription."
+		json_dump
+		return
+	fi
 	case "$action" in
 		update)
 			[ -n "$id" ] || id=all
