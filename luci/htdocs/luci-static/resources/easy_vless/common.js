@@ -490,8 +490,9 @@ return baseclass.extend({
 	/* ---------- saving / service control ---------- */
 
 	/* Save the form and commit easy_vless: the runtime reads only the
-	 * committed configuration. Deliberately not LuCI's "apply" (that would
-	 * restart the service through ucitrack without the sing-box check). */
+	 * committed configuration. Saving never restarts the service (1.0: no
+	 * ucitrack trigger any more); a restart is always an explicit step with
+	 * the sing-box check first (startFlow). */
 	saveAndCommit: function(map) {
 		const maps = map ? L.toArray(map) : [];
 		let stage = 'form';

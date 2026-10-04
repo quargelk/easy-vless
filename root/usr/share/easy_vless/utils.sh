@@ -38,10 +38,10 @@ EV_CLASH_API_DEFAULT_PORT="9095"
 # "easy_vless/" process, which also hit the config generator
 # (luci/easy_vless/util_sing-box.lua) of a check running at that moment:
 # "Killed", an empty config.json, "decode config ...: EOF". They overlap in
-# practice because every uci commit from LuCI (Save, Save & Start, Check
-# config) also reloads the service in the background: ucitrack
-# (/usr/share/ucitrack/easy-vless.json) -> procd -> init.d reload. These
-# operations therefore take this lock and wait for each other.
+# practice: a restart after a subscription update, a WAN reconnect (hotplug)
+# or a scheduled task runs at any time, and up to 0.9 every uci commit from
+# LuCI reloaded the service in the background as well (ucitrack; removed in
+# 1.0). These operations therefore take this lock and wait for each other.
 EV_OP_LOCK_FILE="${LOCK_PATH}/${CONFIG}_op.lock"
 EV_OP_LOCK_WAIT=90
 
