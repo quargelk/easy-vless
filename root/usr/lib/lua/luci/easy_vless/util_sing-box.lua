@@ -441,6 +441,17 @@ function gen_outbound(flag, node, tag, proxy_table)
 			}
 		end
 
+		-- Easy VLESS 1.1: Trojan (sing-box "trojan" outbound: password, tls,
+		-- multiplex, V2Ray transport)
+		if node.protocol == "trojan" then
+			protocol_table = {
+				password = node.password,
+				tls = tls,
+				multiplex = mux,
+				transport = v2ray_transport,
+			}
+		end
+
 		if protocol_table then
 			for key, value in pairs(protocol_table) do
 				result[key] = value

@@ -10,6 +10,7 @@ container prepared by tests/ci/wizard-tests.sh; router state is read with
   EV_SHOTS       screenshot directory
   GOOD_LINK      vless:// link of the working test server
   BAD_LINK       vless:// link to a closed port
+  TROJAN_LINK    (optional, 1.1) trojan:// link of the Trojan test server
   SUB_URL        subscription test server (tests/ci/sub-server.py)
 """
 
@@ -22,6 +23,7 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 from playwright.sync_api import sync_playwright
@@ -37,6 +39,7 @@ SHOTS = os.environ.get("EV_SHOTS", "wizard-shots")
 GOOD = os.environ["GOOD_LINK"]
 BAD = os.environ["BAD_LINK"]
 SUB = os.environ["SUB_URL"].rstrip("/")
+TROJAN = os.environ.get("TROJAN_LINK", "")
 # wizard steps (0.8.0: Link -> Server -> Test)
 S_WELCOME, S_LINK, S_SERVER, S_TEST, S_ROUTING, S_REVIEW, S_APPLY, S_DONE = range(8)
 LUCI = BASE + "/cgi-bin/luci"
@@ -73,6 +76,10 @@ def uci(path):
 
 def vless_servers():
     return [l.split(".")[1] for l in sh("uci -q show easy_vless | grep \"\\.protocol='vless'$\"").splitlines() if l]
+
+
+def trojan_servers():
+    return [l.split(".")[1] for l in sh("uci -q show easy_vless | grep \"\\.protocol='trojan'$\"").splitlines() if l]
 
 
 def status():
@@ -306,7 +313,7 @@ def main():
         check("invalid input: not a link (%s)" % e, "not a link" in e)
         # an http(s) link is only a subscription when the router finds servers in it
         e = link_error(SUB + "/html")
-        check("http link without servers: not taken for a subscription (%s)" % e.replace("\n", " | "), "No VLESS server" in e)
+        check("http link without servers: not taken for a subscription (%s)" % e.replace("\n", " | "), "No VLESS or Trojan server" in e)
         check("http link without servers: the subscription was removed again", "subscribe_list" not in sh("uci -q show easy_vless"))
         check("invalid links: no server was added", vless_servers() == [])
         shot(page, "02-invalid-link")
@@ -764,6 +771,128 @@ def main():
         page.goto(EV + "/main")
         page.wait_for_selector("#ev-main-tests", timeout=60000)
         check("Main: last Server Test result of the active target shown", "ms" in page.inner_text("#ev-main-tests"))
+
+        # ---------------------------------------------------------- Trojan (1.1)
+        if TROJAN:
+            trojan_pw = urllib.parse.unquote(re.match(r"trojan://([^@]+)@", TROJAN).group(1))
+            cfg = export()
+            # First Run Wizard: a trojan:// link is one server, imported and tested
+            open_wizard(page)
+            step(page, S_WELCOME)
+            click(page, "#ev-wiz-next")
+            step(page, S_LINK)
+            page.check("#ev-wiz-mode-paste input")
+            page.wait_for_selector("#ev-wiz-url", timeout=30000)
+            page.fill("#ev-wiz-url", TROJAN)
+            page.wait_for_selector('#ev-wiz-detect[data-kind="trojan"]', timeout=10000)
+            check("wizard: a trojan:// link is detected as a Trojan link, the button says Add server",
+                  "Trojan link" in page.inner_text("#ev-wiz-detect") and "Add server" in page.inner_text("#ev-wiz-next"))
+            click(page, "#ev-wiz-next")
+            step(page, S_SERVER)
+            wait_imported(page, "20445")
+            imp = page.inner_text(".ev-wiz-body")
+            check("wizard: Trojan server imported, parameters shown (%s)" % imp.replace("\n", " | ")[:200],
+                  len(trojan_servers()) == 1 and "20445" in imp and "Trojan Test" in imp and "Trojan" in imp and "TLS" in imp)
+            check("wizard: the password is not shown", trojan_pw not in page.inner_text("body"))
+            click(page, "#ev-wiz-next")
+            step(page, S_TEST)
+            v = wait_tests(page)
+            check("wizard: Server Test and URL Test through the Trojan server pass (%s)" % v, v == "ok")
+            shot(page, "22-wizard-trojan-test")
+            click(page, "#ev-wiz-cancel")
+            click(page, "#ev-wiz-cancel-yes")
+            page.wait_for_url(re.compile(r".*/easy_vless/main$"), timeout=60000)
+            page.wait_for_selector("#cbi-easy_vless", timeout=60000)
+            check("wizard cancel: the Trojan server of this run is removed, configuration unchanged", export() == cfg and trojan_servers() == [])
+
+            # Node List: Import URL with a trojan:// link
+            page.goto(EV + "/servers")
+            page.wait_for_selector("#ev-nodelist", timeout=60000)
+            click(page, "#ev-import-btn")
+            page.wait_for_selector("#modal_overlay .modal textarea", timeout=30000)
+            page.fill("#modal_overlay .modal textarea", re.sub(r"#.*$", "#Trojan%20NL", TROJAN))
+            page.click("#modal_overlay .modal .cbi-button-positive")
+            page.wait_for_function("document.querySelector('#modal_overlay .modal') && document.querySelector('#modal_overlay .modal').innerText.includes('imported: 1')", timeout=120000)
+            dialog = page.inner_text("#modal_overlay .modal")
+            check("Import URL: the Trojan server is listed with protocol, port and security (%s)" % dialog.replace("\n", " | ")[:200],
+                  "Trojan NL" in dialog and "Trojan" in dialog and "20445" in dialog and "TLS" in dialog and trojan_pw not in dialog)
+            page.click("#modal_overlay .modal .btn")
+            page.wait_for_selector("#ev-nodelist", timeout=60000)
+            tids = [s for s in trojan_servers() if uci(s + ".remarks") == "Trojan NL"]
+            tid = tids[0] if tids else ""
+            check("Import URL: one Trojan node in UCI", len(tids) == 1 and uci(tid + ".type") == "sing-box" and uci(tid + ".password") == trojan_pw)
+            page.wait_for_selector("#ev-lat-" + tid, timeout=60000)
+            row = page.inner_text('tr[data-sid="%s"]' % tid)
+            check("Node List: the Trojan row shows name, protocol, port and security (%s)" % row.replace("\n", " | ")[:160],
+                  "Trojan NL" in row and "Trojan" in row.replace("Trojan NL", "") and "20445" in row and "TLS" in row)
+            check("Node List: the password is not on the page", trojan_pw not in page.inner_text("body"))
+            # Server Test and URL Test of the Trojan server
+            page.click("#ev-btn-test-" + tid)
+            page.wait_for_function("(id) => { const e = document.querySelector('#ev-lat-' + id + ' [data-test-state]'); return e && e.getAttribute('data-test-state') == 'passed'; }",
+                                   arg=tid, timeout=120000)
+            check("Node List: Server Test of the Trojan server passes with a latency", "ms" in lat_text(page, tid))
+            page.click("#ev-btn-urltest-" + tid)
+            wait_tests_idle()
+            page.wait_for_function("(id) => !document.getElementById('ev-btn-urltest-' + id).disabled", arg=tid, timeout=60000)
+            check("Node List: URL Test of the Trojan server shown", "URL Test" in page.inner_text("#ev-state-" + tid))
+            # editor: protocol Trojan, a masked password, no UUID / Flow
+            page.click('tr[data-sid="%s"] .cbi-button-edit' % tid)
+            page.wait_for_selector('#modal_overlay .modal [data-name="password"]', timeout=30000)
+            vis = lambda name: page.evaluate("(n) => { const e = document.querySelector('#modal_overlay .modal [data-name=\"' + n + '\"]'); return !!e && e.offsetParent !== null; }", name)
+            check("editor: Trojan selected, Password shown, UUID and Flow hidden",
+                  page.eval_on_selector('#modal_overlay .modal [data-name="protocol"] select', "e => e.value") == "trojan"
+                  and vis("password") and not vis("uuid") and not vis("flow"))
+            check("editor: the password field is masked",
+                  page.eval_on_selector('#modal_overlay .modal [data-name="password"] input', "e => e.type") == "password")
+            check("editor: title names the protocol", "Trojan" in page.inner_text("#modal_overlay .modal h4"))
+            shot(page, "23-trojan-edit")
+            page.click('#modal_overlay .modal button:has-text("Dismiss")')
+            page.wait_for_function("!document.body.classList.contains('modal-overlay-active')", timeout=30000)
+            # Copy: the trojan:// URL of the server
+            page.click('tr[data-sid="%s"] button:has-text("Copy")' % tid)
+            page.wait_for_selector("#modal_overlay .modal textarea", timeout=30000)
+            url = page.input_value("#modal_overlay .modal textarea")
+            check("Copy: a trojan:// URL with address, port and SNI (%s)" % re.sub(r"//[^@]*@", "//***@", url),
+                  url.startswith("trojan://") and ":20445?" in url and "sni=trojan.test" in url and "allowInsecure=1" in url and url.endswith("#Trojan%20NL"))
+            page.click('#modal_overlay .modal button:has-text("Close")')
+            page.wait_for_function("!document.body.classList.contains('modal-overlay-active')", timeout=30000)
+            # Use: the Trojan server takes over what the selected VLESS server had
+            click(page, 'tr[data-sid="%s"] button.cbi-button-apply' % tid)
+            for _ in range(120):
+                if targets() == [tid] * 4 and outbound_ports(("PROXY", "QUIC", "UDP")) == ["20445"] * 3:
+                    break
+                time.sleep(1)
+            check("Use Trojan: PROXY, QUIC, UDP and Default are the Trojan server (%s)" % targets(), targets() == [tid] * 4)
+            check("Use Trojan: the Direct rule is kept", uci("main_router.RUSSIA") == "_direct")
+            check("Use Trojan: the running sing-box config sends PROXY / QUIC / UDP to it (ports %s)" % outbound_ports(("PROXY", "QUIC", "UDP")),
+                  outbound_ports(("PROXY", "QUIC", "UDP")) == ["20445"] * 3)
+            page.wait_for_function("document.body.innerText.includes('is now the target of')", timeout=120000)
+            check("Use Trojan: the service is running after the change", status().get("running") is True)
+            try:
+                conn = json.loads(sh("ubus -t 60 call luci.easy_vless wizard '{\"action\":\"connectivity\"}'"))
+            except ValueError:
+                conn = {}
+            check("Use Trojan: the router reaches the internet through the Trojan server (%s)" % conn.get("http_code"), conn.get("ok") is True)
+            page.reload()
+            page.wait_for_selector("#ev-lat-" + tid, timeout=60000)
+            page.select_option("#ev-sort", "default")
+            shot(page, "24-nodelist-trojan")
+            page.goto(EV + "/main")
+            page.wait_for_selector("#ev-main-tests", timeout=60000)
+            body = page.inner_text("body")
+            check("Main: the Trojan server is named as the target", "Trojan: Trojan NL" in body)
+            shot(page, "25-main-trojan")
+            page.goto(EV + "/diagnostics")
+            page.wait_for_selector("#ev-explain-btn", timeout=60000)
+            page.fill("#ev-explain-input", "www.googlevideo.com")
+            page.click("#ev-explain-btn")
+            page.wait_for_selector('#ev-diag-explain .ev-explain-row[data-row="target"]', timeout=120000)
+            check("Diagnostics: Route Explain names the Trojan server (%s)" % page.inner_text('#ev-diag-explain .ev-explain-row[data-row="target"]').replace("\n", " "),
+                  "Trojan: Trojan NL" in page.inner_text('#ev-diag-explain .ev-explain-row[data-row="target"]'))
+            page.click("#ev-diag-connection-btn")
+            page.wait_for_selector('#ev-diag-connection .ev-diag-item[data-item="vless"]', timeout=120000)
+            check("Diagnostics: the connection panel names the Trojan server",
+                  "Trojan: Trojan NL" in (page.text_content('#ev-diag-connection .ev-diag-item[data-item="vless"]') or ""))
 
         # ---------------------------------------------------------- 0.9 pages
         # the new pages in the real LuCI (a JavaScript error on any of them

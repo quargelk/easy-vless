@@ -9,13 +9,13 @@
 
 /*
  * Easy VLESS - Node List (PassWall2 "Node List" + "Node Subscribe" model).
- *   Servers: VLESS nodes with Use / Test / URL (copy, QR) / Up / Down /
- *            Edit / Delete, Add and Import VLESS URL.
+ *   Servers: VLESS and Trojan nodes with Use / Test / URL (copy, QR) /
+ *            Up / Down / Edit / Delete, Add server and Import URL.
  *   URL Test: sing-box "urltest" groups (util_sing-box.lua
  *            gen_urltest_outbound) with live results from the Clash API of
  *            the running sing-box; default test URL https://x.com.
  *   Subscriptions: subscribe_list sections handled by subscribe.lua
- *            (VLESS nodes only; other types are skipped and counted).
+ *            (VLESS and Trojan nodes; other types are skipped and counted).
  * Only fields that util_sing-box.lua really reads, and only transports
  * verified with sing-box-tiny 1.12.22 (TCP, WebSocket, gRPC, HTTPUpgrade;
  * TLS, Reality, uTLS), are exposed.
@@ -305,7 +305,7 @@ return view.extend({
 
 	handleMove: function(sid, up) {
 		return ev.exclusive(_('Move'), L.bind(function() {
-			if (!ev.moveSection(sid, up, function(s) { return s.protocol == 'vless'; }))
+			if (!ev.moveSection(sid, up, function(s) { return ev.isServerProtocol(s.protocol); }))
 				return;
 			return ev.saveAndCommit(this.map);
 		}, this));
@@ -316,11 +316,11 @@ return view.extend({
 			'class': 'cbi-input-textarea',
 			'style': 'width:100%',
 			'rows': 8,
-			'placeholder': 'vless://uuid@host:443?security=reality&...#Name'
+			'placeholder': 'vless://uuid@host:443?security=reality&...#Name\ntrojan://password@host:443?sni=...#Name'
 		});
 
-		ui.showModal(_('Import VLESS URL'), [
-			E('p', {}, _('One vless:// link per line (bulk import supported). Imported servers are saved and added to the list; existing servers are kept.')),
+		ui.showModal(_('Import URL'), [
+			E('p', {}, _('One vless:// or trojan:// link per line (bulk import supported). Imported servers are saved and added to the list; existing servers are kept.')),
 			textarea,
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
@@ -330,31 +330,31 @@ return view.extend({
 					'click': ui.createHandlerFn(this, function() {
 						const links = textarea.value.trim();
 						if (!links) {
-							ev.notify(_('Paste at least one vless:// link.'), 'warning');
+							ev.notify(_('Paste at least one vless:// or trojan:// link.'), 'warning');
 							return;
 						}
-						return ev.exclusive(_('Import VLESS URL'), function() {
-						ev.showBusy(_('Import VLESS URL'), _('Parsing links…'));
+						return ev.exclusive(_('Import URL'), function() {
+						ev.showBusy(_('Import URL'), _('Parsing links…'));
 						return ev.callImport(links).then(function(res) {
 							if (res.rpc_error)
-								return ev.showResult(_('Import VLESS URL'), 'bad', _('Import request failed'), res.error);
+								return ev.showResult(_('Import URL'), 'bad', _('Import request failed'), res.error);
 							const summary = _('Links found: %d · imported: %d · skipped: %d').format(res.found || 0, res.added || 0, res.skipped || 0);
 							const details = [ res.output, res.log ].filter(function(x) { return x; }).join('\n');
 							if (res.added > 0) {
 								const td = function(t) { return E('td', { 'class': 'td' }, t || '-'); };
 								const table = E('table', { 'class': 'table' }, [
-									E('tr', { 'class': 'tr table-titles' }, [ _('Name'), _('Address'), _('Port'), _('Transport'), _('Security'), 'Flow', 'SNI' ].map(function(t) { return E('th', { 'class': 'th' }, t); }))
+									E('tr', { 'class': 'tr table-titles' }, [ _('Name'), _('Protocol'), _('Address'), _('Port'), _('Transport'), _('Security'), 'Flow', 'SNI' ].map(function(t) { return E('th', { 'class': 'th' }, t); }))
 								].concat(L.toArray(res.nodes).map(function(n) {
-									return E('tr', { 'class': 'tr' }, [ td(n.remarks), td(n.address), td(n.port), td(n.transport),
+									return E('tr', { 'class': 'tr' }, [ td(n.remarks), td(ev.protocolName(n.protocol)), td(n.address), td(n.port), td(n.transport),
 										td(n.tls != '1' ? _('none') : (n.reality == '1' ? 'Reality' : 'TLS')), td(n.flow), td(n.sni) ]);
 								})));
-								ev.showResult(_('Import VLESS URL'), res.skipped ? 'warn' : 'ok', summary, details, table);
+								ev.showResult(_('Import URL'), res.skipped ? 'warn' : 'ok', summary, details, table);
 								const btn = document.querySelector('.modal .btn');
 								if (btn)
 									btn.addEventListener('click', function() { window.location.reload(); });
 							}
 							else {
-								ev.showResult(_('Import VLESS URL'), 'bad', summary, (details || '') + '\n' +
+								ev.showResult(_('Import URL'), 'bad', summary, (details || '') + '\n' +
 									_('No server was imported (unsupported or invalid link, or a transport sing-box does not support).'));
 							}
 						});
@@ -667,20 +667,20 @@ return view.extend({
 
 		m = this.map = new form.Map(CONFIG);
 
-		/* ===== Servers (VLESS only) ===== */
+		/* ===== Servers (VLESS and Trojan) ===== */
 		s = this.serversSection = m.section(form.GridSection, 'nodes', _('Servers'));
 		s.addremove = true;
 		s.anonymous = true;
 		s.sortable = false;
 		s.nodescriptions = true;
-		s.addbtntitle = _('Add VLESS');
-		ev.compactWhenEmpty(s, _('No servers yet: paste a vless:// link with Import VLESS URL, or enter the settings by hand with Add VLESS.'));
+		s.addbtntitle = _('Add server');
+		ev.compactWhenEmpty(s, _('No servers yet: paste a vless:// or trojan:// link with Import URL, or enter the settings by hand with Add server.'));
 		/* an edited server gets tested again: its old results are dropped */
-		ev.commitOnModalSave(s, _('VLESS server'), function(sid) { return ev.clearTestResults([ sid ]); });
-		/* the add button lives in the page toolbar (Add VLESS) */
+		ev.commitOnModalSave(s, _('Server'), function(sid) { return ev.clearTestResults([ sid ]); });
+		/* the add button lives in the page toolbar (Add server) */
 		s.renderSectionAdd = function() { return E([]); };
 		s.modaltitle = function(section_id) {
-			return ev.esc('VLESS » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New server')));
+			return ev.esc(ev.protocolName(uci.get(CONFIG, section_id, 'protocol')) + ' » ' + (uci.get(CONFIG, section_id, 'remarks') || _('New server')));
 		};
 		s.filter = function(section_id) {
 			return ev.isServer(section_id);
@@ -731,16 +731,33 @@ return view.extend({
 				sb(_('Use'), _('Use this server: it becomes the main node, or - while the Main Router is the main node - replaces the selected server in Default and in every rule target that points to it'), 'cbi-button-apply', 'handleUse', [ section_id ]),
 				tb(_('Test'), _('Server Test: HTTPS request to %s through this server (temporary sing-box instance)').format(ev.SERVER_TEST_URL), 'handleTest', 'server', 'ev-btn-test-'),
 				tb(_('URL Test'), _('URL Test of this server: request to %s through it (temporary sing-box instance)').format(ev.URL_TEST_URL), 'handleUrlTest', 'url', 'ev-btn-urltest-'),
-				ev.smallButton(_('Copy'), _('Copy the VLESS URL of this server'), 'cbi-button-action', ui.createHandlerFn(ev, 'showVlessUrl', section_id)),
+				ev.smallButton(_('Copy'), _('Copy the URL of this server (vless:// or trojan://)'), 'cbi-button-action', ui.createHandlerFn(ev, 'showVlessUrl', section_id)),
 				sb('↑', _('Up', 'move row'), 'ev-move', 'handleMove', [ section_id, true ]),
 				sb('↓', _('Down', 'move row'), 'ev-move', 'handleMove', [ section_id, false ])
 			].reverse().forEach(function(b) { box.insertBefore(b, box.firstChild); });
 			return td;
 		};
 
-		/* VLESS editor: one flat form, fields shown only when relevant. */
+		/* Server editor: one flat form, fields shown only when relevant. */
 		o = s.option(form.Value, 'remarks', _('Name'));
 		o.rmempty = false;
+
+		/* 1.1: VLESS or Trojan. The fields of the other protocol (UUID and
+		 * Flow, or Password) are hidden and removed from UCI on Save. */
+		o = s.option(form.ListValue, 'protocol', _('Protocol'));
+		o.value('vless', 'VLESS');
+		o.value('trojan', 'Trojan');
+		o.default = 'vless';
+		o.rmempty = false;
+		o.textvalue = function(section_id) {
+			return ev.protocolName(this.cfgvalue(section_id));
+		};
+		o.write = function(section_id, value) {
+			/* Trojan runs on sing-box only */
+			if (value == 'trojan')
+				uci.set(CONFIG, section_id, 'type', 'sing-box');
+			return form.ListValue.prototype.write.apply(this, [ section_id, value ]);
+		};
 
 		o = s.option(form.Value, 'address', _('Address'));
 		o.datatype = 'host';
@@ -755,9 +772,23 @@ return view.extend({
 		o.modalonly = true;
 		o.rmempty = false;
 		o.password = true;
+		o.depends('protocol', 'vless');
 		o.validate = function(section_id, value) {
 			if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value || ''))
 				return _('Expecting a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)');
+			return true;
+		};
+
+		o = s.option(form.Value, 'password', _('Password'));
+		o.modalonly = true;
+		o.rmempty = false;
+		o.password = true;
+		o.depends('protocol', 'trojan');
+		o.validate = function(section_id, value) {
+			if (!value)
+				return _('Enter the Trojan password of the server');
+			if (value.length > 512 || /[\x00-\x1f\x7f]/.test(value))
+				return _('The password is too long or contains control characters');
 			return true;
 		};
 
@@ -851,7 +882,7 @@ return view.extend({
 		o.modalonly = true;
 		o.value('', _('none'));
 		o.value('xtls-rprx-vision', 'xtls-rprx-vision');
-		o.depends({ transport: 'tcp', tls: '1' });
+		o.depends({ protocol: 'vless', transport: 'tcp', tls: '1' });
 
 		o = s.option(form.Flag, 'tls_allowInsecure', _('Allow insecure'),
 			_('Do not verify the server certificate. Not recommended.'));
@@ -873,7 +904,7 @@ return view.extend({
 
 		/* ===== URL Subscriptions ===== */
 		s = m.section(form.GridSection, 'subscribe_list', _('URL Subscriptions'),
-			_('Only VLESS nodes are imported; other types are skipped and counted in the log.'));
+			_('Only VLESS and Trojan nodes are imported; other types are skipped and counted in the log.'));
 		s.addremove = true;
 		s.anonymous = true;
 		s.nodescriptions = true;
@@ -1147,12 +1178,12 @@ return view.extend({
 				this.style(),
 				E('h2', {}, _('Node List')),
 				ev.renderHeader(m, status, null, true, false),
-				E('div', { 'class': 'cbi-map-descr' }, _('Servers: your VLESS servers - add one by hand or import a vless:// link, then Use it or test it. URL Subscriptions: a link from your provider that downloads the server list. URL Test Groups: several servers, sing-box uses the fastest one.')),
+				E('div', { 'class': 'cbi-map-descr' }, _('Servers: your VLESS and Trojan servers - add one by hand or import a vless:// or trojan:// link, then Use it or test it. URL Subscriptions: a link from your provider that downloads the server list. URL Test Groups: several servers, sing-box uses the fastest one.')),
 				E('div', { 'class': 'ev-toolbar' }, [
-					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, 'handleImport') }, _('Import VLESS URL')),
-					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, function(ev_) {
+					E('button', { 'class': 'btn cbi-button cbi-button-add', 'id': 'ev-import-btn', 'click': ui.createHandlerFn(this, 'handleImport') }, _('Import URL')),
+					E('button', { 'class': 'btn cbi-button cbi-button-add', 'id': 'ev-add-btn', 'click': ui.createHandlerFn(this, function(ev_) {
 						return this.serversSection.handleAdd(ev_);
-					}) }, _('Add VLESS')),
+					}) }, _('Add server')),
 					E('span', { 'id': 'ev-testall' }),
 					E('button', { 'class': 'btn cbi-button cbi-button-negative', 'id': 'ev-delete-all', 'style': 'margin-left:auto',
 						'title': _('Delete every server of the Node List (asks first and shows what else changes)'),

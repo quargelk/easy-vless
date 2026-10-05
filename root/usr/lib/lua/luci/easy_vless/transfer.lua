@@ -303,7 +303,7 @@ end
 -- Only options the runtime and LuCI know are taken from a file; anything
 -- else in an entry is dropped (and counted), never written to UCI.
 local ALLOWED = {
-	nodes = set({ "remarks", "type", "protocol", "address", "port", "uuid", "encryption", "flow", "transport",
+	nodes = set({ "remarks", "type", "protocol", "address", "port", "uuid", "password", "encryption", "flow", "transport",
 		"tls", "tls_serverName", "tls_allowInsecure", "alpn", "utls", "fingerprint", "ech", "ech_config",
 		"reality", "reality_publicKey", "reality_shortId", "reality_spiderX",
 		"ws_host", "ws_path", "ws_enableEarlyData", "ws_maxEarlyData", "ws_earlyDataHeaderName",
@@ -366,11 +366,21 @@ end
 local VALIDATE = {}
 
 function VALIDATE.nodes(o)
-	if o.protocol ~= "vless" then return "protocol" end
+	if o.protocol ~= "vless" and o.protocol ~= "trojan" then return "protocol" end
 	if type(o.address) ~= "string" or not (o.address:match("^[%w%.%-]+$") or o.address:match("^[%x:]+$")) or #o.address > 253 then return "address" end
 	local port = tonumber(o.port)
 	if not port or port < 1 or port > 65535 or port ~= math.floor(port) then return "port" end
-	if type(o.uuid) ~= "string" or not o.uuid:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") then return "uuid" end
+	if o.protocol == "trojan" then
+		-- Trojan (1.1): a password instead of a UUID, sing-box only
+		if type(o.password) ~= "string" or o.password == "" or #o.password > 512 then return "password" end
+		if o.uuid ~= nil then return "uuid" end
+		if o.flow ~= nil and o.flow ~= "" then return "flow" end
+		if o.type ~= nil and o.type ~= "sing-box" then return "type" end
+		if o.transport and not set({ "tcp", "ws", "grpc", "httpupgrade", "http", "quic" })[o.transport] then return "transport" end
+	else
+		if type(o.uuid) ~= "string" or not o.uuid:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") then return "uuid" end
+		if o.password ~= nil then return "password" end
+	end
 	if o.transport and not set({ "tcp", "raw", "ws", "grpc", "httpupgrade", "xhttp", "http", "mkcp", "quic" })[o.transport] then return "transport" end
 	for _, k in ipairs({ "tls", "reality", "utls", "tls_allowInsecure" }) do
 		if o[k] ~= nil and o[k] ~= "0" and o[k] ~= "1" then return k end

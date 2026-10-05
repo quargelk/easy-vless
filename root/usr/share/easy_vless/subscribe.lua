@@ -570,6 +570,58 @@ local function parseClashNode(node, add_mode, group, sub_cfg)
 				end
 			end
 		end
+	elseif node.type == 'trojan' then
+		-- Easy VLESS 1.1: Clash "trojan" proxy (always TLS; sing-box only)
+		if not has_singbox then
+			log(2, i18n.translatef("Skipping the %s node is due to incompatibility with the %s core program or incorrect node usage type settings.", "Trojan", "Trojan"))
+			return nil
+		end
+		result.type = 'sing-box'
+		result.protocol = "trojan"
+		result.password = (node.password ~= nil) and tostring(node.password) or nil
+		result.tcp_fast_open = node.tfo
+		result.tls = "1"
+		result.tls_serverName = node.sni or node.servername or ""
+		result.tls_allowInsecure = (node["skip-cert-verify"] or sub_allowinsecure) and "1" or "0"
+		if type(node.alpn) == "table" and #node.alpn > 0 then
+			local alpn = {}
+			for _, a in ipairs(node.alpn) do alpn[#alpn + 1] = tostring(a) end
+			result.alpn = table.concat(alpn, ",")
+		end
+		if type(node["client-fingerprint"]) == "string" and node["client-fingerprint"] ~= "" then
+			result.utls = "1"
+			result.fingerprint = node["client-fingerprint"]
+		end
+		local reality_opts = type(node["reality-opts"]) == "table" and node["reality-opts"] or nil
+		if reality_opts and reality_opts["public-key"] then
+			result.reality = "1"
+			result.reality_publicKey = reality_opts["public-key"]
+			result.reality_shortId = reality_opts["short-id"]
+		end
+		result.transport = node.network and string.lower(tostring(node.network)) or "tcp"
+		if result.transport == "raw" then result.transport = "tcp" end
+		if result.transport == 'ws' then
+			local ws_opts = type(node["ws-opts"]) == "table" and node["ws-opts"] or {}
+			if type(ws_opts.headers) == "table" then
+				result.ws_host = ws_opts.headers.Host or ws_opts.headers.host
+			end
+			result.ws_path = ws_opts.path
+			if result.ws_path and tonumber(ws_opts["max-early-data"]) then
+				result.ws_enableEarlyData = "1"
+				result.ws_maxEarlyData = tonumber(ws_opts["max-early-data"])
+				result.ws_earlyDataHeaderName = "Sec-WebSocket-Protocol"
+			end
+		elseif result.transport == 'grpc' then
+			local grpc_opts = type(node["grpc-opts"]) == "table" and node["grpc-opts"] or {}
+			result.grpc_serviceName = grpc_opts["grpc-service-name"]
+			result.grpc_mode = "gun"
+		elseif result.transport ~= "tcp" then
+			log(2, i18n.translatef("Skip node: %s. Because Sing-Box does not support the %s protocol's %s transmission method, Xray needs to be used instead.", tostring(node.name), "trojan", result.transport))
+			return nil
+		end
+		if not result.password or result.password == "" then
+			result.error_msg = "password missing"
+		end
 	end
 	if not result.remarks or result.remarks == "" then
 		if result.address and result.port then
@@ -616,24 +668,31 @@ local function parseSingBoxOutbound(ob, index, add_mode, group, sub_cfg)
 		add_mode = add_mode, -- `0` for manual configuration, `1` for import, `2` for subscription
 		group = group
 	}
+	-- Easy VLESS 1.1: "vless" and "trojan" outbounds; Trojan runs on sing-box only
+	local is_trojan = (singbox_str(ob.type) == "trojan")
 	local vless_type = sub_cfg and sub_cfg.vless_type or "global"
-	if vless_type == "xray" and has_xray then
+	if vless_type == "xray" and has_xray and not is_trojan then
 		result.type = "Xray"
 	elseif has_singbox then
 		result.type = "sing-box"
-	elseif has_xray then
+	elseif has_xray and not is_trojan then
 		result.type = "Xray"
 	else
-		log(2, i18n.translatef("Skipping the %s node is due to incompatibility with the %s core program or incorrect node usage type settings.", "VLESS", "VLESS"))
+		local name = is_trojan and "Trojan" or "VLESS"
+		log(2, i18n.translatef("Skipping the %s node is due to incompatibility with the %s core program or incorrect node usage type settings.", name, name))
 		return nil
 	end
-	result.protocol = "vless"
-	result.remarks = singbox_str(ob.tag) or ("VLESS " .. index)
+	result.protocol = is_trojan and "trojan" or "vless"
+	result.remarks = singbox_str(ob.tag) or ((is_trojan and "Trojan " or "VLESS ") .. index)
 	result.address = singbox_str(ob.server)
 	result.port = singbox_str(ob.server_port)
-	result.uuid = singbox_str(ob.uuid)
-	result.encryption = "none"
-	result.flow = singbox_str(ob.flow)
+	if is_trojan then
+		result.password = singbox_str(ob.password)
+	else
+		result.uuid = singbox_str(ob.uuid)
+		result.encryption = "none"
+		result.flow = singbox_str(ob.flow)
+	end
 
 	local tls = type(ob.tls) == "table" and ob.tls or {}
 	result.tls = "0"
@@ -705,16 +764,20 @@ local function parseSingBoxOutbound(ob, index, add_mode, group, sub_cfg)
 		result.transport = (result.type == "Xray") and "raw" or "tcp"
 		result.tcp_guise = "none"
 	else
-		log(2, i18n.translatef("Skip node: %s. Because Sing-Box does not support the %s protocol's %s transmission method, Xray needs to be used instead.", result.remarks, "vless", ttype))
+		log(2, i18n.translatef("Skip node: %s. Because Sing-Box does not support the %s protocol's %s transmission method, Xray needs to be used instead.", result.remarks, result.protocol, ttype))
 		return nil
 	end
-	if not (result.address and result.port and result.uuid) then
+	if is_trojan then
+		if not (result.address and result.port and result.password) then
+			result.error_msg = "server / server_port / password missing"
+		end
+	elseif not (result.address and result.port and result.uuid) then
 		result.error_msg = "server / server_port / uuid missing"
 	end
 	return result
 end
 
--- Returns nodes (parsed VLESS outbounds) and a report table.
+-- Returns nodes (parsed VLESS / Trojan outbounds) and a report table.
 local function processSingBoxData(conf, add_mode, group, sub_cfg)
 	local results = {}
 	local report = { found = 0, skipped = 0, skipped_types = {}, ignored = 0 }
@@ -722,17 +785,17 @@ local function processSingBoxData(conf, add_mode, group, sub_cfg)
 		report.skipped = report.skipped + 1
 		report.skipped_types[t] = (report.skipped_types[t] or 0) + 1
 	end
-	local vless_index = 0
+	local index = { vless = 0, trojan = 0 }
 	for _, ob in ipairs(conf.outbounds or {}) do
 		local t = type(ob) == "table" and singbox_str(ob.type) or nil
-		if t == "vless" then
-			vless_index = vless_index + 1
+		if t == "vless" or t == "trojan" then
+			index[t] = index[t] + 1
 			report.found = report.found + 1
-			local ok, r = pcall(parseSingBoxOutbound, ob, vless_index, add_mode, group, sub_cfg)
+			local ok, r = pcall(parseSingBoxOutbound, ob, index[t], add_mode, group, sub_cfg)
 			if ok and r then
 				results[#results + 1] = r
 			else
-				skip("vless (invalid)")
+				skip(t .. " (invalid)")
 			end
 		elseif t and SINGBOX_NON_PROXY[t] then
 			report.ignored = report.ignored + 1
@@ -828,8 +891,19 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 		add_mode = add_mode, -- `0` for manual configuration, `1` for import, `2` for subscription
 		group = group
 	}
-	if szType == "vless" then
-		if sub_vless_type == "sing-box" and has_singbox then
+	if szType == "vless" or szType == "trojan" then
+		-- Easy VLESS 1.1: trojan://password@host:port?parameters#name shares the
+		-- VLESS parameter names (type, security, sni, host, path, ...). Trojan
+		-- runs on sing-box only.
+		local is_trojan = (szType == "trojan")
+		if is_trojan then
+			if has_singbox then
+				result.type = 'sing-box'
+			else
+				log(2, i18n.translatef("Skipping the %s node is due to incompatibility with the %s core program or incorrect node usage type settings.", "Trojan", "Trojan"))
+				return nil
+			end
+		elseif sub_vless_type == "sing-box" and has_singbox then
 			result.type = 'sing-box'
 		elseif sub_vless_type == "xray" and has_xray then
 			result.type = "Xray"
@@ -837,7 +911,7 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 			log(2, i18n.translatef("Skipping the %s node is due to incompatibility with the %s core program or incorrect node usage type settings.", "VLESS", "VLESS"))
 			return nil
 		end
-		result.protocol = "vless"
+		result.protocol = szType
 		local alias = ""
 		if content:find("#") then
 			local idx_sp = content:find("#")
@@ -846,8 +920,20 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 		end
 		result.remarks = UrlDecode(alias)
 		if content:find("@") then
-			local Info = split(content, "@")
-			result.uuid = UrlDecode(Info[1])
+			local Info
+			if is_trojan then
+				-- a password may contain "@": the address starts after the last
+				-- one in front of the parameters
+				local at = content:match("^[^?]*"):match(".*()@")
+				Info = at and { content:sub(1, at - 1), content:sub(at + 1) } or { "", content }
+				result.password = UrlDecode(Info[1])
+				if not result.password or result.password == "" then
+					result.error_msg = "password missing"
+				end
+			else
+				Info = split(content, "@")
+				result.uuid = UrlDecode(Info[1])
+			end
 			local port = "443"
 			Info[2] = (Info[2] or ""):gsub("/%?", "?")
 			local query = split(Info[2], "%?")
@@ -875,7 +961,7 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 
 			if not params.type then params.type = "tcp" end
 			params.type = string.lower(params.type)
-			if ({ xhttp=true, kcp=true, mkcp=true })[params.type] and result.type ~= "Xray" and has_xray then
+			if not is_trojan and ({ xhttp=true, kcp=true, mkcp=true })[params.type] and result.type ~= "Xray" and has_xray then
 				result.type = "Xray"
 			end
 			if result.type == "sing-box" and params.type == "raw" then 
@@ -957,11 +1043,21 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 				result.httpupgrade_host = params.host
 				result.httpupgrade_path = params.path
 			end
-			result.encryption = params.encryption or "none"
-			result.flow = params.flow
+			if is_trojan then
+				-- Trojan is TLS unless the link says security=none
+				if not params.security or params.security == "" then
+					params.security = "tls"
+				end
+				if (not params.sni or params.sni == "") and params.peer and params.peer ~= "" then
+					params.sni = params.peer
+				end
+			else
+				result.encryption = params.encryption or "none"
+				result.flow = params.flow
 
-			if (not params.security or params.security == "") and params.flow then
-				params.security = "tls"
+				if (not params.security or params.security == "") and params.flow then
+					params.security = "tls"
+				end
 			end
 
 			result.tls = "0"
@@ -1589,11 +1685,11 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 			local types = {}
 			for t, n in pairs(singboxReport.skipped_types) do types[#types + 1] = (n > 1) and (t .. " x" .. n) or t end
 			table.sort(types)
-			local skipped = singboxReport.skipped + (singboxReport.found - #node_list - (singboxReport.skipped_types["vless (invalid)"] or 0))
+			local skipped = singboxReport.skipped + (singboxReport.found - #node_list - (singboxReport.skipped_types["vless (invalid)"] or 0) - (singboxReport.skipped_types["trojan (invalid)"] or 0))
 			log(1, i18n.translatef("[%s] sing-box JSON: imported %s, skipped %s%s", group, #node_list, skipped,
 				(#types > 0) and ("; skipped types: " .. table.concat(types, ", ")) or ""))
 			if #node_list == 0 then
-				log(1, i18n.translatef("[%s] No supported VLESS outbound was found in the sing-box JSON; existing nodes are kept.", group))
+				log(1, i18n.translatef("[%s] No supported VLESS or Trojan outbound was found in the sing-box JSON; existing nodes are kept.", group))
 			end
 		end
 		log(2, i18n.translatef("Successfully resolved the [%s] node, number: %s", group, #node_list))

@@ -68,7 +68,7 @@ if python3 - <<'EOF'
 import json, re, sys, glob
 KEYS = ["Latency", "Test All", "Testing…", "Queued", "Passed", "Not tested", "Testing… %d of %d",
         "Sort:", "List order", "Last test", "Test result", "Search servers…", "Updating…",
-        "%d nodes received", "No supported VLESS node in the answer", "existing nodes kept",
+        "%d nodes received", "No supported node in the answer", "existing nodes kept",
         "Auto (curl, then HAPP if needed)", "Subscription link", "VLESS link", "Load subscription",
         "Repeat URL Test", "Subscription options"]
 pot = open("luci/po/templates/easy-vless.pot", encoding="utf-8").read()
@@ -184,6 +184,13 @@ for t in explain diagnose transfer; do
 	[ -n "$LUA51" ] || break
 	if out=$("$LUA51" "tests/${t}-test.lua" 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "${t} test"; echo "$out" | grep -v '^PASS'; fi
 done
+# Trojan (1.1): link / subscription parsers, the sing-box outbound, node
+# identity (trojan-test.lua); Node List, Use, the trojan:// URL, the wizard
+# link check (trojan-view-test.js)
+if [ -n "$LUA51" ]; then
+	if out=$("$LUA51" tests/trojan-test.lua 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Trojan test"; echo "$out" | grep -v '^PASS'; fi
+fi
+if out=$(node tests/trojan-view-test.js 2>&1); then ok "$(echo "$out" | tail -n 1 | tr -d '=')"; else bad "Trojan view test"; echo "$out" | grep -v '^PASS'; fi
 
 echo "== package metadata"
 PV=$(sed -n 's/^PKG_VERSION:=//p' Makefile); PR=$(sed -n 's/^PKG_RELEASE:=//p' Makefile)

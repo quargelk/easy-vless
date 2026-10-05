@@ -14,6 +14,7 @@
  *   easy_vless.global.node          what the runtime starts: a server, a URL
  *                                   Test group, or the Main Router (shunt)
  *   config nodes, protocol=vless    a VLESS server
+ *   config nodes, protocol=trojan   a Trojan server (1.1; sing-box only)
  *   config nodes, protocol=_urltest a URL Test group (list urltest_node)
  *   config nodes 'main_router',     the Main Router ("_shunt" node):
  *     protocol=_shunt                 default_node = Default target,
@@ -224,8 +225,19 @@ return baseclass.extend({
 		return uci.get(CONFIG, sid, 'protocol');
 	},
 
+	/* The server protocols (1.1: VLESS and Trojan) and their display names. */
+	SERVER_PROTOCOLS: { vless: 'VLESS', trojan: 'Trojan' },
+
+	isServerProtocol: function(protocol) {
+		return Object.prototype.hasOwnProperty.call(this.SERVER_PROTOCOLS, protocol || '');
+	},
+
+	protocolName: function(protocol) {
+		return this.isServerProtocol(protocol) ? this.SERVER_PROTOCOLS[protocol] : 'VLESS';
+	},
+
 	isServer: function(sid) {
-		return this.protocolOf(sid) == 'vless';
+		return this.isServerProtocol(this.protocolOf(sid));
 	},
 
 	isGroup: function(sid) {
@@ -233,7 +245,7 @@ return baseclass.extend({
 	},
 
 	servers: function() {
-		return uci.sections(CONFIG, 'nodes').filter(function(s) { return s.protocol == 'vless'; });
+		return uci.sections(CONFIG, 'nodes').filter(L.bind(function(s) { return this.isServerProtocol(s.protocol); }, this));
 	},
 
 	groups: function() {
@@ -267,7 +279,7 @@ return baseclass.extend({
 		if (this.isGroup(sid))
 			return _('URL Test group') + ': ' + (remarks || sid);
 		if (this.isServer(sid))
-			return 'VLESS: ' + (remarks || sid);
+			return this.protocolName(this.protocolOf(sid)) + ': ' + (remarks || sid);
 		if (sid == ROUTER)
 			return _('Main Router (shunt)');
 		return remarks || sid;
@@ -954,9 +966,9 @@ return baseclass.extend({
 		case 'timeout':
 			return _('Connection timeout (%s).').format(d || _('no response within 5 s'));
 		case 'tls':
-			return withDetail(_('TLS handshake through the VLESS connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it.'));
+			return withDetail(_('TLS handshake through the server connection failed: the server is unreachable, rejected the connection, or the test site is blocked behind it.'));
 		case 'no_answer':
-			return withDetail(_('No answer through the VLESS connection: the server is unreachable or rejected the connection.'));
+			return withDetail(_('No answer through the server connection: the server is unreachable or rejected the connection.'));
 		case 'probe':
 			return _('Probe failed (HTTP %s).').format(r.http_code || _('none'));
 		case 'busy':
@@ -1245,7 +1257,7 @@ return baseclass.extend({
 		case 'unchanged':
 			return { kind: 'ok', text: _('No changes'), detail: when(r.time) };
 		case 'no_nodes':
-			return { kind: 'bad', text: _('No supported VLESS node in the answer'),
+			return { kind: 'bad', text: _('No supported node in the answer'),
 				detail: (r.format ? r.format + ' · ' : '') + _('existing nodes kept') + via + ' · ' + when(r.time) };
 		case 'empty':
 			return { kind: 'bad', text: _('Empty answer'), detail: _('existing nodes kept') + ' · ' + when(r.time) };
@@ -1359,20 +1371,22 @@ return baseclass.extend({
 		return records.slice().sort(function(a, b) { return self.compareNodes(a, b, mode); });
 	},
 
-	/* ---------- VLESS URL export ---------- */
+	/* ---------- server URL export (vless:// / trojan://) ---------- */
 
 	/*
-	 * Build a standard vless:// URL from the saved UCI values (UCI stays the
-	 * only source of truth). Parameter names follow PassWall2's share-link
-	 * generator and match subscribe.lua's importer, so export -> import
-	 * round-trips. Settings that a VLESS URL cannot carry are reported.
+	 * Build a standard vless:// (or, 1.1, trojan://) URL from the saved UCI
+	 * values (UCI stays the only source of truth). Parameter names follow
+	 * PassWall2's share-link generator and match subscribe.lua's importer, so
+	 * export -> import round-trips. Settings that a URL cannot carry are
+	 * reported.
 	 */
 	buildVlessUrl: function(sid) {
 		const g = function(k) { return uci.get(CONFIG, sid, k); };
 		const warnings = [];
+		const trojan = g('protocol') == 'trojan';
 
-		if (g('protocol') != 'vless')
-			return { url: null, warnings: [ _('Only VLESS servers can be exported.') ] };
+		if (g('protocol') != 'vless' && !trojan)
+			return { url: null, warnings: [ _('Only VLESS and Trojan servers can be exported.') ] };
 
 		let host = g('address') || '';
 		if (host.indexOf(':') > -1 && host.charAt(0) != '[')
@@ -1420,11 +1434,12 @@ return baseclass.extend({
 			add('path', g('http_path'));
 			break;
 		default:
-			warnings.push(_('Transport "%s" has no standard VLESS URL form.').format(transport));
+			warnings.push(_('Transport "%s" has no standard URL form.').format(transport));
 		}
 
 		add('type', type);
-		add('encryption', g('encryption') || 'none');
+		if (!trojan)
+			add('encryption', g('encryption') || 'none');
 
 		if (g('tls') == '1') {
 			const reality = g('reality') == '1';
@@ -1445,22 +1460,28 @@ return baseclass.extend({
 			if (g('ech') == '1' && g('ech_config'))
 				add('ech', g('ech_config'));
 			add('pcs', g('tls_pinSHA256'));
-			add('flow', g('flow'));
+			if (!trojan)
+				add('flow', g('flow'));
+		}
+		else if (trojan) {
+			/* a trojan:// link means TLS unless it says otherwise */
+			add('security', 'none');
 		}
 		else if (g('flow')) {
 			warnings.push(_('Flow "%s" requires TLS/Reality and was not exported.').format(g('flow')));
 		}
 
 		if (g('mux') == '1')
-			warnings.push(_('Multiplex (mux) settings are not part of a VLESS URL.'));
+			warnings.push(_('Multiplex (mux) settings are not part of the URL.'));
 		if (g('chain_proxy') && g('chain_proxy') != '0')
-			warnings.push(_('Proxy chain settings are not part of a VLESS URL.'));
+			warnings.push(_('Proxy chain settings are not part of the URL.'));
 		if (g('domain_resolver') || g('domain_strategy'))
-			warnings.push(_('Server domain resolver/strategy settings are not part of a VLESS URL.'));
+			warnings.push(_('Server domain resolver/strategy settings are not part of the URL.'));
 		if (g('tls_certificate') == '1')
-			warnings.push(_('A custom trusted certificate is not part of a VLESS URL.'));
+			warnings.push(_('A custom trusted certificate is not part of the URL.'));
 
-		const url = 'vless://' + encodeURIComponent(g('uuid') || '') + '@' + host + ':' + (g('port') || '') +
+		const url = (trojan ? 'trojan://' + encodeURIComponent(g('password') || '') : 'vless://' + encodeURIComponent(g('uuid') || '')) +
+			'@' + host + ':' + (g('port') || '') +
 			'?' + params.join('&') + '#' + encodeURIComponent(g('remarks') || '');
 
 		return { url: url, warnings: warnings };
@@ -1489,7 +1510,7 @@ return baseclass.extend({
 		const note = E('span', { 'style': 'margin-right:1em' });
 		const qrBox = E('div', { 'style': 'text-align:center;margin:.5em 0' });
 
-		ui.showModal(this.esc(_('VLESS URL') + ' » ' + (uci.get(CONFIG, sid, 'remarks') || sid)), [
+		ui.showModal(this.esc((this.protocolOf(sid) == 'trojan' ? _('Trojan URL') : _('VLESS URL')) + ' » ' + (uci.get(CONFIG, sid, 'remarks') || sid)), [
 			field,
 			r.warnings.length ? E('div', { 'class': 'alert-message warning' }, [
 				E('p', {}, _('Not included in the URL:')),

@@ -251,7 +251,7 @@ method_wizard_state() {
 	json_add_boolean "enabled" "$([ "$enabled" = 1 ] && echo 1 || echo 0)"
 	json_add_string "node" "$node"
 	json_add_boolean "node_ok" "$node_ok"
-	json_add_int "servers" "$(uci -q show ${CONFIG} | grep -c "\.protocol='vless'$")"
+	json_add_int "servers" "$(uci -q show ${CONFIG} | grep -c -E "\.protocol='(vless|trojan)'$")"
 	json_add_int "rules" "$(count_type shunt_rules)"
 	json_add_int "subscriptions" "$(count_type subscribe_list)"
 	json_add_boolean "backup" "$([ -s "$WIZARD_BACKUP" ] && echo 1 || echo 0)"
@@ -333,17 +333,18 @@ method_wizard() {
 	json_dump
 }
 
-# Import one or more vless:// links through the existing subscribe.lua parser.
+# Import one or more vless:// / trojan:// links through the existing
+# subscribe.lua parser.
 method_import() {
 	local links="$1" before after out code mark found newlog skipped
 	json_init
 	case "$links" in
-		*vless://*) ;;
+		*vless://*|*trojan://*) ;;
 		*)
 			json_add_int "code" 1
 			json_add_int "found" 0
 			json_add_int "added" 0
-			json_add_string "output" "No vless:// link found."
+			json_add_string "output" "No vless:// or trojan:// link found."
 			json_dump
 			return
 		;;
@@ -385,6 +386,7 @@ method_import() {
 		case " $(echo $ids_before) " in *" $id "*) continue ;; esac
 		json_add_object ""
 		json_add_string "id" "$id"
+		json_add_string "protocol" "$(uci -q get ${CONFIG}.${id}.protocol)"
 		json_add_string "remarks" "$(uci -q get ${CONFIG}.${id}.remarks)"
 		json_add_string "address" "$(uci -q get ${CONFIG}.${id}.address)"
 		json_add_string "port" "$(uci -q get ${CONFIG}.${id}.port)"
