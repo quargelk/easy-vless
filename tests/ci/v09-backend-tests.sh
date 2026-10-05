@@ -462,7 +462,7 @@ r=$(transfer import_apply "$BK")
 check "a backup is not accepted as an import" '[ "$(jget "$r" @.error.code)" = not_export ] && [ "$(cfg_sum)" = "$empty" ]'
 r=$(transfer import_apply "$EXN" rules)
 check "servers where rules were asked for: refused" '[ "$(jget "$r" @.error.code)" = kind_mismatch ] && [ "$(cfg_sum)" = "$empty" ]'
-evil=$(echo "$EXN" | sed 's/"protocol": *"vless"/"protocol":"trojan"/')
+evil=$(echo "$EXN" | sed 's/"protocol": *"vless"/"protocol":"vmess"/')
 check "the test file really differs" '[ "$evil" != "$EXN" ]'
 r=$(transfer import_apply "$evil")
 check "an invalid entry is not imported, the configuration is untouched" '[ "$(jget "$r" @.ok)" = false ] && [ "$(servers)" = 0 ] && [ "$(cfg_sum)" = "$empty" ]'

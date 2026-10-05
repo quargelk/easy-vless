@@ -589,7 +589,7 @@ function M.connection(p)
 		elseif n.kind == "direct" then
 			add(c, "node", "off", "no_proxy_target")
 		else
-			add(c, "node", "ok", n.kind == "group" and "node_group" or "node_server", { id = n.id, name = n.name, members = n.members })
+			add(c, "node", "ok", n.kind == "group" and "node_group" or "node_server", { id = n.id, name = n.name, members = n.members, protocol = n.protocol })
 			local t = n.test
 			if n.kind == "group" then
 				add(c, "test", "info", "test_group")

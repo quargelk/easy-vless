@@ -214,9 +214,9 @@ return view.extend({
 			return E('div', { 'class': 'ev-page' }, [
 				ev.pageStyle(),
 				E('h2', {}, _('Easy VLESS')),
-				E('div', { 'class': 'cbi-map-descr' }, _('Easy VLESS sends the traffic of the router and of your LAN devices through a VLESS server (sing-box). Here: service status, the main switch and where the traffic goes. Servers and subscriptions are in Node List, routing rules in Rule Manage, DNS and forwarding in Settings.')),
+				E('div', { 'class': 'cbi-map-descr' }, _('Easy VLESS sends the traffic of the router and of your LAN devices through a VLESS or Trojan server (sing-box). Here: service status, the main switch and where the traffic goes. Servers and subscriptions are in Node List, routing rules in Rule Manage, DNS and forwarding in Settings.')),
 				wstate.needed ? E('div', { 'class': 'alert-message warning', 'id': 'ev-setup-note' }, [
-					E('p', {}, _('Easy VLESS is not set up yet. The setup wizard adds your VLESS server, tests it, sets up the routing and starts Easy VLESS.')),
+					E('p', {}, _('Easy VLESS is not set up yet. The setup wizard adds your server, tests it, sets up the routing and starts Easy VLESS.')),
 					E('a', { 'class': 'btn cbi-button cbi-button-action', 'href': L.url('admin/services/easy_vless/wizard'),
 						'click': function() { ev.setWizardDismissed(false); } }, _('Start setup wizard'))
 				]) : '',

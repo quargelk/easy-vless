@@ -40,6 +40,9 @@ function M.identity(node)
 	local parts = {}
 	for i, k in ipairs(IDENTITY) do
 		local v = str(node[k])
+		-- Trojan (1.1): the password takes the place of the UUID, so the keys
+		-- of VLESS nodes (excluded_node lists) stay what they were
+		if k == "uuid" and v == "" then v = str(node.password) end
 		if k == "address" or k == "tls_serverName" then v = v:lower() end
 		parts[i] = v
 	end

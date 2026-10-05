@@ -9,8 +9,8 @@
  * Easy VLESS - First Run Wizard (0.6.0, 2.0 in 0.8.0): onboarding only, no
  * second configuration system. Every step uses what Main, Node List and Rule
  * Manage already use:
- *   Link         a vless:// link -> rpcd "import" (subscribe.lua VLESS
- *                parser, same as Node List -> Import VLESS URL); an
+ *   Link         a vless:// or trojan:// link -> rpcd "import" (subscribe.lua
+ *                parser, same as Node List -> Import URL); an
  *                http(s):// link -> a normal URL Subscription (config
  *                subscribe_list) updated with rpcd "subscribe" (subscribe.lua,
  *                same as Node List -> Update); or a server already in Node List
@@ -61,10 +61,23 @@ function clearState() {
 	try { window.sessionStorage.removeItem(STORE); } catch (e) {}
 }
 
-/* One vless:// link, checked before it is sent to the router: a clear
- * reason instead of "0 imported". Returns an error text or null. */
+/* One trojan:// link (1.1): password, address and port must be there. */
+function trojanLinkError(v) {
+	const p = v.match(/^trojan:\/\/([^\/?#]+)@(\[[0-9A-Fa-f:.]+\]|[^:@\/?#\[\]]+):(\d+)(?:[\/?#]|$)/i);
+	if (!p)
+		return _('The link is incomplete: expected trojan://password@address:port?parameters#name');
+	const port = +p[3];
+	if (port < 1 || port > 65535)
+		return _('The port in the link must be between 1 and 65535.');
+	return null;
+}
+
+/* One vless:// or trojan:// link, checked before it is sent to the router: a
+ * clear reason instead of "0 imported". Returns an error text or null. */
 function linkError(v) {
 	v = (v || '').trim();
+	if (/^trojan:\/\//i.test(v))
+		return trojanLinkError(v);
 	const p = v.match(/^vless:\/\/([^@\/?#]+)@(\[[0-9A-Fa-f:.]+\]|[^:\/?#\[\]]+):(\d+)(?:[\/?#]|$)/i);
 	if (!p)
 		return _('The link is incomplete: expected vless://UUID@address:port?parameters#name');
@@ -78,30 +91,31 @@ function linkError(v) {
 	return null;
 }
 
-/* What was pasted: { kind: 'vless' | 'sub' | null, error }. A vless://
- * link is one server; an http(s):// link is taken for a subscription, which
- * is only confirmed when the router downloads it and finds VLESS servers. */
+/* What was pasted: { kind: 'vless' | 'trojan' | 'sub' | null, error }. A
+ * vless:// or trojan:// link is one server; an http(s):// link is taken for a
+ * subscription, which is only confirmed when the router downloads it and
+ * finds servers. */
 function detectInput(v) {
 	v = (v || '').trim();
 	if (!v)
-		return { kind: null, error: _('Paste the vless:// link of your server or the subscription link of your provider.') };
+		return { kind: null, error: _('Paste the vless:// or trojan:// link of your server or the subscription link of your provider.') };
 	const parts = v.split(/\s+/).filter(function(x) { return x; });
 	if (parts.length > 1)
 		return { kind: null, error: _('Paste exactly one link. More servers can be added later in Node List.') };
 	const m = v.match(/^([A-Za-z][A-Za-z0-9+.-]*):\/\//);
 	if (!m)
-		return { kind: null, error: _('This is not a link: a VLESS link starts with vless://, a subscription link with https://') };
+		return { kind: null, error: _('This is not a link: a server link starts with vless:// or trojan://, a subscription link with https://') };
 	const scheme = m[1].toLowerCase();
-	if (scheme == 'vless') {
+	if (scheme == 'vless' || scheme == 'trojan') {
 		const err = linkError(v);
-		return { kind: 'vless', error: err };
+		return { kind: scheme, error: err };
 	}
 	if (scheme == 'http' || scheme == 'https') {
 		if (!/^https?:\/\/[^\s\/?#@]+(:\d+)?([\/?#]\S*)?$/i.test(v))
 			return { kind: 'sub', error: _('The subscription link is incomplete: expected https://address/path') };
 		return { kind: 'sub', error: null };
 	}
-	return { kind: null, error: _('"%s://" links are not supported: Easy VLESS works with VLESS servers only (vless://).').format(scheme) };
+	return { kind: null, error: _('"%s://" links are not supported: Easy VLESS works with VLESS and Trojan servers (vless://, trojan://).').format(scheme) };
 }
 
 /* Why subscribe.lua did not import a link: its own log lines. */
@@ -138,6 +152,7 @@ function serverRows(sid) {
 	const g = function(k) { return uci.get(CONFIG, sid, k); };
 	return [
 		[ _('Name'), E('strong', {}, g('remarks') || sid) ],
+		[ _('Protocol'), ev.protocolName(g('protocol')) ],
 		[ _('Address'), (g('address') || '-') + ':' + (g('port') || '-') ],
 		[ _('Transport'), transportText(sid) ],
 		[ _('Security'), securityText(sid) ],
@@ -467,7 +482,7 @@ return view.extend({
 		const ws = this.wstate;
 		const configured = !ws.needed && (ws.node_ok || ws.enabled);
 		const body = [
-			E('p', {}, _('Easy VLESS sends the traffic of this router and of your devices through a VLESS server (sing-box), while Russian sites stay direct.')),
+			E('p', {}, _('Easy VLESS sends the traffic of this router and of your devices through a VLESS or Trojan server (sing-box), while Russian sites stay direct.')),
 			E('p', {}, _('This wizard sets it up in a few steps:')),
 			E('ol', {}, [
 				E('li', {}, _('paste the vless:// link of your server or the subscription link of your provider;')),
@@ -517,7 +532,7 @@ return view.extend({
 		const st = this.st;
 		const servers = ev.servers();
 		const self = this;
-		const body = [ E('p', {}, _('Paste the vless:// link of your server or the subscription link (https://…) of your provider. Your provider gives it to you (often as "Copy link" or as a QR code in the app).')) ];
+		const body = [ E('p', {}, _('Paste the vless:// or trojan:// link of your server or the subscription link (https://…) of your provider. Your provider gives it to you (often as "Copy link" or as a QR code in the app).')) ];
 
 		const choice = function(value, label, content) {
 			const input = E('input', { 'type': 'radio', 'name': 'ev-wiz-mode', 'value': value, 'checked': st.mode == value ? '' : null });
@@ -531,8 +546,8 @@ return view.extend({
 		const optsEl = E('div', { 'id': 'ev-wiz-subopts' });
 		const update = function() {
 			const d = detectInput(ta.value);
-			dom.content(detectEl, !ta.value.trim() ? '' : (d.kind == 'vless'
-				? [ ev.badge(_('VLESS link'), 'info'), ' ', _('one server; it is added to Node List') ]
+			dom.content(detectEl, !ta.value.trim() ? '' : ((d.kind == 'vless' || d.kind == 'trojan')
+				? [ ev.badge(d.kind == 'trojan' ? _('Trojan link') : _('VLESS link'), 'info'), ' ', _('one server; it is added to Node List') ]
 				: (d.kind == 'sub' ? [ ev.badge(_('Subscription link'), 'info'), ' ', _('the list of servers is downloaded by the router and checked') ] : '')));
 			detectEl.setAttribute('data-kind', d.kind || '');
 			optsEl.style.display = (d.kind == 'sub') ? '' : 'none';
@@ -564,7 +579,7 @@ return view.extend({
 
 		const importBox = E('div', { 'style': 'margin-top:.5em' }, [ ta, detectEl, optsEl ]);
 		if (servers.length) {
-			body.push(choice('paste', _('Paste a VLESS link or a subscription link'), st.mode == 'paste' ? importBox : ''));
+			body.push(choice('paste', _('Paste a server link or a subscription link'), st.mode == 'paste' ? importBox : ''));
 			body.push(choice('existing', _('Use a server that is already in Node List'),
 				st.mode == 'existing' ? E('div', { 'class': 'ev-wiz-descr' }, _('%d servers; you choose one in the next step.').format(servers.length)) : ''));
 		}
@@ -573,7 +588,7 @@ return view.extend({
 			body.push(importBox);
 		}
 		body.push(E('div', { 'class': 'ev-wiz-error', 'id': 'ev-wiz-error' }, st.error || ''));
-		body.push(E('p', { 'class': 'cbi-value-description' }, _('Only VLESS is supported (TCP, WebSocket, gRPC, HTTPUpgrade; TLS or Reality). Subscriptions: plain or base64 lists of vless:// links, Clash YAML and sing-box JSON; other server types are skipped.')));
+		body.push(E('p', { 'class': 'cbi-value-description' }, _('VLESS and Trojan are supported (TCP, WebSocket, gRPC, HTTPUpgrade; TLS or Reality). Subscriptions: plain or base64 lists of vless:// and trojan:// links, Clash YAML and sing-box JSON; other server types are skipped.')));
 
 		const d = detectInput(st.url);
 		const label = (st.mode == 'existing' || this.linkLoaded()) ? _('Next') : (d.kind == 'sub' ? _('Load subscription') : _('Add server'));
@@ -664,7 +679,7 @@ return view.extend({
 				throw new Error(_('The router did not answer: %s').format(res.error));
 			const n = L.toArray(res.nodes)[0];
 			if (!(res.added > 0) || !n)
-				throw new Error(_('The link was not accepted by the VLESS parser.') + (importReason(res) ? '\n' + importReason(res) : ''));
+				throw new Error(_('The link was not accepted by the parser.') + (importReason(res) ? '\n' + importReason(res) : ''));
 			st.importedId = n.id;
 			st.importedUrl = url;
 			st.source = 'vless';
@@ -748,7 +763,7 @@ return view.extend({
 			return (created ? this.removeSubscription(id) : Promise.resolve()).then(L.bind(function() {
 				st.subId = st.subUrl = null;
 				st.subCreated = false;
-				throw new Error(_('No VLESS server was found in this subscription: %s').format(reason) + '\n' +
+				throw new Error(_('No VLESS or Trojan server was found in this subscription: %s').format(reason) + '\n' +
 					_('Check the link. If your provider limits devices, enable "Send the device ID (HWID)" in the subscription options; if it serves the list only to the HAPP app, choose User-Agent HAPP.'));
 			}, this));
 		}, this)).catch(L.bind(function(e) {
@@ -809,7 +824,7 @@ return view.extend({
 			]));
 		else if (st.source == 'sub')
 			body.push(E('p', { 'id': 'ev-wiz-subinfo' }, [ ev.badge(_('Subscription'), 'ok'), ' ',
-				_('Subscription "%s": %d VLESS servers were added to Node List. Choose the server to use:').format(uci.get(CONFIG, st.subId, 'remark') || '', list.length) ]));
+				_('Subscription "%s": %d servers were added to Node List. Choose the server to use:').format(uci.get(CONFIG, st.subId, 'remark') || '', list.length) ]));
 		else
 			body.push(E('p', {}, _('Choose the server to use:')));
 
@@ -880,7 +895,7 @@ return view.extend({
 		const sid = st.serverId;
 		const t = st.tests[sid] || {};
 		const body = [
-			E('p', {}, _('Easy VLESS now connects through the server with a temporary sing-box instance: first the Server Test, then the URL Test (real HTTPS requests through the VLESS connection, not only a TCP connect).')),
+			E('p', {}, _('Easy VLESS now connects through the server with a temporary sing-box instance: first the Server Test, then the URL Test (real HTTPS requests through the server connection, not only a TCP connect).')),
 			kv(serverRows(sid)),
 			E('h4', {}, _('Result')),
 			kv([
@@ -1000,10 +1015,10 @@ return view.extend({
 			]);
 		};
 		const basicOk = TEMPLATES.length > 0;
-		body.push(choice('basic', _('Recommended: Russian sites direct, everything else through VLESS'),
+		body.push(choice('basic', _('Recommended: Russian sites direct, everything else through the server'),
 			basicOk ? kv(this.routingRows('basic', server)) : E('span', { 'class': 'ev-wiz-error' }, _('Not available: the prepared rules could not be read (%s).').format(RESOURCES_ERROR || _('no rule templates'))),
 			!basicOk));
-		body.push(choice('all', _('Everything through VLESS'), _('All traffic of the router and of the LAN devices goes through %s.').format(ev.label(server))));
+		body.push(choice('all', _('Everything through the server'), _('All traffic of the router and of the LAN devices goes through %s.').format(ev.label(server))));
 		if (this.routingChoices().indexOf('keep') > -1)
 			body.push(choice('keep', _('Keep the current routing'), E('div', {}, [
 				_('The routing is not changed; the server is only added to Node List. Current routing:'),
@@ -1278,7 +1293,7 @@ return view.extend({
 				kv([
 					[ _('Server'), server && this.serverOk(server) ? ev.label(server) : '-' ],
 					(st.source == 'sub' && this.subOk(st.subId)) ? [ _('Subscription'), uci.get(CONFIG, st.subId, 'remark') || '' ] : null,
-					[ _('Routing'), { basic: _('Russian sites direct, everything else through VLESS'), all: _('Everything through VLESS'), keep: _('unchanged') }[st.routing] || '-' ],
+					[ _('Routing'), { basic: _('Russian sites direct, everything else through the server'), all: _('Everything through the server'), keep: _('unchanged') }[st.routing] || '-' ],
 					[ _('DNS'), remoteProto == 'doh' ? g('remote_dns_doh', '') : remoteProto.toUpperCase() + ' ' + g('remote_dns', '1.1.1.1') ],
 					[ _('Service'), E('span', {}, [ ev.badge(_('Running'), 'ok'), ' ', _('PID %s').format(r.pid || '?'), r.singbox ? ' · sing-box ' + r.singbox : '' ]) ],
 					[ _('Connection'), E('span', { 'id': 'ev-wiz-connectivity' }, conn) ]

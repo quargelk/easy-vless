@@ -66,7 +66,7 @@ function targetText(t) {
 	case 'block':
 		return _('Block');
 	case 'server':
-		return 'VLESS: ' + (t.name || t.id || t.tag);
+		return ev.protocolName(t.type) + ': ' + (t.name || t.id || t.tag);
 	case 'group': {
 		let s = _('URL Test group') + ': ' + (t.name || t.id || t.tag);
 		if (t.now)
@@ -478,7 +478,7 @@ function checkText(c) {
 	case 'no_node': return _('No node is selected (Main → Node).');
 	case 'node_missing': return _('The selected node "%s" does not exist any more. Choose a node on Main.').format(c.id);
 	case 'no_proxy_target': return _('No server is used: Default and all rules go Direct or are blocked.');
-	case 'node_server': return 'VLESS: ' + (c.name || c.id);
+	case 'node_server': return ev.protocolName(c.protocol) + ': ' + (c.name || c.id);
 	case 'node_group': return _('URL Test group') + ': ' + (c.name || c.id) + ' (' + _('%d server(s)').format(c.members || 0) + ')';
 	case 'test_group': return _('sing-box tests the servers of the group itself (Node List → URL Test live results).');
 	case 'test_none': return _('Not tested yet: run Server Test in Node List.');
@@ -508,7 +508,7 @@ function itemTitle(id) {
 	case 'dns': return _('DNS', 'diagnostics');
 	case 'nftables': return 'nftables';
 	case 'tproxy': return 'TPROXY';
-	case 'vless': return 'VLESS';
+	case 'vless': return _('Server');
 	case 'routing': return _('Routing', 'diagnostics');
 	case 'internet': return _('Internet', 'diagnostics');
 	}
@@ -590,7 +590,7 @@ return view.extend({
 
 	handleConnection: function() {
 		const box = document.getElementById('ev-diag-connection');
-		this.loading(box, _('Checking Core, DNS, nftables, TPROXY, VLESS, Routing and Internet…'));
+		this.loading(box, _('Checking Core, DNS, nftables, TPROXY, Server, Routing and Internet…'));
 		return ev.callDiag('connection').then(L.bind(function(res) {
 			if (!res.ok)
 				return this.failed(box, res);

@@ -9,6 +9,9 @@ check which requests the router made - and how many.
 
   GOOD_LINK / BAD_LINK   vless:// links of the VLESS test server (a working
                          server and a closed port), put into the lists
+  TROJAN_LINK / TROJAN_STRICT_LINK
+                         (optional, 1.1) trojan:// links of the Trojan test
+                         server, with and without allowInsecure, for /mixed
 
 Paths:
   /plain /b64 /clash /singbox   the two servers as a plain vless:// list, a
@@ -24,6 +27,9 @@ Paths:
   /slow                         the plain list after 8 s
   /status/<code>                that HTTP status
   /count/<name>                 the plain list; servers named "<name> ..."
+  /mixed/plain /mixed/b64 /mixed/clash /mixed/singbox
+                                1.1: the two VLESS and the two Trojan servers
+                                in one list (plus an unsupported entry)
 """
 
 import base64
@@ -34,10 +40,12 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, unquote
 
 GOOD = os.environ["GOOD_LINK"]
 BAD = os.environ["BAD_LINK"]
+TROJAN = os.environ.get("TROJAN_LINK", "")
+TROJAN_STRICT = os.environ.get("TROJAN_STRICT_LINK", "")
 LOG = []
 LOCK = threading.Lock()
 
@@ -81,6 +89,56 @@ def singbox():
     return json.dumps({"outbounds": obs}, indent=1) + "\n"
 
 
+def trojan_parts(link):
+    """password, host, port, sni, insecure of a trojan:// link"""
+    m = re.match(r"trojan://([^@]+)@([^:]+):(\d+)\??([^#]*)", link)
+    q = parse_qs(m.group(4))
+    return (unquote(m.group(1)), m.group(2), int(m.group(3)), q.get("sni", [""])[0],
+            q.get("allowInsecure", ["0"])[0] == "1")
+
+
+def mixed_plain():
+    return "\n".join([
+        named(GOOD, "Mixed VLESS Good"),
+        named(TROJAN, "Mixed Trojan"),
+        named(BAD, "Mixed VLESS Closed"),
+        named(TROJAN_STRICT, "Mixed Trojan Strict"),
+        "ss://YWVzLTI1Ni1nY206cGFzcw@192.0.2.1:8388#" + quote("Mixed Shadowsocks"),
+    ]) + "\n"
+
+
+def mixed_clash():
+    out = ["proxies:"]
+    for link, name in ((GOOD, "Mixed VLESS Good"), (BAD, "Mixed VLESS Closed")):
+        uuid, host, port = parts(link)
+        out += ["  - name: \"%s\"" % name, "    type: vless", "    server: %s" % host, "    port: %d" % port,
+                "    uuid: %s" % uuid, "    network: tcp", "    tls: false", "    udp: true"]
+    for link, name in ((TROJAN, "Mixed Trojan"), (TROJAN_STRICT, "Mixed Trojan Strict")):
+        password, host, port, sni, insecure = trojan_parts(link)
+        out += ["  - name: \"%s\"" % name, "    type: trojan", "    server: %s" % host, "    port: %d" % port,
+                "    password: \"%s\"" % password, "    sni: %s" % sni,
+                "    skip-cert-verify: %s" % ("true" if insecure else "false"), "    udp: true"]
+    out += ["  - name: \"Mixed SS\"", "    type: ss", "    server: 192.0.2.1", "    port: 8388",
+            "    cipher: aes-256-gcm", "    password: test-only"]
+    return "\n".join(out) + "\n"
+
+
+def mixed_singbox():
+    obs = []
+    for link, name in ((GOOD, "Mixed VLESS Good"), (BAD, "Mixed VLESS Closed")):
+        uuid, host, port = parts(link)
+        obs.append({"type": "vless", "tag": name, "server": host, "server_port": port, "uuid": uuid})
+    for link, name in ((TROJAN, "Mixed Trojan"), (TROJAN_STRICT, "Mixed Trojan Strict")):
+        password, host, port, sni, insecure = trojan_parts(link)
+        obs.append({"type": "trojan", "tag": name, "server": host, "server_port": port, "password": password,
+                    "tls": {"enabled": True, "server_name": sni, "insecure": insecure}})
+    obs.append({"type": "vmess", "tag": "Mixed VMess", "server": "192.0.2.1", "server_port": 443,
+                "uuid": "00000000-0000-4000-8000-000000000003"})
+    obs.append({"type": "direct", "tag": "direct"})
+    obs.append({"type": "selector", "tag": "select", "outbounds": ["Mixed VLESS Good", "Mixed Trojan"]})
+    return json.dumps({"outbounds": obs}, indent=1) + "\n"
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
@@ -119,13 +177,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, clash(), "text/yaml")
         if path == "/singbox":
             return self.send(200, singbox(), "application/json")
+        if path.startswith("/mixed/") and TROJAN and TROJAN_STRICT:
+            if path == "/mixed/plain":
+                return self.send(200, mixed_plain())
+            if path == "/mixed/b64":
+                return self.send(200, base64.b64encode(mixed_plain().encode()).decode() + "\n")
+            if path == "/mixed/clash":
+                return self.send(200, mixed_clash(), "text/yaml")
+            if path == "/mixed/singbox":
+                return self.send(200, mixed_singbox(), "application/json")
         if path == "/empty":
             return self.send(200, "")
         if path == "/html":
             return self.send(200, "<!doctype html><html><body><h1>Welcome</h1><p>Open this link in your app.</p></body></html>\n", "text/html")
         if path == "/unsupported":
             return self.send(200, "ss://YWVzLTI1Ni1nY206cGFzcw@192.0.2.1:8388#only-ss\n"
-                                  "trojan://secret@192.0.2.1:443#only-trojan\n")
+                                  "hysteria2://secret@192.0.2.1:443#only-hy2\n")
         if path == "/happ-403":
             return self.send(200, plain("Happ")) if happ else self.send(403, "Forbidden: use the app\n")
         if path == "/happ-200":

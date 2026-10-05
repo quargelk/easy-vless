@@ -1,8 +1,8 @@
 {
   "outbounds": [
     {
-      "type": "trojan",
-      "tag": "tr",
+      "type": "vmess",
+      "tag": "vm",
       "server": "198.51.100.30",
       "server_port": 443,
       "password": "x"

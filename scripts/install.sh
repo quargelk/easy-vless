@@ -4,7 +4,7 @@
 # https://github.com/quargelk/easy-vless
 #
 # A plain, readable shell script: download it, read it, then run it as root.
-#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.0.0/install.sh
+#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.1.0/install.sh
 #   sh /tmp/install.sh --check          # only check the router, install nothing
 #   sh /tmp/install.sh                  # install
 #
@@ -55,8 +55,8 @@
 
 set -u
 
-EV_VERSION="1.0.0-r1"
-EV_TAG="v1.0.0"
+EV_VERSION="1.1.0-r1"
+EV_TAG="v1.1.0"
 EV_REPO="quargelk/easy-vless"
 EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 # Release date of this installer: a system clock before this date is certainly

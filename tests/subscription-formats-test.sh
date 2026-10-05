@@ -103,8 +103,8 @@ run "EVTEST arr" singbox-outbound-array.json; eq "array nodes" "$(count_of 'EVTE
 
 echo "----- 6. unsupported outbounds -----"
 run "EVTEST uns" singbox-unsupported.json
-eq "unsupported: VLESS imported" "$(count_of 'EVTEST uns')" 1
-logged "imported 1, skipped 4; skipped types: hysteria2, shadowsocks, trojan, wireguard (endpoint)" && ok "skip summary reported" || bad "skip summary: $(echo "$RUNLOG" | grep 'sing-box JSON:')"
+eq "unsupported: VLESS and Trojan imported" "$(count_of 'EVTEST uns')" 2
+logged "imported 2, skipped 3; skipped types: hysteria2, shadowsocks, wireguard (endpoint)" && ok "skip summary reported" || bad "skip summary: $(echo "$RUNLOG" | grep 'sing-box JSON:')"
 
 echo "----- 7. malformed JSON keeps the existing nodes -----"
 run "EVTEST sb1" malformed-json.txt
@@ -114,7 +114,7 @@ eq "sb1 nodes kept" "$(count_of 'EVTEST sb1')" 1
 echo "----- 8. zero supported outbounds -----"
 run "EVTEST zero" singbox-zero.json
 eq "zero: nodes" "$(count_of 'EVTEST zero')" 0
-logged "imported 0, skipped 1" && logged "No supported VLESS outbound" && ok "zero import reported (not claimed as success)" || bad "zero import not reported"
+logged "imported 0, skipped 1" && logged "No supported VLESS or Trojan outbound" && ok "zero import reported (not claimed as success)" || bad "zero import not reported"
 
 echo "----- 10. node deleted by the user stays deleted, section ids are stable (0.9.0) -----"
 # node list actions of rpcd "nodes" (subscribe.lua + nodes.lua): one JSON object

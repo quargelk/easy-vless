@@ -169,7 +169,7 @@ r = T.check_import(doc("nodes", { node(), node({ remarks = "DE again" }) }), sec
 check("import: the same server twice in the file is added once ('duplicate')", #r.add == 1 and skip(r) == "duplicate:nil")
 r = T.check_import(doc("nodes", { node({ uuid = "not-a-uuid" }), node({ address = "ok.example.net" }) }), sections)
 check("import: an invalid entry is skipped with its field, valid ones are kept", #r.add == 1 and r.add[1].address == "ok.example.net" and skip(r) == "invalid:uuid")
-for field, value in pairs({ port = "70000", address = "a b; reboot", protocol = "trojan", transport = "smoke", tls = "yes" }) do
+for field, value in pairs({ port = "70000", address = "a b; reboot", protocol = "vmess", transport = "smoke", tls = "yes" }) do
 	r = T.check_import(doc("nodes", { node({ [field] = value }) }), sections)
 	check("import: invalid " .. field .. " is refused", #r.add == 0 and skip(r) == "invalid:" .. field)
 end
@@ -247,6 +247,93 @@ do
 	check("import rule: an IP line with anything else in it is refused", #r.add == 0 and r.skipped[1].field == "ip_list")
 	r = rule({ ip_list = "geoip:`reboot`" })
 	check("import rule: a geoip code with shell characters is refused", #r.add == 0 and r.skipped[1].field == "ip_list")
+end
+
+-- 1.1: Trojan servers in a backup, in an export file and on import
+do
+	local PW = "p@ss w0rd/$(id);`x`"
+	local TPW = "secret"
+	local cfg = table.concat({
+		"config global 'global'",
+		"\toption enabled '1'",
+		"\toption node 'tr1'",
+		"",
+		"config nodes 'tr1'",
+		"\toption remarks 'Trojan NL'",
+		"\toption type 'sing-box'",
+		"\toption protocol 'trojan'",
+		"\toption address 'nl.example.net'",
+		"\toption port '443'",
+		"\toption password '" .. PW .. "'",
+		"\toption transport 'ws'",
+		"\toption ws_host 'cdn.example.net'",
+		"\toption ws_path '/tr'",
+		"\toption tls '1'",
+		"\toption tls_serverName 'sni.example.net'",
+		"\toption tls_allowInsecure '0'",
+		"\toption add_mode '2'",
+		"\toption group 'Provider'",
+		"",
+		"config nodes 'vl1'",
+		"\toption remarks 'VLESS FI'",
+		"\toption type 'sing-box'",
+		"\toption protocol 'vless'",
+		"\toption address 'fi.example.net'",
+		"\toption port '443'",
+		"\toption uuid '" .. UUID .. "'",
+		"\toption transport 'tcp'",
+		"\toption tls '1'",
+		"",
+	}, "\n")
+	local secs = T.parse_uci(cfg)
+	local function tr(o)
+		local n = { remarks = "TR", protocol = "trojan", address = "tr.example.net", port = "443", password = TPW, transport = "tcp", tls = "1" }
+		for k, v in pairs(o or {}) do if v == false then n[k] = nil else n[k] = v end end
+		return n
+	end
+	local function imp(items) return T.check_import({ format = T.EXPORT_FORMAT, version = 1, kind = "nodes", items = items }, {}, "nodes") end
+	local function why(x) return x.skipped[1] and (x.skipped[1].reason .. ":" .. tostring(x.skipped[1].field)) or "none" end
+
+	local b = T.make_backup({ config = cfg }, { app_version = "1.1.0-r1", created = 1 }, hash)
+	local r = T.check_backup(b, hash)
+	check("trojan backup: a configuration with a Trojan main node is a valid backup", r.ok and r.summary.servers == 2 and r.summary.node == "tr1" and #r.warnings == 0)
+	check("trojan backup: the password is kept as it is", b.files.config:find("option password '" .. PW .. "'", 1, true) ~= nil)
+
+	local e = T.export(secs, "nodes")
+	local et, evl
+	for _, it in ipairs(e.items) do if it.protocol == "trojan" then et = it else evl = it end end
+	check("trojan export: both servers, VLESS and Trojan", #e.items == 2 and et ~= nil and evl ~= nil)
+	check("trojan export: password and transport, not where it lived on this router", et.password == PW and et.ws_path == "/tr" and et.tls_serverName == "sni.example.net"
+		and et.add_mode == nil and et.group == nil and et[".name"] == nil)
+	check("trojan export: the VLESS entry has no password, the Trojan entry no UUID", evl.password == nil and evl.uuid == UUID and et.uuid == nil)
+
+	r = T.check_import(e, T.parse_uci("config global 'global'\n"))
+	check("trojan import: the exported mixed file imports completely", r.ok and #r.add == 2 and #r.skipped == 0 and r.dropped == 0)
+	local it
+	for _, x in ipairs(r.add) do if x.protocol == "trojan" then it = x end end
+	check("trojan import: password, backend and origin of the imported server", it ~= nil and it.password == PW and it.type == "sing-box" and it.add_mode == "1" and it.group == nil)
+	r = T.check_import(e, secs)
+	check("trojan import: servers that are already there are skipped", r.ok and #r.add == 0 and #r.skipped == 2 and r.skipped[1].reason == "exists")
+	r = imp({ tr(), tr({ remarks = "same again" }), tr({ password = "other" }) })
+	check("trojan import: the same server twice is added once, another password is another server", #r.add == 2 and why(r) == "duplicate:nil")
+
+	for field, o in pairs({ password = { password = false }, uuid = { uuid = UUID }, flow = { flow = "xtls-rprx-vision" }, type = { type = "Xray" },
+		transport = { transport = "xhttp" }, port = { port = "0" }, address = { address = "tr.example.net; reboot" }, tls_allowInsecure = { tls_allowInsecure = "yes" } }) do
+		r = imp({ tr(o) })
+		check("trojan import: invalid " .. field .. " is refused", #r.add == 0 and why(r) == "invalid:" .. field)
+	end
+	r = imp({ tr({ password = "" }) })
+	check("trojan import: an empty password is refused", #r.add == 0 and why(r) == "invalid:password")
+	r = imp({ tr({ password = "a\nb" }) })
+	check("trojan import: a password with a control character is refused", #r.add == 0 and why(r) == "invalid:password")
+	r = imp({ tr({ password = { "a" } }) })
+	check("trojan import: a password that is not text is refused", #r.add == 0 and why(r) == "invalid:password")
+	r = imp({ tr({ password = ("x"):rep(513) }) })
+	check("trojan import: an overlong password is refused", #r.add == 0 and why(r) == "invalid:password")
+	r = imp({ tr({ password = "$(touch /tmp/x)`id`';\"" }) })
+	check("trojan import: shell characters in a password are data", #r.add == 1 and r.add[1].password == "$(touch /tmp/x)`id`';\"")
+	r = imp({ node({ password = TPW }) })
+	check("trojan import: a VLESS entry with a password is refused", #r.add == 0 and why(r) == "invalid:password")
 end
 
 print(string.format("\n===== backup and import: %d passed, %d failed =====", pass, fail))

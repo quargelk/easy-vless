@@ -471,7 +471,7 @@ local function selected_node(all)
 		local members = type(n.urltest_node) == "table" and #n.urltest_node or (n.urltest_node and 1 or 0)
 		return { kind = "group", id = id, name = n.remarks, members = members }
 	end
-	local res = { kind = "server", id = id, name = n.remarks }
+	local res = { kind = "server", id = id, name = n.remarks, protocol = n.protocol }
 	local last = jsonc.parse(readfile(TEST_DIR .. "/r/" .. id .. ".server.json") or "")
 	-- a result made for another address (the server was edited) does not count
 	if type(last) == "table" and last.address == n.address and tostring(last.port) == tostring(n.port) then

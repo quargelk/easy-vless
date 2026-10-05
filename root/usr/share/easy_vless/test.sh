@@ -214,7 +214,11 @@ q_clean_stale() {
 }
 
 is_server() {
-	[ "$(uci -q get ${CONFIG}.$1)" = "nodes" ] && [ "$(uci -q get ${CONFIG}.$1.protocol)" = "vless" ]
+	[ "$(uci -q get ${CONFIG}.$1)" = "nodes" ] || return 1
+	case "$(uci -q get ${CONFIG}.$1.protocol)" in
+		vless|trojan) return 0 ;;
+	esac
+	return 1
 }
 
 # queue_add <kind> <node>...: queue tests; a test of a server that is already
@@ -318,7 +322,7 @@ result_carry() {
 			$1 == c && NF >= 3 { v = substr($0, index($0, "=") + 1) }
 			$1 == c && $3 == "address" && v == a { ad[$2] = 1 }
 			$1 == c && $3 == "port" && v == p { po[$2] = 1 }
-			$1 == c && $3 == "protocol" && v == "'"'"'vless'"'"'" { vl[$2] = 1 }
+			$1 == c && $3 == "protocol" && (v == "'"'"'vless'"'"'" || v == "'"'"'trojan'"'"'") { vl[$2] = 1 }
 			END { for (i in ad) if (po[i] && vl[i]) print i }')
 		set --
 		for id in $ids; do

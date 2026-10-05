@@ -52,6 +52,7 @@ Easy VLESS — это shell/Lua-слой PassWall2, сокращённый до 
 | `global_forwarding` | порты (`tcp_redir_ports`, `udp_redir_ports`, `*_no_redir_ports`), `tcp_proxy_way`, `ipv6_tproxy`, `accept_icmp` |
 | `global_delay` | `start_delay` |
 | `nodes`, `protocol=vless` | VLESS-сервер (`address`, `port`, `uuid`, `transport`, `tls`, `reality`, …); узлы подписок — `add_mode=2`, `group=<имя подписки>` |
+| `nodes`, `protocol=trojan` | сервер Trojan (1.1): `password` вместо `uuid`, без `flow` и `encryption`; остальные опции (`address`, `port`, `transport`, `tls`, `tls_serverName`, `tls_allowInsecure`, `reality`, …) те же; всегда `type=sing-box` |
 | `nodes`, `protocol=_urltest` | группа URL-теста (`urltest_node` — список серверов, `urltest_url`, `urltest_interval`, `urltest_tolerance`) |
 | `nodes 'main_router'`, `protocol=_shunt` | «По правилам»: `default_node` — цель «По умолчанию», `option <id правила>` — цель правила |
 | `shunt_rules` | правило: только условия (`domain_resource`, `domain_list`, `ip_list`, `network`, `port`, `source`, `sourcePort`, `protocol`, `inbound`); порядок секций = приоритет |
@@ -165,13 +166,13 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 
 ## Файлы релиза и SHA256SUMS
 
-Релиз `v1.0.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
+Релиз `v1.1.0` на странице [Releases](https://github.com/quargelk/easy-vless/releases):
 
 | Файл | Назначение |
 |---|---|
-| `easy-vless_1.0.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
-| `easy-vless-sing-box_1.0.0-r1_all.ipk` | интеграция с sing-box |
-| `luci-app-easy-vless_1.0.0-r1_all.ipk` | интерфейс LuCI и его переводы |
+| `easy-vless_1.1.0-r1_all.ipk` | core runtime и подготовленные ресурсы |
+| `easy-vless-sing-box_1.1.0-r1_all.ipk` | интеграция с sing-box |
+| `luci-app-easy-vless_1.1.0-r1_all.ipk` | интерфейс LuCI и его переводы |
 | `install.sh` | installer |
 | `SHA256SUMS` | SHA-256 файлов релиза |
 
@@ -220,7 +221,7 @@ LuCI опрашивает `state` раз в 1,5 с, пока идут прове
 ## Installer
 
 ```sh
-wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.0.0/install.sh
+wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.1.0/install.sh
 sh /tmp/install.sh --check
 sh /tmp/install.sh
 ```
@@ -278,8 +279,8 @@ Installer проверит подпись и SHA256, установит TLS-би
 
 ```sh
 mkdir -p /tmp/easy-vless && cd /tmp/easy-vless
-for f in SHA256SUMS easy-vless_1.0.0-r1_all.ipk easy-vless-sing-box_1.0.0-r1_all.ipk luci-app-easy-vless_1.0.0-r1_all.ipk install.sh; do
-	wget "https://github.com/quargelk/easy-vless/releases/download/v1.0.0/$f"
+for f in SHA256SUMS easy-vless_1.1.0-r1_all.ipk easy-vless-sing-box_1.1.0-r1_all.ipk luci-app-easy-vless_1.1.0-r1_all.ipk install.sh; do
+	wget "https://github.com/quargelk/easy-vless/releases/download/v1.1.0/$f"
 done
 sha256sum -c SHA256SUMS
 ```
@@ -289,9 +290,9 @@ sha256sum -c SHA256SUMS
 ```sh
 opkg update
 opkg install sing-box-tiny
-opkg install ./easy-vless_1.0.0-r1_all.ipk
-opkg install ./easy-vless-sing-box_1.0.0-r1_all.ipk
-opkg install ./luci-app-easy-vless_1.0.0-r1_all.ipk
+opkg install ./easy-vless_1.1.0-r1_all.ipk
+opkg install ./easy-vless-sing-box_1.1.0-r1_all.ipk
+opkg install ./luci-app-easy-vless_1.1.0-r1_all.ipk
 /etc/init.d/easy_vless enable
 ```
 
@@ -406,9 +407,12 @@ LuCI загружает `base.ru.lmo` вместе с нашим каталог�
 | [`tests/shell-safety-test.sh`](../tests/shell-safety-test.sh) | static checks | настоящие `app_acl.lua` и `eval_set_val` на враждебных значениях (имя узла, настройки DNS): ни одна команда из значения не выполняется |
 | [`tests/html-safety-test.js`](../tests/html-safety-test.js) | static checks | `ev.E` и `ev.esc`, диалоги `common.js` с враждебным именем, использование `ev.E` на каждой странице |
 | [`tests/ci/v09-backend-tests.sh`](../tests/ci/v09-backend-tests.sh) | CI, каждая архитектура | 0.9 через ubus в контейнере OpenWrt: Route Explain на настоящей конфигурации, диагностика, её одновременная работа с запуском, остановкой, проверкой и обновлением подписки, удаление узлов, резервная копия и импорт; проверка, Route Explain и настоящий запуск с враждебными настройками и враждебным именем узла |
+| [`tests/trojan-test.lua`](../tests/trojan-test.lua) | static checks | Trojan (1.1): настоящие разборщики `subscribe.lua` (ссылки `trojan://`, Clash, sing-box JSON, смешанные списки VLESS + Trojan, враждебные имя, пароль и адрес), outbound из `util_sing-box.lua`, идентичность узла; VLESS разбирается и генерируется как раньше |
+| [`tests/trojan-view-test.js`](../tests/trojan-view-test.js) | static checks | Trojan в LuCI: сервер в «Списке узлов» и в целях, «Выбрать» не трогает чужие цели, ссылка `trojan://` (копирование), проверка ссылки в мастере, редактор |
+| [`tests/ci/trojan-backend-tests.sh`](../tests/ci/trojan-backend-tests.sh) | CI, каждая архитектура | Trojan через ubus с настоящим сервером Trojan (TLS, самоподписанный сертификат): импорт ссылок, конфигурация и `sing-box check`, Server Test и URL Test, проверка сертификата, запуск службы, Route Explain и диагностика, смешанные подписки во всех форматах, резервная копия, экспорт и импорт |
 | [`tests/ci/workflow-events.py`](../tests/ci/workflow-events.py) | CI job `checks` | какие jobs запускаются для pull request, push в main, тега |
 | [`tests/ci/wizard-tests.sh`](../tests/ci/wizard-tests.sh), [`tests/ci/wizard-backend-tests.sh`](../tests/ci/wizard-backend-tests.sh), [`tests/ci/sub-server.py`](../tests/ci/sub-server.py) | CI, каждая архитектура | мастер настройки через ubus с настоящим VLESS-сервером; очередь проверок (Test All, повторное нажатие, отмена, аварийное завершение, остановка и проверка конфигурации во время проверок); `uci commit` из LuCI не перезапускает службу, запрос на перезапуск во время перезапуска не теряется; подписки на тестовом HTTP-сервере: форматы, ошибки с сохранением узлов, User-Agent / HAPP / HWID и число запросов, повторное обновление |
-| [`tests/ci/luci_wizard_e2e.py`](../tests/ci/luci_wizard_e2e.py) | CI, x86-64 | настоящий LuCI в headless Chromium: мастер от начала до конца (ссылка VLESS и ссылка на подписку), ошибки, восстановление, «Список узлов» (задержка, сортировка, фильтры, Test All, повторные нажатия, обновление подписки), ширина 375 px, русский каталог рядом с каталогом LuCI |
+| [`tests/ci/luci_wizard_e2e.py`](../tests/ci/luci_wizard_e2e.py) | CI, x86-64 | настоящий LuCI в headless Chromium: мастер от начала до конца (ссылка VLESS и ссылка на подписку), ссылка Trojan в мастере и в «Списке узлов» (импорт, проверки, редактор, «Выбрать»), ошибки, восстановление, «Список узлов» (задержка, сортировка, фильтры, Test All, повторные нажатия, обновление подписки), ширина 375 px, русский каталог рядом с каталогом LuCI |
 | [`tests/tr3000-slice-smoke.sh`](../tests/tr3000-slice-smoke.sh) | вручную на роутере | запуск/остановка службы, nftables, ip rule; с таймером отката |
 
 Локально: `bash tests/static-checks.sh`.
