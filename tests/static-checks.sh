@@ -126,7 +126,7 @@ done
 echo "== screenshots"
 # the screenshots of the current release must be shown in README.md, and
 # every image README.md shows must exist and be a PNG
-for img in main-10 connection-diagnostics-10; do
+for img in main-11 node-list-11 connection-diagnostics-10; do
 	grep -qF "(docs/images/${img}.png)" README.md || bad "README.md does not show docs/images/${img}.png"
 done
 for f in $(grep -oE '\(docs/images/[^)]+\)' README.md | tr -d '()' | sort -u); do
