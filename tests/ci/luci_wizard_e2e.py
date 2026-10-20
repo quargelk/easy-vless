@@ -197,7 +197,9 @@ def russian_catalog():
     shared key - "OK" became "Принять"). Every entry of luci/po/ru must be
     served by LuCI's translation endpoint with exactly our text: a generic
     word shared with base.ru.lmo needs LuCI's translation or a context."""
-    out = sh("opkg install luci-i18n-base-ru >/tmp/opkg-i18n.log 2>&1 && echo ok || tail -5 /tmp/opkg-i18n.log")
+    # opkg on OpenWrt 24.10, apk on 25.12
+    out = sh("if command -v opkg >/dev/null 2>&1; then opkg install luci-i18n-base-ru; else apk add luci-i18n-base-ru; fi"
+             " >/tmp/pm-i18n.log 2>&1 && echo ok || tail -5 /tmp/pm-i18n.log")
     if not check("luci-i18n-base-ru installed (%s)" % out.replace("\n", " | "), out == "ok"):
         return
     check("easy-vless.ru.lmo installed", sh("[ -s /usr/lib/lua/luci/i18n/easy-vless.ru.lmo ] && echo y") == "y")
