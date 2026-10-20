@@ -14,11 +14,20 @@ name: Build easy-vless packages
 #                  metadata, local-path/credential scan; the event separation
 #                  of this workflow (tests/ci/workflow-events.py)
 #   build          real OpenWrt 24.10.3 mediatek/filogic SDK build of all
-#                  packages, per-package content checks, dist/ + SHA256SUMS
-#   runtime-tests  matrix of real OpenWrt rootfs images (x86-64 24.10.3 and
-#                  24.10.8, armsr-armv8 aarch64, armsr-armv7 and mvebu
-#                  cortex-a9 ARMv7, malta-be MIPS big-endian; non-x86 through
-#                  QEMU user emulation): scripts/install.sh with the built
+#                  packages (.ipk, opkg), per-package content checks
+#   build-apk      real OpenWrt 25.12.6 mediatek/filogic SDK build of all
+#                  packages (.apk, apk v3) with scripts/sdk-build.sh,
+#                  tests/apk-package-check.sh
+#   dist           release files of both channels: the three .ipk and the
+#                  three .apk, install.sh, SHA256SUMS (artifact
+#                  easy-vless-dist; optional packages: easy-vless-optional)
+#   runtime-tests  matrix of real OpenWrt rootfs images (opkg: x86-64
+#                  24.10.1, 24.10.3 and 24.10.8, armsr-armv8 aarch64,
+#                  armsr-armv7 and mvebu cortex-a9 ARMv7, malta-be MIPS
+#                  big-endian 24.10.3; apk: x86-64 25.12.0 and 25.12.6,
+#                  armsr-armv8, armsr-armv7, mvebu cortex-a9 and malta-be
+#                  25.12.6; non-x86 through QEMU user emulation):
+#                  scripts/install.sh with the built
 #                  packages, tests/subscription-formats-test.sh, installer,
 #                  system requirement and bootstrap scenarios
 #                  (tests/ci/installer-tests.sh); First Run Wizard backend
@@ -31,7 +40,7 @@ name: Build easy-vless packages
 #                  pull requests and workflow_dispatch only
 #   release        only for tags v*: requires a successful full CI run of
 #                  this workflow for the tree of the tagged commit (checks,
-#                  build, every runtime-tests job, ubifs), then the draft GitHub Release
+#                  build, build-apk, dist, every runtime-tests job, ubifs), then the draft GitHub Release
 #                  with the dist/ files of this run's build (the tag/version
 #                  check is in build; the only job with contents: write)
 #
@@ -128,6 +137,10 @@ permissions:
 
 env:
   OPENWRT_VERSION: "24.10.3"
+  # OpenWrt 25.12 (apk) build: official SDK of this release, same target. The
+  # packages are architecture independent (noarch); the target only selects
+  # the SDK. Every 25.12.x installs them; 25.12.6 is the release tested here.
+  OPENWRT_APK_VERSION: "25.12.6"
   OPENWRT_TARGET: mediatek
   OPENWRT_SUBTARGET: filogic
   # Expected OpenWrt package architecture for this target/subtarget, used to
@@ -761,18 +774,18 @@ jobs:
           ls -l dist dist-optional
           cat dist/SHA256SUMS
 
-      - name: Upload dist artifact (release packages)
+      - name: Upload .ipk release packages (merged with the .apk ones by the dist job)
         uses: actions/upload-artifact@v4
         with:
-          name: easy-vless-dist
+          name: easy-vless-dist-ipk
           path: dist/
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload optional packages artifact
+      - name: Upload optional .ipk packages artifact
         uses: actions/upload-artifact@v4
         with:
-          name: easy-vless-optional
+          name: easy-vless-optional-ipk
           path: dist-optional/
           if-no-files-found: error
           retention-days: 30
@@ -823,11 +836,128 @@ jobs:
   # package feeds and "uname -m" are those of that architecture, nothing is
   # renamed or faked. The Easy VLESS packages are the same "all" packages
   # built above for every target.
+  # OpenWrt 25.12: the same package Makefile built by the official 25.12 SDK
+  # gives genuine apk v3 packages (apk mkpkg of the SDK, not renamed .ipk).
+  build-apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential file wget rsync unzip python3 quilt zstd \
+            libncurses-dev zlib1g-dev
+
+      - name: Resolve and download official OpenWrt SDK (apk)
+        run: |
+          set -euxo pipefail
+          BASE_URL="https://downloads.openwrt.org/releases/${OPENWRT_APK_VERSION}/targets/${OPENWRT_TARGET}/${OPENWRT_SUBTARGET}"
+          curl -fsSL -o sha256sums "${BASE_URL}/sha256sums"
+          SDK_FILE="$(grep -E '[[:space:]]\*?openwrt-sdk-.*\.tar\.(xz|zst)$' sha256sums | head -n1 | awk '{print $2}' | sed 's/^\*//')"
+          [ -n "${SDK_FILE}" ] || { echo "::error::no openwrt-sdk-* in ${BASE_URL}/sha256sums"; exit 1; }
+          curl -fsSL -o "${SDK_FILE}" "${BASE_URL}/${SDK_FILE}"
+          grep -F "${SDK_FILE}" sha256sums | sha256sum -c -
+          mkdir -p sdk && tar -xf "${SDK_FILE}" -C sdk --strip-components=1
+          grep -q '^CONFIG_USE_APK=y' sdk/.config || { echo "::error::the ${OPENWRT_APK_VERSION} SDK does not build apk packages"; exit 1; }
+          test -x sdk/staging_dir/host/bin/apk
+
+      - name: Build the .apk packages (official feeds of the SDK)
+        run: bash scripts/sdk-build.sh --feeds sdk apk-out
+
+      - name: Verify the .apk packages
+        run: bash tests/apk-package-check.sh apk-out sdk/staging_dir/host/bin/apk
+
+      - name: Upload .apk packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-apk
+          path: apk-out/
+          if-no-files-found: error
+          retention-days: 30
+
+  # Release files of both channels in one directory: what runtime-tests,
+  # ubifs and the release use. One SHA256SUMS lists the .ipk, the .apk and
+  # install.sh (the update.sh of 1.1.0 reads only the .ipk lines).
+  dist:
+    needs: [build, build-apk]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout easy-vless
+        uses: actions/checkout@v4
+
+      - name: Download .ipk release packages
+        uses: actions/download-artifact@v4
+        with:
+          name: easy-vless-dist-ipk
+          path: ipk
+
+      - name: Download optional .ipk packages
+        uses: actions/download-artifact@v4
+        with:
+          name: easy-vless-optional-ipk
+          path: ipk-optional
+
+      - name: Download .apk packages
+        uses: actions/download-artifact@v4
+        with:
+          name: easy-vless-apk
+          path: apk
+
+      - name: Assemble dist/ (both channels + install.sh + SHA256SUMS)
+        run: |
+          set -euo pipefail
+          (cd ipk && sha256sum -c SHA256SUMS)
+          v="$(sed -n 's/^PKG_VERSION:=//p' Makefile)-r$(sed -n 's/^PKG_RELEASE:=//p' Makefile)"
+          rm -rf dist dist-optional
+          mkdir -p dist dist-optional
+          for p in easy-vless easy-vless-sing-box luci-app-easy-vless; do
+            cp "ipk/${p}_${v}_all.ipk" "apk/${p}-${v}.apk" dist/
+          done
+          for p in easy-vless-xray easy-vless-geodata; do
+            cp "ipk-optional/${p}_${v}_all.ipk" "apk/${p}-${v}.apk" dist-optional/
+          done
+          cmp scripts/install.sh ipk/install.sh
+          cp scripts/install.sh dist/install.sh
+          (cd dist && sha256sum *.ipk *.apk install.sh > SHA256SUMS && sha256sum -c SHA256SUMS)
+          (cd dist-optional && sha256sum *.ipk *.apk > SHA256SUMS)
+          [ "$(wc -l < dist/SHA256SUMS)" = 7 ] || { echo "::error::dist/SHA256SUMS must list 3 .ipk, 3 .apk and install.sh"; exit 1; }
+          ls -l dist dist-optional
+          cat dist/SHA256SUMS
+          {
+            echo "| file | bytes | SHA-256 |"
+            echo "|---|---:|---|"
+            for f in dist/*.ipk dist/*.apk dist/install.sh; do
+              echo "| $(basename "$f") | $(stat -c %s "$f") | $(sha256sum "$f" | cut -d' ' -f1) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload dist artifact (release files)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload optional packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-vless-optional
+          path: dist-optional/
+          if-no-files-found: error
+          retention-days: 30
+
   runtime-tests:
     # full CI only: pull requests and workflow_dispatch (not a push to main,
     # not a tag: that tree already passed this matrix, release checks it)
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')) }}
-    needs: build
+    needs: dist
     runs-on: ubuntu-22.04
     timeout-minutes: ${{ matrix.target.platform == '' && 60 || 150 }}
     strategy:
@@ -840,11 +970,24 @@ jobs:
           - { name: armsr-armv7 ARMv7 24.10.3,    image: "openwrt/rootfs:armsr-armv7-24.10.3",    platform: "linux/arm_cortex-a15_neon-vfpv4", arch: arm_cortex-a15_neon-vfpv4 }
           - { name: mvebu-cortexa9 ARMv7 24.10.3, image: "openwrt/rootfs:mvebu-cortexa9-24.10.3", platform: "linux/arm_cortex-a9_vfpv3-d16",   arch: arm_cortex-a9_vfpv3-d16 }
           - { name: malta-be MIPS BE 24.10.3,     image: "openwrt/rootfs:malta-be-24.10.3",       platform: "linux/mips_24kc",                 arch: mips_24kc }
+          # OpenWrt 25.12 (apk): the .apk packages, installed by the same installer
+          - { name: x86-64 25.12.6 apk,           image: "openwrt/rootfs:x86-64-25.12.6",         platform: "",                                arch: x86_64,          apk: "1" }
+          - { name: armsr-armv8 aarch64 25.12.6 apk, image: "openwrt/rootfs:armsr-armv8-25.12.6", platform: "linux/aarch64_generic",           arch: aarch64_generic, apk: "1" }
+          - { name: armsr-armv7 ARMv7 25.12.6 apk, image: "openwrt/rootfs:armsr-armv7-25.12.6",   platform: "linux/arm_cortex-a15_neon-vfpv4", arch: arm_cortex-a15_neon-vfpv4, apk: "1" }
+          - { name: mvebu-cortexa9 ARMv7 25.12.6 apk, image: "openwrt/rootfs:mvebu-cortexa9-25.12.6", platform: "linux/arm_cortex-a9_vfpv3-d16", arch: arm_cortex-a9_vfpv3-d16, apk: "1" }
+          - { name: malta-be MIPS BE 25.12.6 apk,  image: "openwrt/rootfs:malta-be-25.12.6",       platform: "linux/mips_24kc",                 arch: mips_24kc,       apk: "1" }
+          # other stable patch releases of the same series (the feeds of a
+          # patch release keep its own kernel modules)
+          - { name: x86-64 24.10.1,               image: "openwrt/rootfs:x86-64-24.10.1",         platform: "",                                arch: x86_64 }
+          - { name: x86-64 25.12.0 apk,           image: "openwrt/rootfs:x86-64-25.12.0",         platform: "",                                arch: x86_64,          apk: "1" }
+        # scenarios: installer scenarios on opkg images; apk_scenarios on apk
+        # images (the opkg-only scenarios - feeds, bootstrap, TLS bootstrap,
+        # upgrade from old .ipk releases - do not apply there)
         group:
-          - { name: runtime+sysreq, runtime: "1", wizard: "0", scenarios: "preflight sysreq ram128 ram256 smallspace tr3000" }
-          - { name: install,        runtime: "0", wizard: "0", scenarios: "online rollback upgrade" }
-          - { name: bootstrap,      runtime: "0", wizard: "0", scenarios: "bootstrap tlsboot" }
-          - { name: wizard,         runtime: "0", wizard: "1", scenarios: "" }
+          - { name: runtime+sysreq, runtime: "1", wizard: "0", scenarios: "preflight sysreq ram128 ram256 smallspace tr3000", apk_scenarios: "sysreq ram128 ram256 smallspace tr3000" }
+          - { name: install,        runtime: "0", wizard: "0", scenarios: "online rollback upgrade",                           apk_scenarios: "apk" }
+          - { name: bootstrap,      runtime: "0", wizard: "0", scenarios: "bootstrap tlsboot",                                 apk_scenarios: "" }
+          - { name: wizard,         runtime: "0", wizard: "1", scenarios: "",                                                  apk_scenarios: "" }
     name: runtime-tests (${{ matrix.target.name }}, ${{ matrix.group.name }})
     env:
       OPENWRT_ROOTFS_IMAGE: ${{ matrix.target.image }}
@@ -905,8 +1048,11 @@ jobs:
           docker run --rm "${p[@]}" -v "${GITHUB_WORKSPACE}:/w" "${OPENWRT_ROOTFS_IMAGE}" \
             /bin/ash /w/tests/ci/openwrt-runtime-tests.sh
 
-      - name: Installer scenarios (${{ matrix.group.scenarios }})
-        if: matrix.group.scenarios != ''
+      - name: Installer scenarios
+        env:
+          SCENARIOS_OPKG: ${{ matrix.group.scenarios }}
+          SCENARIOS_APK: ${{ matrix.group.apk_scenarios }}
+          IS_APK: ${{ matrix.target.apk }}
         run: |
           set -euo pipefail
           # preflight:  detection, checks, clock, CA/TLS, feeds of another
@@ -924,7 +1070,15 @@ jobs:
           # bootstrap:  README manual opkg bootstrap and install.sh --bootstrap-opkg
           # tlsboot:    no TLS backend / CA bundle / opkg: offline install from a
           #             signature-verified local copy of the base feed
-          bash tests/ci/installer-tests.sh dist ${{ matrix.group.scenarios }}
+          # apk:        OpenWrt 25.12 - channel selection and its refusals,
+          #             .apk integrity, dnsmasq-full, two-step installation,
+          #             partial failure, removal
+          s="${SCENARIOS_OPKG}"
+          [ "${IS_APK}" = "1" ] && s="${SCENARIOS_APK}"
+          [ -n "$s" ] || { echo "no installer scenarios in this group for this image"; exit 0; }
+          echo "scenarios: $s"
+          # shellcheck disable=SC2086
+          bash tests/ci/installer-tests.sh dist $s
 
       - name: Playwright (headless Chromium) for the LuCI wizard test
         if: matrix.group.wizard == '1' && matrix.target.platform == ''
@@ -957,7 +1111,7 @@ jobs:
   # TR3000 v1 partition layout, UBI and a real UBIFS overlay.
   ubifs:
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')) }}
-    needs: build
+    needs: dist
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     steps:
@@ -983,7 +1137,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [checks, build]
+    needs: [checks, build, build-apk, dist]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -1011,7 +1165,7 @@ jobs:
                         --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID} and .head_commit.tree_id == \"${tree}\") | .id"); do
             # <jobs> <successful jobs> <runtime-tests jobs> <ubifs jobs>
             read -r n ok rt ub < <(gh api "${api}/runs/${id}/jobs?per_page=100" --jq '
-              [.jobs[] | select(.name == "checks" or .name == "build" or .name == "ubifs" or (.name | startswith("runtime-tests ")))]
+              [.jobs[] | select(.name == "checks" or .name == "build" or .name == "build-apk" or .name == "dist" or .name == "ubifs" or (.name | startswith("runtime-tests ")))]
               | "\(length) \([.[] | select(.conclusion == "success")] | length) \([.[] | select(.name | startswith("runtime-tests "))] | length) \([.[] | select(.name == "ubifs")] | length)"')
             echo "run ${id}: ${ok}/${n} jobs successful, runtime-tests: ${rt}, ubifs: ${ub}"
             if [ "${n}" -gt 0 ] && [ "${ok}" = "${n}" ] && [ "${rt}" -gt 0 ] && [ "${ub}" = 1 ]; then
@@ -1020,7 +1174,7 @@ jobs:
             fi
           done
           if [ -z "${found}" ]; then
-            echo "::error::no successful full CI run of this workflow for the tree ${tree} of ${GITHUB_SHA} (checks, build, all runtime-tests, ubifs): run the workflow (workflow_dispatch) on main for this commit before tagging"
+            echo "::error::no successful full CI run of this workflow for the tree ${tree} of ${GITHUB_SHA} (checks, build, build-apk, dist, all runtime-tests, ubifs): run the workflow (workflow_dispatch) on main for this commit before tagging"
             exit 1
           fi
           echo "full CI of tree ${tree} (${GITHUB_SHA}): ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${found}"
@@ -1040,16 +1194,17 @@ jobs:
           v="$(sed -n 's/^PKG_VERSION:=//p' Makefile)-r$(sed -n 's/^PKG_RELEASE:=//p' Makefile)"
           (cd dist && sha256sum -c SHA256SUMS)
           cat > release-notes.md <<EOF
-          Easy VLESS ${v} for OpenWrt 24.10 (opkg, fw4/nftables).
+          Easy VLESS ${v} для стабильных OpenWrt 24.x (opkg, .ipk) и OpenWrt 25.x (apk, .apk), fw4/nftables.
 
-          Assets:
-          - easy-vless_${v}_all.ipk, easy-vless-sing-box_${v}_all.ipk, luci-app-easy-vless_${v}_all.ipk
-          - install.sh: installer (checks the router, installs sing-box-tiny from the official OpenWrt feed, optionally replaces dnsmasq with dnsmasq-full, verifies SHA256SUMS)
+          Файлы:
+          - OpenWrt 24.x (opkg): easy-vless_${v}_all.ipk, easy-vless-sing-box_${v}_all.ipk, luci-app-easy-vless_${v}_all.ipk
+          - OpenWrt 25.x (apk): easy-vless-${v}.apk, easy-vless-sing-box-${v}.apk, luci-app-easy-vless-${v}.apk
+          - install.sh: installer для обоих вариантов (выбирает формат по выпуску OpenWrt и менеджеру пакетов, проверяет роутер, ставит sing-box-tiny из официального репозитория OpenWrt, при необходимости заменяет dnsmasq на dnsmasq-full, проверяет SHA256SUMS)
           - SHA256SUMS
 
-          sing-box-tiny is not bundled; it comes from the router's official OpenWrt package feed.
+          sing-box-tiny и dnsmasq-full в релиз не входят: их ставит installer из официальных репозиториев роутера. Пакеты Easy VLESS не зависят от архитектуры; подходят архитектуры, для которых в репозиториях OpenWrt есть sing-box (не PowerPC и не armeb_xscale) — см. docs/technical.md, раздел «Архитектуры».
 
-          Before downloading on a router, the system time must be correct (HTTPS certificates cannot be verified with a clock that is behind): see the README section "HTTPS на новом роутере" (HTTPS on a new router).
+          Перед загрузкой на роутере должно быть правильное системное время: см. раздел README «HTTPS на новом роутере».
           EOF
           gh release create "${tag}" dist/* --draft --verify-tag \
             --title "Easy VLESS ${v}" --notes-file release-notes.md
