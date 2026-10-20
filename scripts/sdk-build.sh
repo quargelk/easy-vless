@@ -24,7 +24,8 @@ set -euo pipefail
 FEEDS=0
 [ "${1:-}" = "--feeds" ] && { FEEDS=1; shift; }
 SDK="$(cd "${1:?usage: $0 [--feeds] <sdk dir> <output dir>}" && pwd)"
-OUT="${2:?usage: $0 [--feeds] <sdk dir> <output dir>}"
+# absolute: the build below runs in the SDK directory
+mkdir -p "${2:?usage: $0 [--feeds] <sdk dir> <output dir>}" && OUT="$(cd "$2" && pwd)"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 PKGS="easy-vless easy-vless-sing-box easy-vless-xray easy-vless-geodata luci-app-easy-vless"
 
@@ -43,6 +44,8 @@ mkdir -p "$DST"
 cd "$SRC"
 git ls-files -co --exclude-standard -z | while IFS= read -r -d '' f; do
 	case "$f" in .github/*|prototype/*|dist/*|docs/images/*) continue ;; esac
+	# the SDK and the output directory may lie inside the source tree (CI)
+	case "$SRC/$f" in "$SDK"/*|"$OUT"/*) continue ;; esac
 	[ -f "$f" ] || continue
 	mkdir -p "$DST/$(dirname "$f")"
 	if [ "$(git check-attr text -- "$f" | sed 's/.*: //')" = "unset" ] || ! grep -Iq . "$f"; then

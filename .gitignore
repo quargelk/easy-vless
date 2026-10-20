@@ -1,5 +1,6 @@
 # Build artifacts are not source code: packages are built by CI from this tree.
 *.ipk
+*.apk
 /dist/
 # Local-only material, never part of the public tree.
 /prototype/
