@@ -25,6 +25,7 @@ msgid "Later"
 msgstr "Позже"
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js luci/htdocs/luci-static/resources/view/easy_vless/servers.js luci/htdocs/luci-static/resources/view/easy_vless/wizard.js
+msgctxt "no value"
 msgid "none"
 msgstr "отсутствует"
 
@@ -121,6 +122,7 @@ msgid "Configuration saved. The running service is not changed; use Save & Apply
 msgstr "Конфигурация сохранена. Работающая служба не изменена; чтобы применить изменения, нажмите «Применить»."
 
 #: luci/htdocs/luci-static/resources/easy_vless/common.js
+msgctxt "apply the settings"
 msgid "Save & Apply"
 msgstr "Применить"
 

@@ -268,7 +268,7 @@ return baseclass.extend({
 
 	label: function(sid) {
 		if (!sid)
-			return _('none');
+			return _('none', 'no value');
 		if (sid == '_direct')
 			return _('Direct');
 		if (sid == '_blackhole')
@@ -600,13 +600,13 @@ return baseclass.extend({
 	/* Save & Apply (PassWall2 semantics): main switch on -> check + (re)start,
 	 * main switch off -> stop. */
 	handleApply: function(map) {
-		return this.exclusive(_('Save & Apply'), L.bind(function() {
+		return this.exclusive(_('Save & Apply', 'apply the settings'), L.bind(function() {
 			return this.saveAndCommit(map).then(L.bind(function() {
 				if (uci.get(CONFIG, 'global', 'enabled') == '1')
 					return this.startFlow().then(L.bind(this.syncSwitch, this, map));
 				return this.callStatus().then(L.bind(function(st) {
 					if (st.rpc_error)
-						return this.showResult(_('Save & Apply'), 'bad', _('Saved, but the service state is unknown'), st.error);
+						return this.showResult(_('Save & Apply', 'apply the settings'), 'bad', _('Saved, but the service state is unknown'), st.error);
 					if (st.running || st.nft_table)
 						return this.stopFlow().then(L.bind(this.syncSwitch, this, map));
 					this.notify(_('Saved. The main switch is off, Easy VLESS stays stopped.'));
@@ -970,7 +970,7 @@ return baseclass.extend({
 		case 'no_answer':
 			return withDetail(_('No answer through the server connection: the server is unreachable or rejected the connection.'));
 		case 'probe':
-			return _('Probe failed (HTTP %s).').format(r.http_code || _('none'));
+			return _('Probe failed (HTTP %s).').format(r.http_code || _('none', 'no value'));
 		case 'busy':
 			return _('Not tested: another Easy VLESS operation (start, stop or configuration check) did not finish in time. Test again.');
 		case 'unknown_node':
