@@ -130,7 +130,7 @@ function importReason(res) {
 
 function securityText(sid) {
 	if (uci.get(CONFIG, sid, 'tls') != '1')
-		return _('none');
+		return _('none', 'no value');
 	return uci.get(CONFIG, sid, 'reality') == '1' ? 'Reality' : 'TLS';
 }
 

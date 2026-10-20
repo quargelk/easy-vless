@@ -30,7 +30,7 @@ MENU_GLOB = os.path.join(ROOT, 'luci', 'root', 'usr', 'share', 'luci', 'menu.d',
 # Generic words that LuCI's own catalogs (base.<lang>.lmo, loaded together
 # with ours and taking precedence) translate with another meaning: here they
 # are only allowed with a translation context, _('Up', 'move row').
-NEED_CONTEXT = {'OK', 'Up', 'Down', 'Target'}
+NEED_CONTEXT = {'OK', 'Up', 'Down', 'Target', 'none', 'Save & Apply'}
 
 ESC = {'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f', 'v': '\v', '0': '\0'}
 

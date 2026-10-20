@@ -56,6 +56,12 @@ INIT_LOCK="$R/var/lock/${CONFIG}.lock"
 APP="${EV_UPDATE_APP:-/usr/share/${CONFIG}/app.sh}"
 INIT="${EV_UPDATE_INIT:-/etc/init.d/${CONFIG}}"
 PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
+# package manager of this router: apk (OpenWrt 25.12, .apk packages) or opkg
+# (24.10, .ipk); test hook EV_UPDATE_PM
+PM="${EV_UPDATE_PM:-}"
+if [ -z "$PM" ]; then
+	if command -v apk >/dev/null 2>&1 && ! command -v opkg >/dev/null 2>&1; then PM=apk; else PM=opkg; fi
+fi
 CHECK_MAX_AGE=86400
 # a failed check (GitHub not reachable) is not repeated on every page view
 CHECK_RETRY_AGE=3600
@@ -98,7 +104,17 @@ version_gt() {
 }
 
 installed_version() {
+	if [ "$PM" = apk ]; then
+		apk query --installed --fields name,version "${1:-easy-vless}" 2>/dev/null | awk -v p="${1:-easy-vless}" '$1 == "Name:" { n = $2 } $1 == "Version:" && n == p { print $2; exit }'
+		return 0
+	fi
 	opkg list-installed 2>/dev/null | awk -v p="${1:-easy-vless}" '$1 == p { print $3; exit }'
+}
+
+# pkg_file PACKAGE VERSION: file name of a package in a release for this
+# router's package manager
+pkg_file() {
+	if [ "$PM" = apk ]; then printf '%s' "${1}-${2}.apk"; else printf '%s' "${1}_${2}_all.ipk"; fi
 }
 
 sha256_of() {
@@ -133,11 +149,18 @@ sums_hash() {
 }
 
 # sums_version FILE: the one package version all three packages of a
-# SHA256SUMS file have (fails when they differ or one is missing)
+# SHA256SUMS file have in this router's format (fails when they differ or
+# one is missing). .ipk: <name>_<version>_all.ipk; .apk: <name>-<version>.apk
+# (the version must follow the name directly: easy-vless-sing-box-... is not
+# a file of easy-vless).
 sums_version() {
 	local p v ver=""
 	for p in $PACKAGES; do
-		v=$(awk -v p="$p" '{ n = $2; sub(/^\*/, "", n); if (index(n, p "_") == 1 && n ~ /_all\.ipk$/) { v = substr(n, length(p) + 2); sub(/_all\.ipk$/, "", v); print v; c++ } } END { if (c != 1) exit 1 }' "$1") || return 1
+		if [ "$PM" = apk ]; then
+			v=$(awk -v p="$p" '{ n = $2; sub(/^\*/, "", n); if (index(n, p "-") == 1 && n ~ /\.apk$/) { v = substr(n, length(p) + 2); sub(/\.apk$/, "", v); if (v ~ /^[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$/) { print v; c++ } } } END { if (c != 1) exit 1 }' "$1") || return 1
+		else
+			v=$(awk -v p="$p" '{ n = $2; sub(/^\*/, "", n); if (index(n, p "_") == 1 && n ~ /_all\.ipk$/) { v = substr(n, length(p) + 2); sub(/_all\.ipk$/, "", v); print v; c++ } } END { if (c != 1) exit 1 }' "$1") || return 1
+		fi
 		valid_version "$v" || return 1
 		[ -z "$ver" ] || [ "$ver" = "$v" ] || return 1
 		ver="$v"
@@ -251,7 +274,7 @@ download_release() {
 	ver=$(sums_version "$dir/SHA256SUMS") || { echo "SHA256SUMS of ${tag} does not list the three Easy VLESS packages with one version"; return 1; }
 	tag_matches "$tag" "$ver" || { echo "release ${tag} contains packages of version ${ver}"; return 1; }
 	for p in $PACKAGES; do
-		f="${p}_${ver}_all.ipk"
+		f=$(pkg_file "$p" "$ver")
 		fetch "${BASE_URL}/download/${tag}/${f}" "$dir/$f" || { echo "${f} could not be downloaded"; return 1; }
 		verify_file "$dir" "$f" || { echo "${f} does not match SHA256SUMS of ${tag}"; return 1; }
 	done
@@ -290,9 +313,15 @@ rollback() {
 	local old="$1" reason="$2" ipks="" p ok=1
 	log "rollback: $reason"
 	if [ -d "$WORK/old" ]; then
-		for p in $PACKAGES; do ipks="$ipks $WORK/old/${p}_${old}_all.ipk"; done
+		for p in $PACKAGES; do ipks="$ipks $WORK/old/$(pkg_file "$p" "$old")"; done
 		# shellcheck disable=SC2086
-		opkg install --force-downgrade --force-reinstall $ipks >>"$LOG_FILE" 2>&1 || ok=0
+		if [ "$PM" = apk ]; then
+			# verified against SHA256SUMS like the new ones; the dependencies
+			# are installed already
+			apk add --allow-untrusted --network=no $ipks >>"$LOG_FILE" 2>&1 || ok=0
+		else
+			opkg install --force-downgrade --force-reinstall $ipks >>"$LOG_FILE" 2>&1 || ok=0
+		fi
 		packages_at "$old" || ok=0
 	else
 		packages_at "$old" || ok=0

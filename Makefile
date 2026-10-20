@@ -7,7 +7,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=1.1.0
+PKG_VERSION:=1.2.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -276,6 +276,28 @@ define Package/easy-vless/install
 	$(INSTALL_DATA) ./root/lib/upgrade/keep.d/easy-vless $(1)/lib/upgrade/keep.d/easy-vless
 endef
 
+# apk (OpenWrt 25.12) protects modified conffiles only below /etc: on an
+# upgrade it replaces /usr/share/easy_vless/direct_ip even when the user
+# changed it (opkg keeps a modified conffile). Before the upgrade (apk runs
+# this as pre-upgrade) a direct_ip that differs from the checksum the
+# installed package recorded is saved; postinst puts it back. opkg has no
+# /lib/apk, so this is a no-op there.
+define Package/easy-vless/preinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+f=/usr/share/easy_vless/direct_ip
+s=/lib/apk/packages/easy-vless.conffiles_static
+[ -f "$$f" ] && [ -f "$$s" ] || exit 0
+while read -r p c; do
+	[ "$$p" = "$$f" ] || continue
+	if [ "$$(sha256sum "$$f" | cut -d' ' -f1)" != "$$c" ]; then
+		mkdir -p /etc/easy_vless && cp -p "$$f" /etc/easy_vless/direct_ip.upgrade
+	fi
+	break
+done < "$$s"
+exit 0
+endef
+
 define Package/easy-vless/postinst
 #!/bin/sh
 # /etc/uci-defaults/easy-vless is executed and then removed by OpenWrt's
@@ -284,6 +306,8 @@ define Package/easy-vless/postinst
 # (offline via rc.common in IPKG_INSTROOT, live via "enable"); the explicit
 # enable below is kept for the live install and is idempotent.
 [ -n "$${IPKG_INSTROOT}" ] || {
+	# apk upgrade: the user's direct_ip saved by preinst (see there)
+	[ -f /etc/easy_vless/direct_ip.upgrade ] && mv -f /etc/easy_vless/direct_ip.upgrade /usr/share/easy_vless/direct_ip
 	/etc/init.d/easy_vless enable
 	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
 	exit 0

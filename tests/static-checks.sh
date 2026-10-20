@@ -218,8 +218,10 @@ grep -qF "releases/download/${IT}/install.sh" scripts/install.sh && ok "install.
 # README: release URLs and package file names of this version only
 grep -qF "releases/download/${IT}/install.sh" README.md && ok "README installer URL uses ${IT}" || bad "README installer URL does not use ${IT}"
 grep -qF "easy-vless_${IV}_all.ipk" README.md && ok "README package names use ${IV}" || bad "README package names do not use ${IV}"
-stale=$(grep -hoE 'releases/download/v[0-9][^/ )]*|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)_[0-9][^_ ]*_all\.ipk' README.md docs/technical.md \
-	| grep -vF -e "releases/download/${IT}" -e "_${IV}_all.ipk" | sort -u)
+# 1.2.0: the .apk packages for OpenWrt 25.12 (name-version.apk)
+grep -qF "easy-vless-${IV}.apk" README.md && grep -qF "luci-app-easy-vless-${IV}.apk" README.md && ok "README .apk names use ${IV}" || bad "README .apk names do not use ${IV}"
+stale=$(grep -hoE 'releases/download/v[0-9][^/ )]*|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)_[0-9][^_ ]*_all\.ipk|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)-[0-9][^ `]*\.apk' README.md docs/technical.md \
+	| grep -vF -e "releases/download/${IT}" -e "_${IV}_all.ipk" -e "-${IV}.apk" | sort -u)
 [ -z "$stale" ] && ok "README and docs/technical.md have no other release versions" || bad "README or docs/technical.md mention other release versions: $(echo "$stale" | tr '\n' ' ')"
 grep -qF "**Текущая версия: ${IV}**" README.md && ok "README current version ${IV}" || bad "README current version is not ${IV}"
 

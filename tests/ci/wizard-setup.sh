@@ -46,8 +46,14 @@ fi
 
 [ "${WITH_LUCI:-0}" = "1" ] || { say "done (without LuCI)"; exit 0; }
 
-opkg install luci >/tmp/opkg-luci.log 2>&1 || { cat /tmp/opkg-luci.log; die "opkg install luci failed"; }
-say "installed: $(opkg list-installed | grep -E '^(luci |luci-base|luci-theme-bootstrap|uhttpd )' | tr '\n' ';')"
+if command -v apk >/dev/null 2>&1 && ! command -v opkg >/dev/null 2>&1; then
+	# OpenWrt 25.12 (apk)
+	apk add luci >/tmp/opkg-luci.log 2>&1 || { cat /tmp/opkg-luci.log; die "apk add luci failed"; }
+	say "installed: $(apk list -I 2>/dev/null | awk '{ print $1 }' | grep -E '^(luci-[0-9]|luci-base-|luci-theme-bootstrap-|uhttpd-[0-9])' | tr '\n' ';')"
+else
+	opkg install luci >/tmp/opkg-luci.log 2>&1 || { cat /tmp/opkg-luci.log; die "opkg install luci failed"; }
+	say "installed: $(opkg list-installed | grep -E '^(luci |luci-base|luci-theme-bootstrap|uhttpd )' | tr '\n' ';')"
+fi
 
 uci set uhttpd.main.listen_http='0.0.0.0:80'
 uci -q delete uhttpd.main.listen_https || true

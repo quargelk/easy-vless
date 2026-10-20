@@ -53,9 +53,15 @@ sock_strings() {
 for t in ubusd ubus uci; do
 	command -v "$t" >/dev/null 2>&1 || die "$t not found in this rootfs"
 done
+# package manager of the image: opkg (OpenWrt 24.10) or apk (25.12)
+PM=""
+command -v opkg >/dev/null 2>&1 && PM=opkg
+command -v apk >/dev/null 2>&1 && PM=apk
 if [ "${SKIP_INSTALL:-0}" != "1" ] || ! command -v rpcd >/dev/null 2>&1; then
-	command -v opkg >/dev/null 2>&1 || die "opkg not found in this rootfs"
+	[ -n "$PM" ] || die "neither opkg nor apk found in this rootfs"
 fi
+pm_update() { if [ "$PM" = apk ]; then apk update; else opkg update; fi; }
+pm_install() { if [ "$PM" = apk ]; then apk add "$@"; else opkg install "$@"; fi; }
 
 # ---------------------------------------------------------------- 2. socket path
 # The socket path is compiled into libubus (used by every client, including
@@ -97,8 +103,8 @@ fi
 # rpcd registers the "uci" and "session" objects used by luci.model.uci;
 # installed only when missing, with ubusd already up for its postinst.
 if ! command -v rpcd >/dev/null 2>&1; then
-	opkg update
-	opkg install rpcd
+	pm_update
+	pm_install rpcd
 fi
 if ubus -t 1 list uci >/dev/null 2>&1; then
 	say "rpcd already running"
@@ -119,10 +125,20 @@ ubus -t 5 call uci configs
 
 # ---------------------------------------------------------------- 7. install
 if [ "${SKIP_INSTALL:-0}" != "1" ]; then
-	opkg update
-	command -v fw4 >/dev/null 2>&1 || opkg install firewall4
+	pm_update
+	command -v fw4 >/dev/null 2>&1 || pm_install firewall4
 	sh "$W/scripts/install.sh" --check --local "$DIST"
 	sh "$W/scripts/install.sh" --local "$DIST" --replace-dnsmasq --yes --no-start
+fi
+
+# The package's postinst runs "/etc/init.d/rpcd reload" so that rpcd loads the
+# new plugin luci.easy_vless; procd turns that into SIGHUP. There is no procd
+# here: do what its reload does. (On 24.10 the LuCI packages also send
+# "killall -HUP rpcd" themselves; on 25.12 they use the init script too.)
+if ! ubus -t 1 list service >/dev/null 2>&1 && [ -x /usr/libexec/rpcd/luci.easy_vless ]; then
+	kill -HUP $(pgrep -x rpcd) 2>/dev/null || true
+	wait_for "rpcd plugin luci.easy_vless after SIGHUP" ubus -t 1 list luci.easy_vless
+	say "no procd: rpcd reloaded with SIGHUP (what /etc/init.d/rpcd reload does on a router)"
 fi
 
 # ---------------------------------------------------------------- 8. checks after install

@@ -346,7 +346,7 @@ return view.extend({
 									E('tr', { 'class': 'tr table-titles' }, [ _('Name'), _('Protocol'), _('Address'), _('Port'), _('Transport'), _('Security'), 'Flow', 'SNI' ].map(function(t) { return E('th', { 'class': 'th' }, t); }))
 								].concat(L.toArray(res.nodes).map(function(n) {
 									return E('tr', { 'class': 'tr' }, [ td(n.remarks), td(ev.protocolName(n.protocol)), td(n.address), td(n.port), td(n.transport),
-										td(n.tls != '1' ? _('none') : (n.reality == '1' ? 'Reality' : 'TLS')), td(n.flow), td(n.sni) ]);
+										td(n.tls != '1' ? _('none', 'no value') : (n.reality == '1' ? 'Reality' : 'TLS')), td(n.flow), td(n.sni) ]);
 								})));
 								ev.showResult(_('Import URL'), res.skipped ? 'warn' : 'ok', summary, details, table);
 								const btn = document.querySelector('.modal .btn');
@@ -838,7 +838,7 @@ return view.extend({
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			if (uci.get(CONFIG, section_id, 'tls') != '1')
-				return _('none');
+				return _('none', 'no value');
 			return uci.get(CONFIG, section_id, 'reality') == '1' ? 'Reality' : 'TLS';
 		};
 
@@ -880,7 +880,7 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'flow', _('Flow'), _('xtls-rprx-vision needs TCP with TLS or Reality.'));
 		o.modalonly = true;
-		o.value('', _('none'));
+		o.value('', _('none', 'no value'));
 		o.value('xtls-rprx-vision', 'xtls-rprx-vision');
 		o.depends({ protocol: 'vless', transport: 'tcp', tls: '1' });
 

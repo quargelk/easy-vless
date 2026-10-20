@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Event separation of .github/workflows/build.yml (checks job and locally):
 
-  pull request, workflow_dispatch  full CI: checks, build, the whole
-                                    runtime-tests matrix, ubifs; no release
-  push to main                      checks, build (post-merge build)
+  pull request, workflow_dispatch  full CI: checks, build, build-apk, dist,
+                                    the whole runtime-tests matrix, ubifs;
+                                    no release
+  push to main                      checks, build, build-apk, dist
+                                    (post-merge build)
   push of a v* tag                  release pipeline only: checks, build,
-                                    release
+                                    build-apk, dist, release
 
 The jobs of an event are computed from the workflow itself: the job-level
 "if" (github.event_name == '...', startsWith(github.ref, '...') with !, &&,
@@ -81,9 +83,9 @@ def running(event, ref):
     return {n: matrix_size(jobs[n]) for n in jobs if runs(n)}
 
 
-FULL = {"checks", "build", "runtime-tests", "ubifs"}
-BUILD = {"checks", "build"}
-RELEASE = {"checks", "build", "release"}
+FULL = {"checks", "build", "build-apk", "dist", "runtime-tests", "ubifs"}
+BUILD = {"checks", "build", "build-apk", "dist"}
+RELEASE = {"checks", "build", "build-apk", "dist", "release"}
 EVENTS = [  # label, github.event_name, github.ref, expected jobs
     ("pull_request", "pull_request", "refs/pull/1/merge", FULL),
     ("push main", "push", "refs/heads/main", BUILD),
@@ -105,8 +107,17 @@ for label, event, ref, want in EVENTS:
     print("  %-26s %s" % (label + ":", ", ".join("%s%s" % (n, " (x%d)" % c if c > 1 else "") for n, c in r.items())))
     check(set(r) == want, "%s: exactly %s" % (label, ", ".join(sorted(want))))
 
-check(matrix_size(jobs["runtime-tests"]) >= 24, "runtime-tests matrix: %d jobs (6 targets x 4 groups)" % matrix_size(jobs["runtime-tests"]))
-check(set(needs(jobs["release"])) == {"checks", "build"}, "release needs only checks and build")
+check(matrix_size(jobs["runtime-tests"]) >= 52, "runtime-tests matrix: %d jobs (13 targets x 4 groups)" % matrix_size(jobs["runtime-tests"]))
+targets = (jobs["runtime-tests"].get("strategy") or {}).get("matrix", {}).get("target", [])
+check(any(t.get("apk") == "1" and "25.12" in t.get("image", "") for t in targets), "runtime-tests matrix has OpenWrt 25.12 (apk) images")
+apk_arch = {t.get("arch", "").split("_")[0] for t in targets if t.get("apk") == "1"}
+opkg_arch = {t.get("arch", "").split("_")[0] for t in targets if t.get("apk") != "1"}
+for fam in ("x86", "aarch64", "arm", "mips"):
+    check(fam in apk_arch, "runtime-tests matrix has an OpenWrt 25.12 (apk) image for %s" % fam)
+for fam in ("x86", "aarch64", "arm", "mips"):
+    check(fam in opkg_arch, "runtime-tests matrix has an OpenWrt 24.10 (opkg) image for %s" % fam)
+check(len({t.get("image") for t in targets if t.get("apk") == "1"} & {"openwrt/rootfs:x86-64-25.12.0", "openwrt/rootfs:x86-64-25.12.6"}) == 2, "runtime-tests matrix has two 25.12 patch releases")
+check(set(needs(jobs["release"])) == {"checks", "build", "build-apk", "dist"}, "release needs checks, build, build-apk and dist")
 steps = jobs["release"].get("steps", [])
 gate = [i for i, s in enumerate(steps) if "full CI run of the tagged commit" in s.get("name", "")]
 create = [i for i, s in enumerate(steps) if "gh release create" in s.get("run", "")]

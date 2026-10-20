@@ -1,28 +1,48 @@
 #!/bin/sh
-# Easy VLESS installer for OpenWrt 24.10 (opkg, fw4/nftables), any target and
+# Easy VLESS installer for stable OpenWrt 24.x (24.10.x: opkg, .ipk) and
+# stable OpenWrt 25.x (25.12.x: apk, .apk), fw4/nftables, any target and
 # architecture that the official OpenWrt feeds provide sing-box-tiny for.
 # https://github.com/quargelk/easy-vless
 #
 # A plain, readable shell script: download it, read it, then run it as root.
-#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.1.0/install.sh
+#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.2.0/install.sh
 #   sh /tmp/install.sh --check          # only check the router, install nothing
 #   sh /tmp/install.sh                  # install
 #
-# The Easy VLESS packages are "Architecture: all" (shell/Lua/JS only); every
-# architecture-specific package (sing-box-tiny, dnsmasq-full, curl, kernel
-# modules, ...) comes from the official feeds configured on the router for its
-# own release, target and architecture (/etc/opkg/distfeeds.conf).
+# Package channel: chosen from the OpenWrt release in /etc/openwrt_release
+# and the package manager that is actually present - both must agree:
+#   OpenWrt 24.x (24.10.0 ...)  opkg  easy-vless_<version>_all.ipk ...
+#   OpenWrt 25.x (25.12.0 ...)  apk   easy-vless-<version>.apk ...
+# Any other release (older, newer, release candidate, snapshot) or a package
+# manager that does not fit the release stops the installer before anything
+# is changed. The package architecture of an apk system is the one in
+# /etc/apk/arch (it must be DISTRIB_ARCH); "apk --print-arch" is only the CPU
+# family apk was built for (aarch64, armv7, mips, ...).
+#
+# The Easy VLESS packages are architecture independent ("all" / "noarch":
+# shell/Lua/JS only); every architecture-specific package (sing-box-tiny,
+# dnsmasq-full, curl, kernel modules, ...) comes from the official feeds
+# configured on the router for its own release, target and architecture
+# (/etc/opkg/distfeeds.conf or /etc/apk/repositories.d/distfeeds.list).
+#
+# apk (OpenWrt 25.12): the Easy VLESS packages are verified against the
+# release SHA256SUMS (like the .ipk) - they are not signed with an OpenWrt key.
+# Their dependencies are installed first from the official feeds (signatures
+# checked, every download finished before anything is changed); then only the
+# three verified local files are installed with --allow-untrusted
+# --network=no. No key is added to /etc/apk/keys.
 #
 # What it does, in order (stops at the first error; nothing is changed before
 # step 5 has downloaded and verified every file and checked the free space):
 #   1. detects and checks the router: root, OpenWrt release, target and
-#      architecture (/etc/openwrt_release against the running kernel), RAM
+#      architecture (/etc/openwrt_release against the running kernel, and
+#      on apk against /etc/apk/arch and the installed packages), RAM
 #      (>= 256 MB) and flash/storage size (>= 128 MB), required tools, system
 #      time (HTTPS certificates cannot be verified with a clock that is
 #      behind - a one-time NTP synchronisation is tried), TLS library and CA
 #      certificates for HTTPS, DNS, opkg, the package feeds (release, target
 #      and architecture of this router), fw4/nftables, PassWall2 not running;
-#      when opkg itself is missing on an OpenWrt 24.10.x router, it can
+#      when opkg itself is missing on an OpenWrt 24.x router, it can
 #      bootstrap opkg from the official package archive of this release and
 #      architecture (--bootstrap-opkg or an interactive "y"; see
 #      bootstrap_opkg below);
@@ -55,18 +75,28 @@
 
 set -u
 
-EV_VERSION="1.1.0-r1"
-EV_TAG="v1.1.0"
+EV_VERSION="1.2.0-r1"
+EV_TAG="v1.2.0"
 EV_REPO="quargelk/easy-vless"
 EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 # Release date of this installer: a system clock before this date is certainly
 # wrong, and TLS certificates cannot be verified with it.
-EV_MIN_DATE="2026-10-04"
+EV_MIN_DATE="2026-10-20"
 EV_PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
 SINGBOX_MIN="1.12.0"
-SUPPORTED_RELEASE="24.10"
+# Supported OpenWrt major releases and the package manager each one uses
+# (major = the first number of DISTRIB_RELEASE, compared as a number): every
+# stable 24.x release (24.10.0 ... ) uses opkg, every stable 25.x release
+# (25.12.0 ... ) apk. Release candidates and snapshots are not stable
+# releases. A major release is added here only after it has been tested.
+SUPPORTED_SERIES="24:opkg 25:apk"
+SUPPORTED_RELEASE="24.x (24.10) or 25.x (25.12)"
 OPKG_ARCHIVE="https://archive.openwrt.org/releases"
 OPKG_STATUS="/usr/lib/opkg/status"
+# package architectures of apk (OpenWrt 25.12)
+APK_ARCH_FILE="/etc/apk/arch"
+# set by detect_channel: opkg or apk
+PM=""
 
 # System requirements.
 # RAM: 256 MB installed. The kernel reports less as MemTotal (its own code
@@ -117,15 +147,17 @@ die()  { echo "[easy-vless] ERROR: $*" >&2; exit 1; }
 
 usage() {
 	cat <<EOF
-Easy VLESS ${EV_VERSION} installer for OpenWrt ${SUPPORTED_RELEASE}.x (opkg, fw4/nftables)
+Easy VLESS ${EV_VERSION} installer for stable OpenWrt 24.x (24.10.x: opkg,
+.ipk) and stable OpenWrt 25.x (25.12.x: apk, .apk), fw4/nftables
 
 Usage: sh install.sh [options]
 
-  --check            only run the checks (router, RAM, flash, time, HTTPS,
-                     opkg feeds, sing-box, dnsmasq, release files, free
-                     space); install and change nothing (files are only
-                     downloaded to a temporary directory in /tmp)
-  --local DIR        install the Easy VLESS .ipk files and SHA256SUMS from DIR
+  --check, --dry-run only run the checks (router, RAM, flash, time, HTTPS,
+                     package manager and feeds, sing-box, dnsmasq, release
+                     files, free space); install and change nothing (files
+                     are only downloaded to a temporary directory in /tmp)
+  --local DIR        install the Easy VLESS packages of this router's channel
+                     (.ipk for opkg, .apk for apk) and SHA256SUMS from DIR
                      instead of downloading them from GitHub
   --base-url URL     download the release files from URL (an https:// mirror
                      of ${EV_BASE_URL})
@@ -134,12 +166,15 @@ Usage: sh install.sh [options]
                      --replace-dnsmasq)
   --no-start         do not restart the service at the end
   --bootstrap-opkg   allow installing opkg itself when it is missing
-                     (OpenWrt ${SUPPORTED_RELEASE}.x, from ${OPKG_ARCHIVE})
-  --force            continue on an OpenWrt release other than ${SUPPORTED_RELEASE}.x,
-                     on an architecture mismatch or unknown architecture,
-                     with package feeds of another release/target/architecture,
-                     or without an opkg package database (not tested; the
-                     RAM, flash and free space requirements still apply)
+                     (OpenWrt 24.x only, from ${OPKG_ARCHIVE})
+  --force            continue on an OpenWrt release that is not a stable
+                     24.x or 25.x (the channel then follows the one package
+                     manager present), on an architecture mismatch or unknown
+                     architecture, with package feeds of another
+                     release/target/architecture, or without an opkg package
+                     database (not tested; the RAM, flash and free space
+                     requirements still apply). It never overrides a package
+                     manager that does not fit a supported release.
   -h, --help         show this help
 
 Optional packages (easy-vless-xray, easy-vless-geodata) are never installed
@@ -149,7 +184,7 @@ EOF
 
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--check) OPT_CHECK=1 ;;
+		--check|--dry-run) OPT_CHECK=1 ;;
 		--local) [ $# -ge 2 ] || die "--local needs a directory"; OPT_LOCAL="$2"; shift ;;
 		--base-url) [ $# -ge 2 ] || die "--base-url needs a URL"; EV_BASE_URL="${2%/}"; shift ;;
 		--replace-dnsmasq) OPT_REPLACE_DNSMASQ=1 ;;
@@ -182,8 +217,33 @@ version_ge() {
 		exit 0 }'
 }
 
-# pkg_field PACKAGE FIELD: a field of the package in the opkg feed index
-pkg_field() { opkg info "$1" 2>/dev/null | sed -n "s/^$2: //p" | head -n1; }
+# pkg_field PACKAGE FIELD: a field of the package in the feed index (opkg
+# field names: Version, Architecture, Depends; apk: the same value from
+# "apk query", e.g. Architecture = "Arch")
+pkg_field() {
+	local f="$2"
+	if [ "$PM" = "apk" ]; then
+		[ "$f" = "Architecture" ] && f="Arch"
+		apk query --available --fields "$(echo "$f" | tr 'A-Z' 'a-z')" "$1" 2>/dev/null | sed -n "s/^$f: //p" | head -n1
+		return 0
+	fi
+	opkg info "$1" 2>/dev/null | sed -n "s/^$f: //p" | head -n1
+}
+
+# pkg_file PACKAGE: file name of an Easy VLESS package of this release in the
+# channel of this router
+pkg_file() {
+	if [ "$PM" = "apk" ]; then echo "${1}-${EV_VERSION}.apk"; else echo "${1}_${EV_VERSION}_all.ipk"; fi
+}
+
+# apk_file_field FILE FIELD: a field of the package information of an .apk
+# file (name, version, arch, installed-size, ...)
+apk_file_field() { apk adbdump "$1" 2>/dev/null | sed -n "s/^  $2: //p" | head -n1; }
+
+# apk_file_depends FILE: the dependencies of an .apk file, one per line
+apk_file_depends() {
+	apk adbdump "$1" 2>/dev/null | sed -n '/^  depends:/,/^ \{0,2\}[a-z]/s/^    - //p' | sed 's/[<>=~].*$//'
+}
 
 # feed_sha256 PACKAGE FILE: SHA256 of FILE from the (signature-checked) feed
 # index, via "opkg info" or, when that does not print it, the downloaded lists
@@ -206,7 +266,23 @@ feed_sha256() {
 	echo "$sum"
 }
 
-installed_version() { opkg list-installed 2>/dev/null | awk -v p="$1" '$1 == p { print $3; exit }'; }
+installed_version() {
+	if [ "$PM" = "apk" ]; then
+		apk query --installed --fields name,version "$1" 2>/dev/null | awk -v p="$1" '$1 == "Name:" { n = $2 } $1 == "Version:" && n == p { print $2; exit }'
+		return 0
+	fi
+	opkg list-installed 2>/dev/null | awk -v p="$1" '$1 == p { print $3; exit }'
+}
+
+# installed_list: "name version" of the installed packages Easy VLESS cares
+# about (status summary)
+installed_list() {
+	if [ "$PM" = "apk" ]; then
+		apk list -I 2>/dev/null | awk '{ print $1 }' | grep -E '^(easy-vless|luci-app-easy-vless|sing-box|dnsmasq)'
+	else
+		opkg list-installed 2>/dev/null | grep -E '^(easy-vless|luci-app-easy-vless|sing-box|dnsmasq)'
+	fi
+}
 
 singbox_version() {
 	command -v sing-box >/dev/null 2>&1 || return 1
@@ -275,7 +351,18 @@ now_epoch() { echo "${EV_TEST_NOW:-$(date +%s)}"; }
 dnsmasq_rollback() {
 	DNSMASQ_STAGE=""
 	warn "restoring ${DNSMASQ_PKG:-dnsmasq} ..."
-	if [ -n "${OLD_IPK:-}" ] && [ -f "$WORKDIR/dnsmasq/$OLD_IPK" ]; then
+	if [ "$PM" = "apk" ]; then
+		# apk replaces dnsmasq by dnsmasq-full in one transaction; when that
+		# did not complete, drop the world entry it may have left and put the
+		# old package back from its signed copy if it is gone
+		if [ -z "$(installed_version dnsmasq-full)" ]; then
+			grep -qx 'dnsmasq-full' /etc/apk/world 2>/dev/null && apk del dnsmasq-full >&2
+			if [ -n "${DNSMASQ_PKG:-}" ] && [ -z "$(installed_version "$DNSMASQ_PKG")" ]; then
+				apk add --repositories-file /dev/null --repository "$WORKDIR/dnsmasq/packages.adb" "$DNSMASQ_PKG" >&2 \
+					|| warn "reinstalling $DNSMASQ_PKG failed - install it manually: apk add ${DNSMASQ_PKG}"
+			fi
+		fi
+	elif [ -n "${OLD_IPK:-}" ] && [ -f "$WORKDIR/dnsmasq/$OLD_IPK" ]; then
 		opkg install "$WORKDIR/dnsmasq/$OLD_IPK" >&2 || warn "reinstalling $OLD_IPK failed - install ${DNSMASQ_PKG:-dnsmasq} manually: opkg install $WORKDIR/dnsmasq/$OLD_IPK"
 	fi
 	[ -f /etc/config/dhcp.easy-vless.bak ] && cp -p /etc/config/dhcp.easy-vless.bak /etc/config/dhcp
@@ -402,6 +489,132 @@ arch_matches_kernel() {
 		arc) case "$m" in arc*) return 0 ;; esac; return 1 ;;
 		*) return 1 ;;
 	esac
+}
+
+# release_series RELEASE: "24.10" for 24.10.3 or 24.10.0-rc7 (numbers, no
+# leading zeros); empty for SNAPSHOT or anything else that is not
+# <number>.<number>[.<number>][-rc<number>]
+release_series() {
+	echo "$1" | awk '/^[0-9]+\.[0-9]+(\.[0-9]+)?(-rc[0-9]+)?$/ { split($0, v, /[.-]/); print (v[1] + 0) "." (v[2] + 0) }'
+}
+
+# release_stable RELEASE: a stable release <number>.<number>.<number>
+# (24.10.0, 25.12.6), not a release candidate or snapshot
+release_stable() {
+	echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'
+}
+
+# series_channel SERIES: the package manager of a supported release series
+# ("24.10" -> opkg, "25.12" -> apk, by the major number in SUPPORTED_SERIES),
+# empty when it is not supported
+series_channel() {
+	local e
+	[ -n "$1" ] || return 0
+	for e in $SUPPORTED_SERIES; do
+		[ "${e%%:*}" = "${1%%.*}" ] && { echo "${e#*:}"; return 0; }
+	done
+	return 0
+}
+
+# apk_arches: the package architectures apk installs for, one per line, from
+# /etc/apk/arch (the OpenWrt image build writes it from ARCH_PACKAGES, the same
+# value as DISTRIB_ARCH: aarch64_cortex-a53, mipsel_24kc, x86_64, ...)
+apk_arches() {
+	awk '{ sub(/#.*/, ""); for (i = 1; i <= NF; i++) print $i }' "$APK_ARCH_FILE" 2>/dev/null
+}
+
+# apk_cpu_family: CPU family of the apk binary itself ("apk --print-arch" is
+# the architecture apk was compiled for - aarch64, armv7, armel, mips, mipsel,
+# x86_64, ... - not the OpenWrt package architecture; it does not read
+# /etc/apk/arch). Empty when unknown.
+apk_cpu_family() {
+	case "$(apk --print-arch 2>/dev/null | head -n1)" in
+		aarch64) echo aarch64 ;;
+		armv7|armhf|armel) echo arm ;;
+		x86_64) echo x86_64 ;;
+		x86) echo i386 ;;
+		mips|mipsel) echo mips ;;
+		mips64|mips64el) echo mips64 ;;
+		riscv64) echo riscv64 ;;
+		loongarch64) echo loongarch64 ;;
+		ppc) echo powerpc ;;
+		ppc64) echo powerpc64 ;;
+	esac
+}
+
+# check_apk_arch: apk installs packages for exactly this router: DISTRIB_ARCH
+# is in /etc/apk/arch, no other CPU architecture is listed there, the
+# installed packages (base-files, kernel, libc, ...) are DISTRIB_ARCH or
+# noarch, and the apk binary is built for the CPU family of DISTRIB_ARCH.
+# Stops before anything is changed.
+check_apk_arch() {
+	local list extra fam own foreign
+	list="$(apk_arches)"
+	[ -n "$list" ] || die "$APK_ARCH_FILE is missing or empty - apk does not know the package architecture of this router (/etc/openwrt_release: ${DISTRIB_ARCH}). Nothing was changed."
+	echo "$list" | grep -qxF "$DISTRIB_ARCH" \
+		|| die "apk installs packages for '$(echo "$list" | tr '\n' ' ' | sed 's/ $//')' ($APK_ARCH_FILE), /etc/openwrt_release says ${DISTRIB_ARCH} - the release information does not fit this firmware. Nothing was changed."
+	extra="$(echo "$list" | grep -vxF -e "$DISTRIB_ARCH" -e noarch | tr '\n' ' ' | sed 's/ $//')"
+	if [ -n "$extra" ]; then
+		[ "$OPT_FORCE" = "1" ] || die "$APK_ARCH_FILE also lists '${extra}' besides ${DISTRIB_ARCH} - apk could install packages for another CPU. Restore the file of this firmware (one line: ${DISTRIB_ARCH}) or use --force. Nothing was changed."
+		warn "$APK_ARCH_FILE also lists '${extra}' - continuing because of --force"
+	fi
+	foreign="$(apk query --installed --fields name,arch '*' 2>/dev/null | awk -v a="$DISTRIB_ARCH" '
+		$1 == "Name:" { n = $2 }
+		$1 == "Arch:" { if ($2 != a && $2 != "noarch") printf " %s(%s)", n, $2 }')"
+	if [ -n "$foreign" ]; then
+		[ "$OPT_FORCE" = "1" ] || die "installed packages of another architecture than ${DISTRIB_ARCH}:${foreign} - the package database does not fit this firmware. Use --force to continue anyway. Nothing was changed."
+		warn "installed packages of another architecture:${foreign} - continuing because of --force"
+	fi
+	fam="$(apk_cpu_family)"
+	own="$(arch_family "$DISTRIB_ARCH")"
+	if [ -n "$fam" ] && [ -n "$own" ] && [ "$fam" != "$own" ]; then
+		[ "$OPT_FORCE" = "1" ] || die "apk is built for $(apk --print-arch 2>/dev/null | head -n1), /etc/openwrt_release says ${DISTRIB_ARCH} - the release information does not fit this firmware. Nothing was changed."
+		warn "apk is built for another CPU family than ${DISTRIB_ARCH} - continuing because of --force"
+	fi
+	say "apk architecture: ${DISTRIB_ARCH} ($APK_ARCH_FILE; apk built for $(apk --print-arch 2>/dev/null | head -n1)) - ok"
+}
+
+# detect_channel: PM (opkg or apk) from the OpenWrt release and the package
+# manager that is present; stops on every inconsistency before anything is
+# changed. opkg may be missing on 24.10 (it can be bootstrapped below).
+detect_channel() {
+	local series want have_opkg=0 have_apk=0 v a
+	command -v opkg >/dev/null 2>&1 && have_opkg=1
+	if command -v apk >/dev/null 2>&1; then
+		v="$(apk --version 2>/dev/null | head -n1)"
+		case "$v" in
+			"apk-tools 3."*) have_apk=1 ;;
+			*) die "an apk command was found, but it is not apk-tools 3 ('${v:-no version}') - not the package manager of OpenWrt 25.12. Nothing was changed." ;;
+		esac
+	fi
+	series="$(release_series "${DISTRIB_RELEASE:-}")"
+	want="$(series_channel "$series")"
+	if [ -n "$want" ] && ! release_stable "${DISTRIB_RELEASE:-}"; then
+		[ "$OPT_FORCE" = "1" ] || die "OpenWrt ${DISTRIB_RELEASE} is a release candidate, not a stable release - not supported by this installer (supported: stable ${SUPPORTED_RELEASE}). Use --force to try anyway."
+		warn "OpenWrt ${DISTRIB_RELEASE} is a release candidate - continuing with ${want} because of --force"
+	fi
+	if [ -z "$want" ]; then
+		[ "$OPT_FORCE" = "1" ] || die "OpenWrt ${DISTRIB_RELEASE:-unknown} is not supported by this installer (supported: stable 24.x with opkg, stable 25.x with apk). Use --force to try anyway."
+		case "${have_opkg}${have_apk}" in
+			10) want=opkg ;;
+			01) want=apk ;;
+			11) die "both opkg and apk are installed on OpenWrt ${DISTRIB_RELEASE:-unknown} - it is not clear which one manages the packages. Nothing was changed." ;;
+			*) die "neither opkg nor apk was found on OpenWrt ${DISTRIB_RELEASE:-unknown}. Nothing was changed." ;;
+		esac
+		warn "OpenWrt ${DISTRIB_RELEASE:-unknown} is not a tested release - continuing with ${want} because of --force"
+	fi
+	case "$want" in
+		opkg)
+			[ "$have_apk" = "0" ] || die "/etc/openwrt_release says OpenWrt ${DISTRIB_RELEASE} (package manager opkg), but apk is installed - the release information does not fit this firmware. Nothing was changed."
+			;;
+		apk)
+			[ "$have_apk" = "1" ] || die "OpenWrt ${DISTRIB_RELEASE} uses the package manager apk, but apk was not found - the release information does not fit this firmware. Nothing was changed."
+			[ "$have_opkg" = "0" ] || die "OpenWrt ${DISTRIB_RELEASE} uses apk, but opkg is installed as well - it is not clear which one manages the packages. Nothing was changed."
+			check_apk_arch
+			;;
+	esac
+	PM="$want"
+	if [ "$PM" = "apk" ]; then say "package manager: apk (Easy VLESS .apk packages)"; else say "package manager: opkg (Easy VLESS .ipk packages)"; fi
 }
 
 # ---------------------------------------------------------------- system detection
@@ -615,6 +828,14 @@ https_probe() {
 # (small, always present), or of the official archive when no feed is set up
 https_probe_url() {
 	local u
+	if [ "$PM" = "apk" ]; then
+		# the target's own package index (small)
+		u="$(official_feeds | awk '$1 == "core" { print $2; exit }')"
+		[ -n "$u" ] || u="$(official_feeds | awk '{ print $2; exit }')"
+		[ -n "$u" ] || u="https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/targets/${DISTRIB_TARGET}/packages/packages.adb"
+		echo "$u"
+		return 0
+	fi
 	u="$(awk '$1 ~ /^src/ && $2 == "openwrt_core" { print $3; exit }' /etc/opkg/distfeeds.conf 2>/dev/null)"
 	[ -n "$u" ] || u="$(awk '$1 ~ /^src/ && NF >= 3 { print $3; exit }' /etc/opkg/distfeeds.conf 2>/dev/null)"
 	[ -n "$u" ] || u="${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base"
@@ -687,6 +908,7 @@ local_pkg_verified() {
 ensure_https() {
 	local f name list="" names="" lists hidden rc
 	[ "${HTTPS_BROKEN:-0}" = "1" ] || return 0
+	if [ "$PM" = "apk" ]; then ensure_https_apk; return; fi
 	local_index_ok || die "HTTPS does not work on this router: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR"). Nothing can be downloaded without it (there is no HTTP fallback). On a PC, download https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base/Packages and Packages.sig plus the files of libustream-mbedtls* and ca-bundle listed in Packages, copy them into one directory on the router (scp -O) and run this installer with --local DIR (README section \"HTTPS на новом роутере\", HTTPS on a new router)"
 	for f in "$OPT_LOCAL"/*.ipk; do
 		[ -f "$f" ] || continue
@@ -716,6 +938,33 @@ ensure_https() {
 		mv "$hidden" "$lists" || warn "could not restore $lists - run 'opkg update'"
 	fi
 	[ "$rc" = "0" ] || die "opkg install of${names} from $OPT_LOCAL failed"
+	https_probe "$HTTPS_URL" || die "HTTPS still does not work after installing${names}: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR")"
+	HTTPS_BROKEN=0
+	say "HTTPS: ${HTTPS_URL} - ok (certificate verified) after installing${names}"
+}
+
+# ensure_https_apk: ensure_https for apk. Official .apk files are not signed
+# one by one: the signed index of their feed (packages.adb) lists them. --local
+# DIR therefore holds the base feed index and the TLS/CA packages; DIR is used
+# as the only repository, so apk checks the index signature with
+# /etc/apk/keys and every package against the index.
+ensure_https_apk() {
+	local f b names="" local_hint
+	local_hint="On a PC, download https://downloads.openwrt.org/releases/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base/packages.adb plus the .apk files of libustream-mbedtls and ca-bundle from the same directory, copy them into one directory on the router (scp -O) and run this installer with --local DIR (README section \"HTTPS на новом роутере\", HTTPS on a new router)"
+	[ -n "$OPT_LOCAL" ] && [ -f "$OPT_LOCAL/packages.adb" ] || die "HTTPS does not work on this router: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR"). Nothing can be downloaded without it (there is no HTTP fallback). ${local_hint}"
+	for f in "$OPT_LOCAL"/*.apk; do
+		[ -f "$f" ] || continue
+		b="$(basename "$f")"
+		case "$b" in
+			libustream-*|libmbedtls*|libwolfssl*|libopenssl*|ca-bundle-*|ca-certificates-*) names="$names $(apk_file_field "$f" name)" ;;
+		esac
+	done
+	[ -n "$names" ] || die "HTTPS does not work ($(echo "$HTTPS_ERR" | tr '\n' ' ')) and $OPT_LOCAL has no TLS/CA package (libustream-mbedtls*.apk, ca-bundle*.apk). ${local_hint}"
+	[ "$OPT_CHECK" = "1" ] && die "--check: HTTPS does not work; the installer would install${names} from $OPT_LOCAL (index signature verified) - run it without --check"
+	say "installing the HTTPS prerequisites from ${OPT_LOCAL} (signed index packages.adb):${names}"
+	# shellcheck disable=SC2086
+	apk add --repositories-file /dev/null --repository "$OPT_LOCAL/packages.adb" $names \
+		|| die "apk add of${names} from $OPT_LOCAL failed (index signature or package checksum not valid, or a dependency is missing there)"
 	https_probe "$HTTPS_URL" || die "HTTPS still does not work after installing${names}: $(explain_download_error "$HTTPS_URL" "$HTTPS_ERR")"
 	HTTPS_BROKEN=0
 	say "HTTPS: ${HTTPS_URL} - ok (certificate verified) after installing${names}"
@@ -884,6 +1133,73 @@ register_bootstrapped() {
 		|| warn "could not register${missing} (see /tmp/easy-vless-opkg-register.log); opkg works, run 'opkg install${missing}' later"
 }
 
+# ---------------------------------------------------------------- feeds
+
+APK_DISTFEEDS=/etc/apk/repositories.d/distfeeds.list
+
+# apk_feeds FILE...: "<name> <url>" of the repository URLs in FILEs; name:
+# core (target packages), kmods, or the last part of the path (base, luci, ...)
+apk_feeds() {
+	cat "$@" 2>/dev/null | awk '$1 ~ /^https?:\/\// {
+		n = $1; sub(/\/packages\.adb$/, "", n)
+		if (n ~ /\/targets\/.*\/kmods\//) n = "kmods"
+		else if (n ~ /\/targets\/.*\/packages$/) n = "core"
+		else sub(/^.*\//, "", n)
+		print n, $1 }'
+}
+
+# official_feeds: "<name> <url>" of the official package feeds of this router
+official_feeds() {
+	if [ "$PM" = "apk" ]; then
+		apk_feeds "$APK_DISTFEEDS"
+	else
+		awk '$1 ~ /^src/ && NF >= 3 { print $2, $3 }' /etc/opkg/distfeeds.conf 2>/dev/null
+	fi
+}
+
+# all_feeds: official and custom package feeds
+all_feeds() {
+	if [ "$PM" = "apk" ]; then
+		apk_feeds /etc/apk/repositories.d/*.list /etc/apk/repositories
+	else
+		cat /etc/opkg/distfeeds.conf /etc/opkg/customfeeds.conf 2>/dev/null | awk '$1 ~ /^src/ && NF >= 3 { print $2, $3 }'
+	fi
+}
+
+# apk_update: like opkg_update - the feeds Easy VLESS needs (core, kmods,
+# base, packages, luci) must be available, others are optional. apk verifies
+# the signature of every index with /etc/apk/keys.
+apk_update() {
+	local log=/tmp/easy-vless-apk-update.log feeds name url bad="" soft="" text rc
+	feeds="$WORKDIR/feeds"
+	all_feeds >"$feeds"
+	[ -s "$feeds" ] || die "no package feeds configured in $APK_DISTFEEDS"
+	say "apk update ..."
+	apk update >"$log" 2>&1
+	rc=$?
+	while read -r name url; do
+		grep -E '^(WARNING|ERROR)' "$log" | grep -qF "$url" || continue
+		case "$name" in
+			core|kmods|base|packages|luci) bad="$bad $name" ;;
+			*) soft="$soft $name" ;;
+		esac
+	done <"$feeds"
+	text="$(grep -E '^(WARNING|ERROR)' "$log" | head -n 3)"
+	if [ -n "$bad" ]; then
+		echo "[easy-vless] ERROR: apk update: required package feeds not available:${bad}" >&2
+		[ -n "$text" ] && echo "[easy-vless]   apk: $(echo "$text" | tr '\n' ' ')" >&2
+		# shellcheck disable=SC2086
+		set -- $bad
+		die "$(explain_download_error "$(awk -v n="$1" '$1 == n { print $2; exit }' "$feeds")" "$text") (full log: $log)"
+	fi
+	[ -z "$soft" ] || warn "optional package feeds not available:${soft} (not needed by Easy VLESS; see $log)"
+	[ "$rc" = "0" ] || [ -n "$soft" ] || die "apk update failed: $(echo "${text:-exit code $rc}" | tr '\n' ' ') (full log: $log)"
+}
+
+pm_update() {
+	if [ "$PM" = "apk" ]; then apk_update; else opkg_update; fi
+}
+
 # ---------------------------------------------------------------- opkg update
 
 # opkg_update: the feeds Easy VLESS needs (core/kmods/base/packages/luci)
@@ -925,8 +1241,9 @@ opkg_update() {
 # URLs (mirrors with another layout, custom feeds) are not judged here; the
 # dependency resolution in check_space verifies what they offer.
 check_feeds() {
-	local name url rel rest bad=""
-	[ -s /etc/opkg/distfeeds.conf ] || die "/etc/opkg/distfeeds.conf is missing or empty - configure the official package feeds of OpenWrt ${DISTRIB_RELEASE} first"
+	local name url rel rest bad="" conf=/etc/opkg/distfeeds.conf
+	[ "$PM" = "apk" ] && conf="$APK_DISTFEEDS"
+	[ -s "$conf" ] && [ -n "$(official_feeds)" ] || die "$conf is missing or empty - configure the official package feeds of OpenWrt ${DISTRIB_RELEASE} first"
 	while read -r name url; do
 		case "$url" in
 			*/releases/*/packages/*|*/releases/*/targets/*) ;;
@@ -951,11 +1268,11 @@ check_feeds() {
 				;;
 		esac
 	done <<EOF
-$(awk '$1 ~ /^src/ && NF >= 3 { print $2, $3 }' /etc/opkg/distfeeds.conf)
+$(official_feeds)
 EOF
 	if [ -n "$bad" ]; then
-		echo "[easy-vless] package feeds in /etc/opkg/distfeeds.conf that do not belong to this router:${bad}" >&2
-		[ "$OPT_FORCE" = "1" ] || die "the package feeds are not the ones of OpenWrt ${DISTRIB_RELEASE} ${DISTRIB_TARGET} ${DISTRIB_ARCH} - packages for another CPU/kernel would be installed. Restore the original /etc/opkg/distfeeds.conf of this firmware (or use --force)"
+		echo "[easy-vless] package feeds in $conf that do not belong to this router:${bad}" >&2
+		[ "$OPT_FORCE" = "1" ] || die "the package feeds are not the ones of OpenWrt ${DISTRIB_RELEASE} ${DISTRIB_TARGET} ${DISTRIB_ARCH} - packages for another CPU/kernel would be installed. Restore the original $conf of this firmware (or use --force)"
 		warn "package feeds of another release/target/architecture - continuing because of --force"
 	fi
 	say "package feeds: OpenWrt ${DISTRIB_RELEASE}, target ${DISTRIB_TARGET}, architecture ${DISTRIB_ARCH} - ok"
@@ -1037,9 +1354,10 @@ ipk_control() {
 # feeds of this router) and compare the worst-case installed size with the
 # free space of the overlay; the downloads go to /tmp (RAM).
 check_space() {
-	local wants="" own_kb=0 p f dep sz res newkb dlkb n missing wrong need_kb margin_kb tmp_free fsnote=""
+	local wants="" own_kb=0 p f dep sz res missing wrong
+	if [ "$PM" = "apk" ]; then check_space_apk; return; fi
 	for p in $EV_PACKAGES; do
-		f="$PKGDIR/${p}_${EV_VERSION}_all.ipk"
+		f="$PKGDIR/$(pkg_file "$p")"
 		sz="$(ipk_control "$f" Installed-Size)"
 		dep="$(ipk_control "$f" Depends)"
 		[ -n "$sz" ] || die "cannot read the control data of $(basename "$f")"
@@ -1057,6 +1375,15 @@ check_space() {
 	[ -z "$missing" ] || die "dependencies not available in the package feeds of this router (${DISTRIB_ARCH}):${missing} - Easy VLESS cannot be installed on this architecture/firmware with the official feeds"
 	wrong="$(echo "$res" | awk -v a="$DISTRIB_ARCH" 'NF == 4 && $2 != a && $2 != "all" && $2 != "noarch" { printf " %s(%s)", $1, $2 }')"
 	[ -z "$wrong" ] || die "the package feeds offer packages for another architecture:${wrong}, this router is ${DISTRIB_ARCH}"
+	space_verdict "$res" "$own_kb" 2048
+}
+
+# space_verdict RESOLVED OWN_KB TMP_RESERVE_KB: compare the worst-case size of
+# the resolved feed packages ("<package> <arch> <installed bytes> <download
+# bytes>" lines) plus the Easy VLESS packages with the free space of the
+# overlay, and the downloads with the free space of /tmp
+space_verdict() {
+	local res="$1" own_kb="$2" tmp_reserve="$3" n newkb dlkb need_kb margin_kb tmp_free fsnote=""
 	n="$(echo "$res" | awk 'NF == 4 { n++ } END { print n + 0 }')"
 	newkb="$(echo "$res" | awk 'NF == 4 { s += $3 } END { printf "%d", s / 1024 + 0.999 }')"
 	dlkb="$(echo "$res" | awk 'NF == 4 { s += $4 } END { printf "%d", s / 1024 + 0.999 }')"
@@ -1074,9 +1401,55 @@ check_space() {
 	set -- $(fs_space /tmp)
 	tmp_free="${2:-}"
 	if [ -n "$tmp_free" ]; then
-		[ "$tmp_free" -ge $((dlkb + 2048)) ] || die "not enough free space in /tmp (RAM) for the downloads: $(mb "$tmp_free") MB free, $(mb $((dlkb + 2048))) MB required. Nothing was changed."
+		[ "$tmp_free" -ge $((dlkb + tmp_reserve)) ] || die "not enough free space in /tmp (RAM) for the downloads: $(mb "$tmp_free") MB free, $(mb $((dlkb + tmp_reserve))) MB required. Nothing was changed."
 		say "free space in /tmp: $(mb "$tmp_free") MB, downloads: $(mb "$dlkb") MB - ok"
 	fi
+}
+
+# check_space_apk: check_space for apk. "apk add --simulate" resolves the
+# whole installation (the verified local files, sing-box-tiny, dnsmasq-full
+# and every dependency from the feeds of this router) without changing
+# anything; the sizes of the new feed packages come from the signed indexes.
+check_space_apk() {
+	local files="" wants="" own_kb=0 p f sz names res wrong log="$WORKDIR/apk-simulate.log" err
+	for p in $EV_PACKAGES; do
+		f="$PKGDIR/$(pkg_file "$p")"
+		files="$files $f"
+		sz="$(apk_file_field "$f" installed-size)"
+		[ -n "$sz" ] || die "cannot read the package data of $(basename "$f")"
+		own_kb=$((own_kb + sz / 1024 + 1))
+	done
+	[ "$SB_ACTION" = "install" ] && wants="sing-box-tiny"
+	[ "$NEED_DNSMASQ" = "1" ] && wants="$wants dnsmasq-full"
+	# shellcheck disable=SC2086
+	if ! apk add --simulate --allow-untrusted $files $wants >"$log" 2>&1; then
+		err="$(grep -v -e '^(' -e '^OK:' "$log" | head -n 8 | tr '\n' ' ')"
+		die "apk cannot resolve the installation with the package feeds of this router (${DISTRIB_ARCH}): ${err:-see $log} - Easy VLESS cannot be installed on this architecture/firmware with the official feeds"
+	fi
+	# new or replaced packages from the feeds (the Easy VLESS packages are
+	# counted from their own files)
+	names="$(sed -n -E 's/^\([ 0-9]+\/[ 0-9]+\) (Installing|Upgrading|Downgrading|Replacing) ([^ ]+) .*$/\2/p' "$log" \
+		| grep -vx -e easy-vless -e easy-vless-sing-box -e luci-app-easy-vless | sort -u)"
+	res=""
+	if [ -n "$names" ]; then
+		# shellcheck disable=SC2086
+		res="$(apk query --available --fields name,arch,installed-size,file-size $names 2>/dev/null | awk '
+			$1 == "Name:" { n = $2; a = ""; i = 0; d = 0 }
+			$1 == "Arch:" { a = $2 }
+			$1 == "Installed-Size:" { i = $2 }
+			$1 == "File-Size:" { d = $2 }
+			/^$/ { if (n != "" && !(n in seen)) { seen[n] = 1; print n, a, i + 0, d + 0 } n = "" }
+			END { if (n != "" && !(n in seen)) print n, a, i + 0, d + 0 }')"
+		for p in $names; do
+			echo "$res" | awk -v p="$p" '$1 == p { f = 1 } END { exit !f }' \
+				|| die "apk would install $p, but its size is not in the package index - cannot check the free space"
+		done
+		# kernel modules and binaries only from the feeds of this architecture
+		wrong="$(echo "$res" | awk -v a="$DISTRIB_ARCH" 'NF == 4 && $2 != a && $2 != "noarch" { printf " %s(%s)", $1, $2 }')"
+		[ -z "$wrong" ] || die "the package feeds offer packages for another architecture:${wrong}, this router is ${DISTRIB_ARCH}. Nothing was changed."
+	fi
+	# apk keeps a copy of the indexes next to the downloads in /tmp
+	space_verdict "$res" "$own_kb" 8192
 }
 
 # ---------------------------------------------------------------- 1. checks
@@ -1087,13 +1460,6 @@ say "Easy VLESS ${EV_VERSION} installer"
 . /etc/openwrt_release
 say "OpenWrt: ${DISTRIB_RELEASE:-?} (${DISTRIB_REVISION:-?}), target ${DISTRIB_TARGET:-?}, architecture ${DISTRIB_ARCH:-?}"
 
-case "${DISTRIB_RELEASE:-}" in
-	${SUPPORTED_RELEASE}.*) ;;
-	*)
-		[ "$OPT_FORCE" = "1" ] || die "OpenWrt ${DISTRIB_RELEASE:-unknown} is not supported by this installer (tested: ${SUPPORTED_RELEASE}.x). Use --force to try anyway."
-		warn "OpenWrt ${DISTRIB_RELEASE:-unknown} is not a tested release - continuing because of --force"
-		;;
-esac
 [ -n "${DISTRIB_ARCH:-}" ] || die "DISTRIB_ARCH is empty in /etc/openwrt_release"
 say "kernel: $(uname -m 2>/dev/null) $(uname -r 2>/dev/null), model: $(cat /tmp/sysinfo/model 2>/dev/null || echo unknown)"
 if [ -z "$(arch_family "$DISTRIB_ARCH")" ]; then
@@ -1103,6 +1469,8 @@ elif ! arch_matches_kernel; then
 	[ "$OPT_FORCE" = "1" ] || die "architecture mismatch: /etc/openwrt_release says ${DISTRIB_ARCH}, the kernel runs on $(uname -m). Use --force to continue anyway."
 	warn "architecture mismatch (${DISTRIB_ARCH} / $(uname -m)) - continuing because of --force"
 fi
+# release series + package manager -> opkg/.ipk or apk/.apk (or stop)
+detect_channel
 
 MISSING=""
 for t in wget tar gzip sha256sum awk sed grep df pgrep uci mktemp; do
@@ -1111,6 +1479,13 @@ done
 [ -z "$MISSING" ] || die "required tools missing:${MISSING}"
 
 WORKDIR="$(mktemp -d /tmp/easy-vless-install.XXXXXX)" || die "cannot create a temporary directory in /tmp"
+# apk options for every installation from the feeds: all downloads (to /tmp)
+# are finished before the transaction changes anything
+APK_DL=""
+if [ "$PM" = "apk" ]; then
+	mkdir -p "$WORKDIR/apk-cache" || die "cannot create $WORKDIR/apk-cache"
+	APK_DL="--cache-dir $WORKDIR/apk-cache --cache-predownload"
+fi
 
 check_system_requirements
 
@@ -1121,11 +1496,10 @@ if [ -z "$OPT_LOCAL" ] && [ "${HTTPS_BROKEN:-0}" = "0" ]; then
 fi
 check_feeds
 
-if ! command -v opkg >/dev/null 2>&1; then
-	command -v apk >/dev/null 2>&1 && die "this OpenWrt uses apk instead of opkg - not supported by Easy VLESS ${EV_VERSION} (OpenWrt ${SUPPORTED_RELEASE}.x with opkg is required)"
-	case "${DISTRIB_RELEASE:-}" in
-		${SUPPORTED_RELEASE}.*) ;;
-		*) die "opkg not found, and bootstrapping it is only supported on OpenWrt ${SUPPORTED_RELEASE}.x" ;;
+if [ "$PM" = "opkg" ] && ! command -v opkg >/dev/null 2>&1; then
+	case "$(release_series "${DISTRIB_RELEASE:-}")" in
+		24.*) ;;
+		*) die "opkg not found, and bootstrapping it is only supported on OpenWrt 24.x" ;;
 	esac
 	say "opkg is not installed. It can be installed from ${OPKG_ARCHIVE}/${DISTRIB_RELEASE}/packages/${DISTRIB_ARCH}/base (package 'opkg' of this release and architecture)."
 	[ "$OPT_CHECK" = "1" ] && die "--check: opkg is missing - the installer can bootstrap it (run without --check and confirm, or add --bootstrap-opkg); the remaining checks need opkg"
@@ -1147,24 +1521,24 @@ if pgrep -f /usr/share/passwall2/ >/dev/null 2>&1 || nft list table inet passwal
 fi
 
 # ---------------------------------------------------------------- 2. feeds
-opkg_update
+pm_update
 register_bootstrapped
 
 # ---------------------------------------------------------------- 3. sing-box
 SB_ACTION=""
 SB_VER="$(singbox_version || true)"
 if [ -n "$SB_VER" ]; then
-	version_ge "$SB_VER" "$SINGBOX_MIN" || die "installed sing-box ${SB_VER} is older than ${SINGBOX_MIN}. Upgrade it (opkg upgrade sing-box or sing-box-tiny) and run this script again."
+	version_ge "$SB_VER" "$SINGBOX_MIN" || die "installed sing-box ${SB_VER} is older than ${SINGBOX_MIN}. Upgrade it (${PM} upgrade sing-box or sing-box-tiny) and run this script again."
 	say "sing-box ${SB_VER} is already installed - kept"
 else
 	for p in sing-box sing-box-tiny; do
 		[ -n "$(installed_version "$p")" ] && die "package $p is installed but the sing-box binary does not work - fix or remove it first"
 	done
 	SB_FEED_VER="$(pkg_field sing-box-tiny Version)"
-	[ -n "$SB_FEED_VER" ] || die "sing-box-tiny is not available in the package feeds of this router (${DISTRIB_ARCH}). Install sing-box >= ${SINGBOX_MIN} manually (opkg install sing-box-tiny or sing-box) and run this script again."
+	[ -n "$SB_FEED_VER" ] || die "sing-box-tiny is not available in the package feeds of this router (${DISTRIB_ARCH}). Install sing-box >= ${SINGBOX_MIN} manually ($( [ "$PM" = apk ] && echo 'apk add' || echo 'opkg install') sing-box-tiny or sing-box) and run this script again."
 	SB_FEED_ARCH="$(pkg_field sing-box-tiny Architecture)"
 	case "$SB_FEED_ARCH" in
-		"$DISTRIB_ARCH"|all) ;;
+		"$DISTRIB_ARCH"|all|noarch) ;;
 		*) die "sing-box-tiny in the feed is built for '${SB_FEED_ARCH}', this router is '${DISTRIB_ARCH}'" ;;
 	esac
 	version_ge "${SB_FEED_VER%%-*}" "$SINGBOX_MIN" || die "the feed offers sing-box-tiny ${SB_FEED_VER}, Easy VLESS needs >= ${SINGBOX_MIN}"
@@ -1181,7 +1555,13 @@ if dnsmasq_has_nftset; then
 	say "dnsmasq has nftset support - ok"
 else
 	NEED_DNSMASQ=1
-	DNSMASQ_PKG="$(opkg list-installed 2>/dev/null | awk '$1 ~ /^dnsmasq/ { print $1; exit }')"
+	if [ "$PM" = "apk" ]; then
+		for p in dnsmasq dnsmasq-dhcpv6 dnsmasq-full; do
+			[ -n "$(installed_version "$p")" ] && { DNSMASQ_PKG="$p"; break; }
+		done
+	else
+		DNSMASQ_PKG="$(opkg list-installed 2>/dev/null | awk '$1 ~ /^dnsmasq/ { print $1; exit }')"
+	fi
 	[ -n "$(pkg_field dnsmasq-full Version)" ] || die "dnsmasq-full is not available in the package feeds - cannot provide nftset support"
 	echo
 	say "Easy VLESS needs dnsmasq-full (dnsmasq with nftset support)."
@@ -1214,12 +1594,13 @@ if [ -n "$OPT_LOCAL" ]; then
 	[ -d "$OPT_LOCAL" ] || die "--local: $OPT_LOCAL is not a directory"
 	[ -f "$OPT_LOCAL/SHA256SUMS" ] || die "--local: SHA256SUMS not found in $OPT_LOCAL"
 	cp "$OPT_LOCAL/SHA256SUMS" "$PKGDIR/SHA256SUMS" || die "--local: cannot copy SHA256SUMS"
+	EXT=".ipk"; [ "$PM" = "apk" ] && EXT=".apk"
 	for p in $EV_PACKAGES; do
-		f="${p}_${EV_VERSION}_all.ipk"
+		f="$(pkg_file "$p")"
 		if [ ! -f "$OPT_LOCAL/$f" ]; then
 			found=""
-			for g in "$OPT_LOCAL"/*.ipk; do [ -f "$g" ] && found="$found $(basename "$g")"; done
-			die "--local: $f not found in $OPT_LOCAL (this installer is for Easy VLESS ${EV_VERSION}; .ipk files there:${found:- none})"
+			for g in "$OPT_LOCAL"/*"$EXT"; do [ -f "$g" ] && found="$found $(basename "$g")"; done
+			die "--local: $f not found in $OPT_LOCAL (this installer is for Easy VLESS ${EV_VERSION}, package manager ${PM}; ${EXT} files there:${found:- none})"
 		fi
 		cp "$OPT_LOCAL/$f" "$PKGDIR/$f" || die "--local: cannot copy $f"
 	done
@@ -1228,17 +1609,25 @@ else
 	say "downloading Easy VLESS ${EV_VERSION} from ${EV_BASE_URL}"
 	fetch "${EV_BASE_URL}/SHA256SUMS" "$PKGDIR/SHA256SUMS" "SHA256SUMS of Easy VLESS ${EV_VERSION}"
 	for p in $EV_PACKAGES; do
-		f="${p}_${EV_VERSION}_all.ipk"
+		f="$(pkg_file "$p")"
 		fetch "${EV_BASE_URL}/${f}" "$PKGDIR/$f" "$f"
 	done
 fi
 for p in $EV_PACKAGES; do
-	f="${p}_${EV_VERSION}_all.ipk"
+	f="$(pkg_file "$p")"
 	# exactly one "<64 hex>  <file name>" line for this file
 	want="$(awk -v f="$f" 'NF == 2 && $2 == f && $1 ~ /^[0-9a-f]+$/ && length($1) == 64 { print $1; n++ } END { if (n != 1) exit 1 }' "$PKGDIR/SHA256SUMS")" \
 		|| die "${f} is not listed exactly once in SHA256SUMS - release files do not belong together"
 	[ -s "$PKGDIR/$f" ] || die "$f is empty"
 	[ "$(sha256_of "$PKGDIR/$f")" = "$want" ] || die "checksum mismatch for ${f} (SHA256SUMS: ${want}, file: $(sha256_of "$PKGDIR/$f")) - nothing was installed"
+	# the package inside must be the one its file name promises
+	if [ "$PM" = "apk" ]; then
+		got="$(apk_file_field "$PKGDIR/$f" name) $(apk_file_field "$PKGDIR/$f" version) $(apk_file_field "$PKGDIR/$f" arch)"
+		[ "$got" = "$p $EV_VERSION noarch" ] || die "$f is not a valid apk package of $p $EV_VERSION (found: '${got}') - nothing was installed"
+	else
+		got="$(ipk_control "$PKGDIR/$f" Package) $(ipk_control "$PKGDIR/$f" Version) $(ipk_control "$PKGDIR/$f" Architecture)"
+		[ "$got" = "$p $EV_VERSION all" ] || die "$f is not a valid package of $p $EV_VERSION (found: '${got}') - nothing was installed"
+	fi
 done
 say "Easy VLESS packages verified against SHA256SUMS"
 
@@ -1254,14 +1643,58 @@ fi
 # ---------------------------------------------------------------- 3b. sing-box
 if [ "$SB_ACTION" = "install" ]; then
 	say "installing sing-box-tiny from the official feed ..."
-	opkg install sing-box-tiny || die "opkg install sing-box-tiny failed"
+	if [ "$PM" = "apk" ]; then
+		# shellcheck disable=SC2086
+		apk add $APK_DL sing-box-tiny || die "apk add sing-box-tiny failed"
+	else
+		opkg install sing-box-tiny || die "opkg install sing-box-tiny failed"
+	fi
 	SB_VER="$(singbox_version || true)"
 	[ -n "$SB_VER" ] || die "sing-box-tiny was installed but 'sing-box version' does not work"
 	say "sing-box ${SB_VER} installed"
 fi
 
 # ---------------------------------------------------------------- 4b. dnsmasq
-if [ "$DNSMASQ_ACTION" = "replace" ]; then
+# apk: dnsmasq-full provides dnsmasq, so "apk add dnsmasq-full" replaces it in
+# one transaction, with every download finished first. A signed copy of the
+# old package is fetched before for the rollback, /etc/config/dhcp is backed
+# up and put back as it was.
+replace_dnsmasq_apk() {
+	local u
+	say "replacing ${DNSMASQ_PKG:-dnsmasq} with dnsmasq-full ..."
+	mkdir -p "$WORKDIR/dnsmasq" || die "cannot create $WORKDIR/dnsmasq"
+	if [ -n "$DNSMASQ_PKG" ]; then
+		# rollback copy: the package and the signed index of its feed, so
+		# that it can be reinstalled without DNS (official .apk files are
+		# not signed one by one - the index signature covers them)
+		u="$(official_feeds | awk '$1 == "base" { print $2; exit }')"
+		[ -n "$u" ] || die "the base feed is not configured - cannot prepare a rollback copy of $DNSMASQ_PKG; nothing was changed"
+		fetch "$u" "$WORKDIR/dnsmasq/packages.adb" "package index of the base feed (rollback copy of $DNSMASQ_PKG)"
+		apk fetch -o "$WORKDIR/dnsmasq" "$DNSMASQ_PKG" >/dev/null || die "apk fetch $DNSMASQ_PKG (rollback copy) failed - nothing was changed"
+		OLD_IPK="$(cd "$WORKDIR/dnsmasq" && ls "${DNSMASQ_PKG}"-[0-9]*.apk 2>/dev/null | head -n1)"
+		[ -n "$OLD_IPK" ] || die "rollback copy of $DNSMASQ_PKG not found - nothing was changed"
+	fi
+	cp -p /etc/config/dhcp /etc/config/dhcp.easy-vless.bak 2>/dev/null || die "cannot back up /etc/config/dhcp - nothing was changed"
+	DNSMASQ_STAGE="removed"
+	# fault injection for the rollback test (tests/ci/installer-scenarios.sh)
+	[ "${EV_TEST_SIGNAL_AFTER_DNSMASQ_REMOVE:-0}" = "1" ] && kill -TERM $$
+	# shellcheck disable=SC2086
+	if [ "${EV_TEST_FAIL_DNSMASQ_INSTALL:-0}" = "1" ] || ! apk add $APK_DL dnsmasq-full; then
+		warn "installing dnsmasq-full failed"
+		dnsmasq_rollback
+		die "dnsmasq-full could not be installed; ${DNSMASQ_PKG:-dnsmasq} was restored"
+	fi
+	DNSMASQ_STAGE=""
+	# keep the router's DHCP/DNS configuration exactly as it was
+	cp -p /etc/config/dhcp.easy-vless.bak /etc/config/dhcp
+	rm -f /etc/config/dhcp.apk-new
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || warn "dnsmasq restart failed - check 'logread | grep dnsmasq'"
+	dnsmasq_has_nftset || die "dnsmasq-full was installed but dnsmasq still reports no nftset support"
+	say "dnsmasq-full installed (backup of the DHCP config: /etc/config/dhcp.easy-vless.bak)"
+}
+if [ "$DNSMASQ_ACTION" = "replace" ] && [ "$PM" = "apk" ]; then
+	replace_dnsmasq_apk
+elif [ "$DNSMASQ_ACTION" = "replace" ]; then
 	say "replacing ${DNSMASQ_PKG:-dnsmasq} with dnsmasq-full ..."
 	mkdir -p "$WORKDIR/dnsmasq" && cd "$WORKDIR/dnsmasq" || die "cannot create $WORKDIR/dnsmasq"
 	opkg download dnsmasq-full >/dev/null || die "opkg download dnsmasq-full failed - nothing was changed"
@@ -1310,20 +1743,42 @@ say "installing easy-vless, easy-vless-sing-box, luci-app-easy-vless ${EV_VERSIO
 IPKS=""
 WAS_INSTALLED=""
 for p in $EV_PACKAGES; do
-	IPKS="$IPKS $PKGDIR/${p}_${EV_VERSION}_all.ipk"
+	IPKS="$IPKS $PKGDIR/$(pkg_file "$p")"
 	[ -n "$(installed_version "$p")" ] && WAS_INSTALLED="$WAS_INSTALLED $p"
 done
+PM_INSTALL="opkg install"; PM_REMOVE="opkg remove"
+[ "$PM" = "apk" ] && { PM_INSTALL="apk add"; PM_REMOVE="apk del"; }
+# apk: (1) the dependencies of the three packages from the official feeds
+# (signatures checked, downloads first) under the temporary virtual package
+# .easy-vless-deps; (2) only the three verified local files, without network
+# and without a signature (they are verified against SHA256SUMS); (3) the
+# virtual package is removed - the dependencies stay as dependencies of
+# Easy VLESS, and "apk del" of Easy VLESS can remove them again.
+apk_install_local() {
+	local deps f rc
+	deps="$(for f in "$@"; do apk_file_depends "$f"; done | sort -u \
+		| grep -vx -e easy-vless -e easy-vless-sing-box -e luci-app-easy-vless -e libc)"
+	if [ -n "$deps" ]; then
+		# shellcheck disable=SC2086
+		apk add $APK_DL --virtual .easy-vless-deps $deps || return 1
+	fi
+	apk add --allow-untrusted --network=no "$@"
+	rc=$?
+	[ -z "$deps" ] || apk del .easy-vless-deps >/dev/null 2>&1 \
+		|| warn "could not remove the temporary virtual package .easy-vless-deps ('apk del .easy-vless-deps')"
+	return "$rc"
+}
 # fault injection for the partial installation test (tests/ci/installer-
 # scenarios.sh): only the first package gets installed, then opkg "fails"
 ev_install() {
 	if [ "${EV_TEST_FAIL_EV_INSTALL:-0}" = "1" ]; then
 		# shellcheck disable=SC2086
 		set -- $IPKS
-		opkg install "$1"
+		if [ "$PM" = "apk" ]; then apk_install_local "$1"; else opkg install "$1"; fi
 		return 1
 	fi
 	# shellcheck disable=SC2086
-	opkg install $IPKS
+	if [ "$PM" = "apk" ]; then apk_install_local $IPKS; else opkg install $IPKS; fi
 }
 if ! ev_install; then
 	# opkg installs the three packages one after another: a failure in the
@@ -1331,19 +1786,19 @@ if ! ev_install; then
 	NOW=""
 	for p in $EV_PACKAGES; do NOW="$NOW ${p}=$(installed_version "$p")"; done
 	if [ -z "$WAS_INSTALLED" ]; then
-		warn "opkg install of the Easy VLESS packages failed - removing the part that was installed"
+		warn "$PM_INSTALL of the Easy VLESS packages failed - removing the part that was installed"
 		for p in luci-app-easy-vless easy-vless-sing-box easy-vless; do
-			[ -n "$(installed_version "$p")" ] && opkg remove "$p" >&2
+			[ -n "$(installed_version "$p")" ] && $PM_REMOVE "$p" >&2
 		done
 		LEFT=""
 		for p in $EV_PACKAGES; do [ -n "$(installed_version "$p")" ] && LEFT="$LEFT $p"; done
-		[ -z "$LEFT" ] || die "opkg install of the Easy VLESS packages failed, and these could not be removed again:${LEFT}. Remove them with 'opkg remove${LEFT}', fix the problem shown above and run the installer again"
-		die "opkg install of the Easy VLESS packages failed. No Easy VLESS package is left installed (sing-box and dnsmasq-full stay). Fix the problem shown above and run the installer again"
+		[ -z "$LEFT" ] || die "$PM_INSTALL of the Easy VLESS packages failed, and these could not be removed again:${LEFT}. Remove them with '$PM_REMOVE${LEFT}', fix the problem shown above and run the installer again"
+		die "$PM_INSTALL of the Easy VLESS packages failed. No Easy VLESS package is left installed (sing-box and dnsmasq-full stay). Fix the problem shown above and run the installer again"
 	fi
-	die "opkg install of the Easy VLESS packages failed during the upgrade${OLD_EV:+ from ${OLD_EV}}. Installed now:${NOW} (the three packages must have the same version). The configuration is kept. Fix the problem shown above and run this installer again; to go back, run the install.sh of the previous release"
+	die "$PM_INSTALL of the Easy VLESS packages failed during the upgrade${OLD_EV:+ from ${OLD_EV}}. Installed now:${NOW} (the three packages must have the same version). The configuration is kept. Fix the problem shown above and run this installer again; to go back, run the install.sh of the previous release"
 fi
 for p in $EV_PACKAGES; do
-	[ "$(installed_version "$p")" = "$EV_VERSION" ] || die "$p is not installed in version $EV_VERSION after opkg install"
+	[ "$(installed_version "$p")" = "$EV_VERSION" ] || die "$p is not installed in version $EV_VERSION after $PM_INSTALL"
 done
 [ -s /etc/config/easy_vless ] || die "/etc/config/easy_vless is missing after installation"
 
@@ -1365,8 +1820,8 @@ fi
 
 # ---------------------------------------------------------------- 8. status
 echo
-say "installed packages:"
-opkg list-installed 2>/dev/null | grep -E '^(easy-vless|luci-app-easy-vless|sing-box|dnsmasq)' | sed 's/^/    /'
+say "installed packages (${PM}):"
+installed_list | sed 's/^/    /'
 say "sing-box: $(singbox_version || echo 'not found')"
 if dnsmasq_has_nftset; then say "dnsmasq nftset support: yes"; else warn "dnsmasq nftset support: NO - Easy VLESS will refuse to start"; fi
 if /etc/init.d/easy_vless enabled 2>/dev/null; then say "service: enabled at boot"; else warn "service: not enabled at boot"; fi

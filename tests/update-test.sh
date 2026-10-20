@@ -79,6 +79,27 @@ case "$1" in
 	;;
 esac
 STUB
+# apk (OpenWrt 25.12): "query --installed --fields name,version NAME" from the
+# package database; "add ... FILE.apk..." sets the version of every
+# <name>-<version>.apk (same log as opkg)
+cat > "$T/bin/apk" <<'STUB'
+#!/bin/sh
+db="$FAKE/pkgdb"
+case "$1" in
+	query) for a; do n="$a"; done
+		awk -v p="$n" '$1 == p { print "Name: " $1; print "Version: " $2 }' "$db" ;;
+	add)
+		shift
+		for f in "$@"; do
+			case "$f" in --*) continue ;; esac
+			[ -s "$f" ] || exit 1
+			b=${f##*/}; b=${b%.apk}; ver=$(echo "$b" | sed -E 's/^.*-([0-9]+\.[0-9]+\.[0-9]+-r[0-9]+)$/\1/'); name=${b%-"$ver"}
+			grep -v "^$name " "$db" > "$db.new"; echo "$name $ver" >> "$db.new"; mv "$db.new" "$db"
+			echo "$name $ver" >> "$FAKE/opkg.log"
+		done
+	;;
+esac
+STUB
 cat > "$T/bin/uci" <<'STUB'
 #!/bin/sh
 case "$*" in
@@ -95,7 +116,8 @@ PATH="$T/bin:$PATH"; export PATH
 # scripts/install.sh for the options update.sh uses, SHA256SUMS
 make_release() { # tag version
 	d="$T/srv/download/$1"; mkdir -p "$d"
-	for p in easy-vless easy-vless-sing-box luci-app-easy-vless; do echo "package $p $2" > "$d/${p}_$2_all.ipk"; done
+	# a release since 1.2.0 has both formats: .ipk (opkg) and .apk (apk)
+	for p in easy-vless easy-vless-sing-box luci-app-easy-vless; do echo "package $p $2" > "$d/${p}_$2_all.ipk"; echo "apk package $p $2" > "$d/${p}-$2.apk"; done
 	cat > "$d/install.sh" <<INST
 #!/bin/sh
 EV_VERSION="$2"
@@ -107,12 +129,17 @@ while [ \$# -gt 0 ]; do
 done
 [ -f "\$FAKE/incompatible" ] && { echo "[easy-vless] ERROR: OpenWrt 23.05 is not supported" >&2; exit 1; }
 [ "\$check" = 1 ] && exit 0
-[ -f "\$FAKE/install_fails" ] && { opkg install "\$local/easy-vless_${2}_all.ipk"; echo "[easy-vless] ERROR: opkg install of the Easy VLESS packages failed" >&2; exit 1; }
-opkg install "\$local"/easy-vless_${2}_all.ipk "\$local"/easy-vless-sing-box_${2}_all.ipk "\$local"/luci-app-easy-vless_${2}_all.ipk
+if [ "\${EV_UPDATE_PM:-opkg}" = apk ]; then
+	[ -f "\$FAKE/install_fails" ] && { apk add --allow-untrusted --network=no "\$local/easy-vless-${2}.apk"; echo "[easy-vless] ERROR: apk add of the Easy VLESS packages failed" >&2; exit 1; }
+	apk add --allow-untrusted --network=no "\$local"/easy-vless-${2}.apk "\$local"/easy-vless-sing-box-${2}.apk "\$local"/luci-app-easy-vless-${2}.apk
+else
+	[ -f "\$FAKE/install_fails" ] && { opkg install "\$local/easy-vless_${2}_all.ipk"; echo "[easy-vless] ERROR: opkg install of the Easy VLESS packages failed" >&2; exit 1; }
+	opkg install "\$local"/easy-vless_${2}_all.ipk "\$local"/easy-vless-sing-box_${2}_all.ipk "\$local"/luci-app-easy-vless_${2}_all.ipk
+fi
 [ -f "\$FAKE/wipes_config" ] && : > "\$EV_UPDATE_ROOT/etc/config/easy_vless"
 exit 0
 INST
-	(cd "$d" && sha256sum *.ipk install.sh > SHA256SUMS)
+	(cd "$d" && sha256sum *.ipk *.apk install.sh > SHA256SUMS)
 }
 reset() { # installed version
 	rm -rf "${T:?}/root/var/run/easy_vless_update" "${T:?}/root/var/lock/easy_vless_update.lock" "${T:?}/root/etc/easy_vless/update-backup" "${T:?}"/root/tmp/easy_vless_update.*
@@ -270,6 +297,29 @@ check "configuration lost by the installation: packages and configuration restor
 reset 0.9.0-r1; before=$(cfg_sum); touch "$T/install_fails"; rm -r "${T:?}/srv/download/v0.9.0"
 run install v0.9.1 >/dev/null 2>&1; rc=$?
 check "previous release not downloadable: the incomplete rollback is reported as such, with what to do" '[ "$rc" != 0 ] && [ "$(state phase)" = rollback_failed ] && state message | grep -q "could not be put back completely" && [ "$(cfg_sum)" = "$before" ]'
+
+# ---------------------------------------------------------------- apk (OpenWrt 25.12)
+export EV_UPDATE_PM=apk
+reset 0.9.0-r1
+S="$T/srv/download/v0.9.1/SHA256SUMS"
+check "apk: sums_version reads the .apk names (not easy-vless-sing-box-* as easy-vless)" 'PM=apk; [ "$(sums_version "$S")" = "0.9.1-r1" ]'
+grep -v 'luci-app-easy-vless-0.9.1-r1.apk' "$S" > "$T/s4"
+check "apk: a release without one of the .apk files is refused" 'PM=apk; ! sums_version "$T/s4" >/dev/null'
+check "opkg: the same release still gives the .ipk version" 'PM=opkg; [ "$(sums_version "$S")" = "0.9.1-r1" ]'
+grep -v '\.apk$' "$S" > "$T/s5"
+check "apk: a release with .ipk files only (before 1.2.0) is not offered" 'PM=apk; ! sums_version "$T/s5" >/dev/null'
+out=$(run check force)
+check "apk: check reports the newer release" 'echo "$out" | grep -q "\"available\":true" && echo "$out" | grep -q "\"current\":\"0.9.0-r1\""'
+reset 0.9.0-r1; before=$(cfg_sum)
+run install v0.9.1 >/dev/null 2>&1; rc=$?
+check "apk: install succeeds, the .apk files are installed ($(vers))" '[ "$rc" = 0 ] && [ "$(state phase)" = done ] && [ "$(vers)" = "0.9.1-r1 0.9.1-r1 0.9.1-r1 " ] && grep -q "^easy-vless 0.9.1-r1" "$T/opkg.log"'
+reset 0.9.0-r1; before=$(cfg_sum); echo "tampered" >> "$T/srv/download/v0.9.1/easy-vless-sing-box-0.9.1-r1.apk"
+run install v0.9.1 >/dev/null 2>&1; rc=$?
+refused "apk: modified .apk package" verify "does not match SHA256SUMS"
+reset 0.9.0-r1; before=$(cfg_sum); touch "$T/install_fails"
+run install v0.9.1 >/dev/null 2>&1; rc=$?
+check "apk: failing installation rolled back with the previous .apk files ($(vers))" '[ "$rc" != 0 ] && [ "$(state phase)" = rolled_back ] && [ "$(vers)" = "0.9.0-r1 0.9.0-r1 0.9.0-r1 " ] && [ "$(cfg_sum)" = "$before" ]'
+unset EV_UPDATE_PM
 
 echo
 echo "===== update: $PASS passed, $FAIL failed ====="
