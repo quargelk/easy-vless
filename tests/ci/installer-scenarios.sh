@@ -54,15 +54,25 @@ expect_ok() {
 	inst "$@"
 	if [ "$RC" = 0 ] && grep -qE -e "$p" "$LOG"; then ok "$d"; else bad "$d (rc=$RC, expected /$p/)"; show 30; fi
 }
-installed() { opkg list-installed 2>/dev/null | awk -v p="$1" '$1 == p { print $3; exit }'; }
+# package manager of the image: opkg (OpenWrt 24.10) or apk (25.12)
+PM=opkg
+command -v apk >/dev/null 2>&1 && ! command -v opkg >/dev/null 2>&1 && PM=apk
+installed() {
+	if [ "$PM" = apk ]; then
+		apk query --installed --fields name,version "$1" 2>/dev/null | awk -v p="$1" '$1 == "Name:" { n = $2 } $1 == "Version:" && n == p { print $2; exit }'
+	else
+		opkg list-installed 2>/dev/null | awk -v p="$1" '$1 == p { print $3; exit }'
+	fi
+}
+pm_install() { if [ "$PM" = apk ]; then apk add "$@"; else opkg install "$@"; fi; }
 check() { if eval "$2"; then ok "$1"; else bad "$1 [$2]"; fi; }
 no_leftovers() { check "no temporary installer directory left ($1)" '! ls -d /tmp/easy-vless-install.* >/dev/null 2>&1'; }
 
 prepare() {
 	mkdir -p /var/lock /var/run /tmp/log
-	opkg update >/tmp/prep.log 2>&1 || { cat /tmp/prep.log; echo "prepare: opkg update failed"; exit 1; }
+	$PM update >/tmp/prep.log 2>&1 || { cat /tmp/prep.log; echo "prepare: $PM update failed"; exit 1; }
 	# a real router has fw4; the rootfs image does not
-	command -v fw4 >/dev/null 2>&1 || opkg install firewall4 >>/tmp/prep.log 2>&1 || { cat /tmp/prep.log; exit 1; }
+	command -v fw4 >/dev/null 2>&1 || pm_install firewall4 >>/tmp/prep.log 2>&1 || { cat /tmp/prep.log; exit 1; }
 	[ -n "$V" ] || { echo "cannot read EV_VERSION"; exit 1; }
 }
 trust_test_ca() { cp "$TEST_CA" /etc/ssl/certs/ev-test-ca.crt; }
@@ -71,8 +81,28 @@ trust_test_ca() { cp "$TEST_CA" /etc/ssl/certs/ev-test-ca.crt; }
 case "$(uname -m)" in x86_64) OTHER_ARCH=aarch64_cortex-a53 ;; *) OTHER_ARCH=x86_64 ;; esac
 case "$DISTRIB_TARGET" in x86/64) OTHER_TARGET=mediatek/filogic ;; *) OTHER_TARGET=x86/64 ;; esac
 case "$DISTRIB_RELEASE" in 24.10.0) OTHER_RELEASE=24.10.1 ;; *) OTHER_RELEASE=24.10.0 ;; esac
-# installed packages that are not built for this architecture (or "all")
+# another package architecture of the same CPU family (empty when the CI
+# matrix has none): DISTRIB_ARCH and /etc/apk/arch must match exactly
+case "$DISTRIB_ARCH" in
+	aarch64_generic) SIBLING_ARCH=aarch64_cortex-a53 ;;
+	aarch64_*) SIBLING_ARCH=aarch64_generic ;;
+	arm_cortex-a7_neon-vfpv4) SIBLING_ARCH=arm_cortex-a15_neon-vfpv4 ;;
+	arm_*) SIBLING_ARCH=arm_cortex-a7_neon-vfpv4 ;;
+	mips_24kc) SIBLING_ARCH=mips_mips32 ;;
+	mips_*) SIBLING_ARCH=mips_24kc ;;
+	mipsel_24kc) SIBLING_ARCH=mipsel_74kc ;;
+	mipsel_*) SIBLING_ARCH=mipsel_24kc ;;
+	i386_pentium4) SIBLING_ARCH=i386_pentium-mmx ;;
+	i386_*) SIBLING_ARCH=i386_pentium4 ;;
+	*) SIBLING_ARCH="" ;;
+esac
+# installed packages that are not built for this architecture (or "all" /
+# apk "noarch")
 foreign_packages() {
+	if [ "$PM" = apk ]; then
+		apk query --installed --fields name,arch '*' 2>/dev/null | awk -v a="$DISTRIB_ARCH" '$1 == "Name:" { p = $2 } $1 == "Arch:" { if ($2 != a && $2 != "noarch") printf " %s(%s)", p, $2 }'
+		return 0
+	fi
 	awk -v a="$DISTRIB_ARCH" '/^Package: /{ p = $2 } /^Architecture: /{ if ($2 != a && $2 != "all") printf " %s(%s)", p, $2 }' /usr/lib/opkg/status
 }
 untrust_test_ca() { rm -f /etc/ssl/certs/ev-test-ca.crt; }
@@ -142,6 +172,14 @@ sc_preflight() {
 	expect_fail "architecture mismatch detected" "architecture mismatch: /etc/openwrt_release says ${OTHER_ARCH}, the kernel runs on $(uname -m)" --check
 	sed -i "s/^DISTRIB_ARCH=.*/DISTRIB_ARCH='sh4_generic'/" /etc/openwrt_release
 	expect_fail "unknown/unsupported architecture refused" "architecture sh4_generic is not supported by this installer" --check
+	cp /tmp/openwrt_release.orig /etc/openwrt_release
+	note "release series (stable 24.x: opkg)"
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='24.10.0-rc7'/" /etc/openwrt_release
+	expect_fail "a release candidate (24.10.0-rc7) refused" "OpenWrt 24.10.0-rc7 is a release candidate, not a stable release" --check --local "$DIST"
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='23.05.5'/" /etc/openwrt_release
+	expect_fail "an older release (23.05.5) refused" "OpenWrt 23.05.5 is not supported by this installer" --check --local "$DIST"
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='25.12.6'/" /etc/openwrt_release
+	expect_fail "25.x release information on an opkg system refused" "OpenWrt 25.12.6 uses the package manager apk, but apk was not found" --check --local "$DIST"
 	cp /tmp/openwrt_release.orig /etc/openwrt_release
 
 	note "package feeds of another architecture / target / release"
@@ -593,7 +631,7 @@ sc_smallspace() {
 # space of a fresh TR3000 v1 with the default image), LuCI installed like in
 # the release image. A fresh installation must pass and show the margin.
 sc_tr3000() {
-	opkg install luci >/tmp/luci.log 2>&1 || { tail -n 20 /tmp/luci.log; bad "cannot install luci"; return; }
+	pm_install luci >/tmp/luci.log 2>&1 || { tail -n 20 /tmp/luci.log; bad "cannot install luci"; return; }
 	make_sysroot tr3000 /tmp/sysroot-tr3000
 	EV_TEST_SYSROOT=/tmp/sysroot-tr3000 expect_ok "TR3000 v1 layout with 40 MB free: fresh installation succeeds" "Easy VLESS packages verified against SHA256SUMS" \
 		--local "$DIST" --replace-dnsmasq --yes --no-start
@@ -607,12 +645,100 @@ sc_tr3000() {
 	EV_TEST_SYSROOT=/tmp/sysroot-tr3000 expect_ok "TR3000 v1: repeated run (upgrade path) passes" "installed now: $V" --local "$DIST" --no-start
 }
 
+# ====================================================================== apk
+# OpenWrt 25.12 (apk): channel selection and its refusals, integrity of the
+# local .apk files, dnsmasq-full replacement, installation in two steps
+# (dependencies signed from the feeds, then the verified local files),
+# repeated run, partial failure, configuration kept, removal.
+sc_apk() {
+	A="--local $DIST --replace-dnsmasq --yes --no-start"
+	[ "$PM" = apk ] || { bad "the apk scenario needs an OpenWrt 25.12 (apk) image"; return; }
+	note "channel selection"
+	# shellcheck disable=SC2086
+	expect_ok "--check selects apk and the .apk packages" "package manager: apk \\(Easy VLESS \\.apk packages\\)" --check --local "$DIST"
+	grep -q "packages from the feeds (${DISTRIB_ARCH}) to install:.* sing-box-tiny" "$LOG" && ok "--check resolves sing-box-tiny with apk" || { bad "sing-box-tiny not resolved"; show; }
+	expect_ok "--dry-run is --check" "check finished: no blocking problem found" --dry-run --local "$DIST"
+	cp /etc/openwrt_release /tmp/openwrt_release.orig
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='24.10.3'/" /etc/openwrt_release
+	expect_fail "24.10 release information on an apk system refused" "says OpenWrt 24.10.3 \\(package manager opkg\\), but apk is installed" --check --local "$DIST"
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='26.1.0'/" /etc/openwrt_release
+	expect_fail "an untested release (26.1.0) refused" "OpenWrt 26.1.0 is not supported by this installer" --check --local "$DIST"
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='SNAPSHOT'/" /etc/openwrt_release
+	expect_fail "a snapshot refused" "OpenWrt SNAPSHOT is not supported" --check --local "$DIST"
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='25.12.0-rc5'/" /etc/openwrt_release
+	expect_fail "a release candidate (25.12.0-rc5) refused" "OpenWrt 25.12.0-rc5 is a release candidate, not a stable release" --check --local "$DIST"
+	# another stable patch release of 25.x selects apk; the feeds of this image
+	# belong to ${DISTRIB_RELEASE} and are refused for it
+	other_patch=25.12.0; [ "$DISTRIB_RELEASE" = 25.12.0 ] && other_patch=25.12.1
+	sed -i "s/^DISTRIB_RELEASE=.*/DISTRIB_RELEASE='${other_patch}'/" /etc/openwrt_release
+	expect_fail "patch release ${other_patch}: apk selected, feeds of ${DISTRIB_RELEASE} refused" "core: release ${DISTRIB_RELEASE}, this router runs ${other_patch}" --check --local "$DIST"
+	grep -q "package manager: apk" "$LOG" && ok "patch release ${other_patch} selects apk" || bad "patch release ${other_patch}: apk not selected"
+	cp /tmp/openwrt_release.orig /etc/openwrt_release
+	note "package architecture (apk --print-arch is the CPU family apk was built for, /etc/apk/arch the package architecture)"
+	expect_ok "--check accepts ${DISTRIB_ARCH} from /etc/apk/arch (apk --print-arch: $(apk --print-arch))" "apk architecture: ${DISTRIB_ARCH} \\(/etc/apk/arch; apk built for $(apk --print-arch)\\) - ok" --check --local "$DIST"
+	check "the installed packages of the image are ${DISTRIB_ARCH} or noarch" '[ -z "$(foreign_packages)" ]'
+	cp /etc/apk/arch /tmp/apk-arch.orig
+	echo "$OTHER_ARCH" > /etc/apk/arch
+	expect_fail "/etc/apk/arch of another architecture refused" "apk installs packages for '${OTHER_ARCH}' \\(/etc/apk/arch\\), /etc/openwrt_release says ${DISTRIB_ARCH}" --check --local "$DIST"
+	printf '%s\n%s\n' "$DISTRIB_ARCH" "$OTHER_ARCH" > /etc/apk/arch
+	expect_fail "/etc/apk/arch with a second, foreign architecture refused" "/etc/apk/arch also lists '${OTHER_ARCH}' besides ${DISTRIB_ARCH}" --check --local "$DIST"
+	: > /etc/apk/arch
+	expect_fail "empty /etc/apk/arch refused" "/etc/apk/arch is missing or empty" --check --local "$DIST"
+	cp /tmp/apk-arch.orig /etc/apk/arch
+	if [ -n "$SIBLING_ARCH" ]; then
+		sed -i "s/^DISTRIB_ARCH=.*/DISTRIB_ARCH='${SIBLING_ARCH}'/" /etc/openwrt_release
+		expect_fail "release information of another ${DISTRIB_ARCH%%_*} sub-architecture (${SIBLING_ARCH}) refused" "apk installs packages for '${DISTRIB_ARCH}' \\(/etc/apk/arch\\), /etc/openwrt_release says ${SIBLING_ARCH}" --check --local "$DIST"
+		cp /tmp/openwrt_release.orig /etc/openwrt_release
+	fi
+	check "/etc/apk/arch and /etc/openwrt_release restored" 'cmp -s /tmp/apk-arch.orig /etc/apk/arch && cmp -s /tmp/openwrt_release.orig /etc/openwrt_release'
+	note "integrity of the local packages"
+	mkdir -p /tmp/l-ipk && cp "$DIST"/*.ipk "$DIST"/SHA256SUMS /tmp/l-ipk/ 2>/dev/null
+	expect_fail "--local with .ipk files only: refused on apk" "easy-vless-${V}\\.apk not found" --check --local /tmp/l-ipk
+	mkdir -p /tmp/l-tamp && cp "$DIST"/*.apk "$DIST"/SHA256SUMS /tmp/l-tamp/ && printf 'x' >>"/tmp/l-tamp/easy-vless-sing-box-${V}.apk"
+	expect_fail "--local with a modified .apk: checksum mismatch" "checksum mismatch for easy-vless-sing-box-${V}\\.apk" $A --local /tmp/l-tamp
+	mkdir -p /tmp/l-swap && cp "$DIST"/*.apk /tmp/l-swap/ && cp "$DIST/luci-app-easy-vless-${V}.apk" "/tmp/l-swap/easy-vless-${V}.apk" && (cd /tmp/l-swap && sha256sum *.apk > SHA256SUMS)
+	expect_fail "--local with a renamed package (matching SHA256SUMS): refused" "is not a valid apk package of easy-vless" --check --local /tmp/l-swap
+	nothing_installed "after the refusals"
+	no_leftovers "apk refusals"
+	note "installation"
+	# a setting of the user (Easy VLESS' own uci-defaults rewrites the file
+	# with "uci commit dhcp", so comments are not a usable marker)
+	uci set dhcp.@dnsmasq[0].ev_test_mark=kept && uci commit dhcp
+	# shellcheck disable=SC2086
+	expect_ok "installation with apk" "installed packages \\(apk\\):" $A
+	check "Easy VLESS $V installed" "[ \"\$(installed easy-vless)\" = \"$V\" ] && [ \"\$(installed easy-vless-sing-box)\" = \"$V\" ] && [ \"\$(installed luci-app-easy-vless)\" = \"$V\" ]"
+	check "dnsmasq-full replaced dnsmasq" '[ -n "$(installed dnsmasq-full)" ] && dnsmasq --version | grep -q " nftset"'
+	check "/etc/config/dhcp kept (user setting still there), no dhcp.apk-new left" '[ "$(uci -q get dhcp.@dnsmasq[0].ev_test_mark)" = kept ] && [ ! -e /etc/config/dhcp.apk-new ]'
+	check "sing-box-tiny installed and working" '[ -n "$(installed sing-box-tiny)" ] && sing-box version >/dev/null'
+	check "every installed package is built for ${DISTRIB_ARCH} or noarch" '[ -z "$(foreign_packages)" ]'
+	check "Easy VLESS packages are noarch, sing-box-tiny and the nft kernel modules are ${DISTRIB_ARCH}" '[ "$(apk query --installed --fields arch easy-vless easy-vless-sing-box luci-app-easy-vless | grep "^Arch:" | sort -u)" = "Arch: noarch" ] && [ "$(apk query --installed --fields arch sing-box-tiny kmod-nft-tproxy kmod-nft-socket | grep "^Arch:" | sort -u)" = "Arch: ${DISTRIB_ARCH}" ]'
+	check "the Easy VLESS packages are pinned to the verified files in /etc/apk/world" '[ "$(grep -c "^easy-vless><\|^easy-vless-sing-box><\|^luci-app-easy-vless><" /etc/apk/world)" = 3 ]'
+	check "the temporary virtual package .easy-vless-deps is gone" '! grep -q "^\.easy-vless-deps" /etc/apk/world && [ -z "$(installed .easy-vless-deps)" ]'
+	check "nothing of Easy VLESS came without the SHA256SUMS check (no untrusted index added)" '[ ! -e /etc/apk/repositories.d/easy-vless.list ] && [ "$(ls /etc/apk/keys | wc -l)" = "$(cat /tmp/keys.count)" ]'
+	check "kernel module lists for the runtime dependency check exist" '[ -s /lib/apk/packages/kmod-nft-tproxy.list ] && [ -s /lib/apk/packages/kmod-nft-socket.list ]'
+	check "service enabled" '/etc/init.d/easy_vless enabled'
+	no_leftovers "apk install"
+	note "configuration kept on a repeated run"
+	uci set easy_vless.@global[0].ev_test_mark=kept && uci commit easy_vless
+	expect_ok "repeated run (reinstall of the same version)" "installed now: $V" --local "$DIST" --no-start
+	check "UCI configuration kept" '[ "$(uci -q get easy_vless.@global[0].ev_test_mark)" = kept ]'
+	note "failure after the first package (new installation)"
+	apk del luci-app-easy-vless easy-vless-sing-box easy-vless >"$LOG" 2>&1
+	check "removed with apk del" '[ -z "$(installed easy-vless)" ]'
+	check "modified /etc/config/easy_vless kept after removal" '[ "$(uci -q get easy_vless.@global[0].ev_test_mark)" = kept ]'
+	EV_TEST_FAIL_EV_INSTALL=1 expect_fail "new installation: apk fails after the first package" "No Easy VLESS package is left installed" --local "$DIST" --no-start
+	check "no Easy VLESS package left" '[ -z "$(installed easy-vless)" ] && [ -z "$(installed easy-vless-sing-box)" ] && [ -z "$(installed luci-app-easy-vless)" ]'
+	expect_ok "installation after the failure" "installed packages \\(apk\\):" --local "$DIST" --no-start
+	check "Easy VLESS $V installed again" "[ \"\$(installed easy-vless)\" = \"$V\" ]"
+}
+
 case "${1:-}" in
-	preflight|online|rollback|bootstrap|tlsboot|upgrade|sysreq|ram128|ram256|smallspace|tr3000) ;;
-	*) echo "usage: $0 preflight|online|rollback|bootstrap|tlsboot|upgrade|sysreq|ram128|ram256|smallspace|tr3000"; exit 2 ;;
+	preflight|online|rollback|bootstrap|tlsboot|upgrade|sysreq|ram128|ram256|smallspace|tr3000|apk) ;;
+	*) echo "usage: $0 preflight|online|rollback|bootstrap|tlsboot|upgrade|sysreq|ram128|ram256|smallspace|tr3000|apk"; exit 2 ;;
 esac
 echo "===== scenario $1 (Easy VLESS $V, OpenWrt ${DISTRIB_RELEASE} ${DISTRIB_TARGET} ${DISTRIB_ARCH}, kernel $(uname -m)) ====="
 prepare
+[ "$PM" = apk ] && ls /etc/apk/keys | wc -l > /tmp/keys.count
 "sc_$1"
 echo "===== $1: PASS: $PASS  FAIL: $FAIL ====="
 [ "$FAIL" -eq 0 ]
