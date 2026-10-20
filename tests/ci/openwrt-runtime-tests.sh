@@ -131,6 +131,16 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
 	sh "$W/scripts/install.sh" --local "$DIST" --replace-dnsmasq --yes --no-start
 fi
 
+# The package's postinst runs "/etc/init.d/rpcd reload" so that rpcd loads the
+# new plugin luci.easy_vless; procd turns that into SIGHUP. There is no procd
+# here: do what its reload does. (On 24.10 the LuCI packages also send
+# "killall -HUP rpcd" themselves; on 25.12 they use the init script too.)
+if ! ubus -t 1 list service >/dev/null 2>&1 && [ -x /usr/libexec/rpcd/luci.easy_vless ]; then
+	kill -HUP $(pgrep -x rpcd) 2>/dev/null || true
+	wait_for "rpcd plugin luci.easy_vless after SIGHUP" ubus -t 1 list luci.easy_vless
+	say "no procd: rpcd reloaded with SIGHUP (what /etc/init.d/rpcd reload does on a router)"
+fi
+
 # ---------------------------------------------------------------- 8. checks after install
 say "check: ubus -t 5 list"
 ubus -t 5 list
