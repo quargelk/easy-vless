@@ -863,7 +863,9 @@ jobs:
           curl -fsSL -o "${SDK_FILE}" "${BASE_URL}/${SDK_FILE}"
           grep -F "${SDK_FILE}" sha256sums | sha256sum -c -
           mkdir -p sdk && tar -xf "${SDK_FILE}" -C sdk --strip-components=1
-          grep -q '^CONFIG_USE_APK=y' sdk/.config || { echo "::error::the ${OPENWRT_APK_VERSION} SDK does not build apk packages"; exit 1; }
+          # a fresh SDK has no .config yet (make defconfig writes it): the
+          # package format is the default of USE_APK in Config-build.in
+          grep -A2 '^config USE_APK$' sdk/Config-build.in | grep -q 'default y' || { echo "::error::the ${OPENWRT_APK_VERSION} SDK does not build apk packages"; exit 1; }
           test -x sdk/staging_dir/host/bin/apk
 
       - name: Build the .apk packages (official feeds of the SDK)
