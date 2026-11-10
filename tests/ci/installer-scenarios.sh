@@ -118,7 +118,7 @@ nothing_installed() {
 sc_preflight() {
 	note "help and options"
 	expect_ok "--help lists every option" "--base-url" --help
-	for o in --check --local --base-url --replace-dnsmasq --yes --no-start --bootstrap-opkg --force --help; do
+	for o in --check --local --base-url --no-mirror --replace-dnsmasq --yes --no-start --bootstrap-opkg --force --help; do
 		grep -q -- "$o" "$LOG" && ok "--help documents $o" || bad "--help does not document $o"
 	done
 	grep -q "Easy VLESS $V installer" "$LOG" && ok "--help shows version $V" || bad "--help version"
