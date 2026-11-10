@@ -114,6 +114,10 @@ Easy VLESS хранит настройки, создаёт из них конф�
 
 ## Установка
 
+Ниже два свода команд: **основной** и **дополнительный** — на случай, если провайдер блокирует `github.com`.
+
+### Основной способ
+
 На роутере по SSH:
 
 ```sh
@@ -133,6 +137,27 @@ sh /tmp/install.sh
 5. Устанавливает пакеты и включает автозапуск.
 
 До шага установки на роутере ничего не меняется; при любой ошибке installer останавливается и объясняет причину.
+
+### Дополнительный способ — если `github.com` заблокирован
+
+Если `wget` зависает на `Connecting to 140.82.x.x:443` с `Connection timed out`, значит провайдер блокирует сам домен `github.com` (сеть `140.82.0.0/16`). Проверить:
+
+```sh
+wget -O /dev/null https://raw.githubusercontent.com/quargelk/easy-vless/main/README.md   # работает → заблокирован только github.com
+```
+
+В этом случае `install.sh` берётся с `raw.githubusercontent.com` (это тот же файл, что в релизе), а пакеты скачиваются с HTTPS-зеркала GitHub через `--base-url`:
+
+```sh
+wget -O /tmp/install.sh https://raw.githubusercontent.com/quargelk/easy-vless/v1.2.0/scripts/install.sh
+M="https://ghproxy.net/https://github.com/quargelk/easy-vless/releases/download/v1.2.0"
+sh /tmp/install.sh --check --base-url "$M"
+sh /tmp/install.sh --base-url "$M"
+```
+
+Если `ghproxy.net` не отвечает, подставьте в `M` другое зеркало с тем же форматом: `gh-proxy.com` или `ghfast.top`. Целостность не страдает: installer всё равно сверяет каждый пакет по `SHA256SUMS` релиза и проверяет его содержимое, поэтому подменённый или битый файл не установится. `sing-box-tiny` и при необходимости `dnsmasq-full` ставятся из официального репозитория OpenWrt (`downloads.openwrt.org`), который обычно не блокируется.
+
+Полностью офлайн (без доступа к GitHub вообще) — см. `--local` ниже и [техническую документацию](docs/technical.md#installer).
 
 | Параметр | Назначение |
 |---|---|

@@ -84,6 +84,17 @@ EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 EV_MIN_DATE="2026-10-20"
 EV_PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
 SINGBOX_MIN="1.12.0"
+# GitHub mirrors tried automatically when the default github.com base URL
+# cannot be reached (some providers block the github.com network, 140.82.0.0/16,
+# while the GitHub CDN that serves the assets stays reachable). Each entry is
+# used as a prefix in front of the full github.com URL, e.g.
+# https://ghproxy.net/https://github.com/<repo>/releases/download/<tag>/<file>.
+# The fallback runs ONLY for the default base URL: --base-url and --local take
+# precedence and disable it, and --no-mirror turns it off. Downloads stay
+# verified against SHA256SUMS, but a mirror is operated by a third party and
+# serves SHA256SUMS itself, so it is trusted for authenticity - use --base-url
+# or --local if that is not acceptable. Override the list with EV_MIRRORS="...".
+EV_MIRRORS="${EV_MIRRORS:-https://ghproxy.net https://gh-proxy.com https://ghfast.top}"
 # Supported OpenWrt major releases and the package manager each one uses
 # (major = the first number of DISTRIB_RELEASE, compared as a number): every
 # stable 24.x release (24.10.0 ... ) uses opkg, every stable 25.x release
@@ -127,6 +138,8 @@ SYS="${EV_TEST_SYSROOT:-}"
 
 OPT_CHECK=0
 OPT_LOCAL=""
+OPT_NO_MIRROR=0
+USER_BASE_URL=0
 OPT_REPLACE_DNSMASQ=0
 OPT_YES=0
 OPT_NO_START=0
@@ -160,7 +173,9 @@ Usage: sh install.sh [options]
                      (.ipk for opkg, .apk for apk) and SHA256SUMS from DIR
                      instead of downloading them from GitHub
   --base-url URL     download the release files from URL (an https:// mirror
-                     of ${EV_BASE_URL})
+                     of ${EV_BASE_URL}); disables the automatic mirror fallback
+  --no-mirror        do not fall back to a GitHub mirror when github.com cannot
+                     be reached (fail with the plain connection error instead)
   --replace-dnsmasq  allow replacing dnsmasq with dnsmasq-full
   --yes, -y          answer "yes" to the dnsmasq question (implies
                      --replace-dnsmasq)
@@ -186,7 +201,8 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--check|--dry-run) OPT_CHECK=1 ;;
 		--local) [ $# -ge 2 ] || die "--local needs a directory"; OPT_LOCAL="$2"; shift ;;
-		--base-url) [ $# -ge 2 ] || die "--base-url needs a URL"; EV_BASE_URL="${2%/}"; shift ;;
+		--base-url) [ $# -ge 2 ] || die "--base-url needs a URL"; EV_BASE_URL="${2%/}"; USER_BASE_URL=1; shift ;;
+		--no-mirror) OPT_NO_MIRROR=1 ;;
 		--replace-dnsmasq) OPT_REPLACE_DNSMASQ=1 ;;
 		--yes|-y) OPT_YES=1; OPT_REPLACE_DNSMASQ=1 ;;
 		--no-start) OPT_NO_START=1 ;;
@@ -980,6 +996,47 @@ check_dns() {
 	done
 }
 
+# resolve_base_url: when the release files are downloaded from the default
+# github.com URL and github.com cannot be reached (some providers block the
+# github.com network while the GitHub CDN that serves the assets stays up),
+# switch EV_BASE_URL to the first working mirror in EV_MIRRORS. Runs only for
+# the default base URL: --base-url (USER_BASE_URL=1), --local and --no-mirror
+# all disable it. Only a connection-level failure triggers the search; a 404 or
+# a TLS error is a different problem and is left for the normal fetch to report.
+# Integrity is still enforced by SHA256SUMS afterwards (see the EV_MIRRORS note).
+resolve_base_url() {
+	local m cand
+	[ -z "$OPT_LOCAL" ] || return 0
+	[ "${HTTPS_BROKEN:-0}" = "0" ] || return 0
+	[ "$OPT_NO_MIRROR" = "0" ] || return 0
+	[ "$USER_BASE_URL" = "0" ] || return 0
+	case "$EV_BASE_URL" in https://github.com/*) ;; *) return 0 ;; esac
+
+	# A real request for the release index: if github.com answers, keep it.
+	https_probe "${EV_BASE_URL}/SHA256SUMS" && return 0
+	# Fall back only when github.com is unreachable, not on 404/TLS/other errors.
+	case "$HTTPS_ERR" in
+		*"timed out"*|*"Connection failed"*|*"reset"*|*"refused"*|*"No route"*|*"unreachable"*|*"Connection error"*|*"Failed to send request"*) ;;
+		*) return 0 ;;
+	esac
+
+	warn "github.com is not reachable (${HTTPS_ERR}) - trying a GitHub mirror"
+	for m in $EV_MIRRORS; do
+		case "$m" in https://?*) ;; *) continue ;; esac
+		m="${m%/}"
+		cand="${m}/${EV_BASE_URL}"
+		if https_probe "${cand}/SHA256SUMS"; then
+			EV_BASE_URL="$cand"
+			warn "github.com blocked: downloading the release files through the mirror ${m}. They are still verified against SHA256SUMS, but this mirror is a third party and serves SHA256SUMS too - rerun with --base-url or --local (or --no-mirror) if you do not trust it."
+			return 0
+		fi
+	done
+	# Nothing reachable: leave EV_BASE_URL on github.com so the download below
+	# fails with the usual precise diagnosis instead of a mirror's error.
+	warn "no GitHub mirror reachable either - continuing with github.com"
+	return 0
+}
+
 # ---------------------------------------------------------------- opkg bootstrap
 
 # lib_present NAME: a library dependency like libubox20240329 is installed
@@ -1606,6 +1663,7 @@ if [ -n "$OPT_LOCAL" ]; then
 	done
 	say "Easy VLESS packages taken from $OPT_LOCAL"
 else
+	resolve_base_url
 	say "downloading Easy VLESS ${EV_VERSION} from ${EV_BASE_URL}"
 	fetch "${EV_BASE_URL}/SHA256SUMS" "$PKGDIR/SHA256SUMS" "SHA256SUMS of Easy VLESS ${EV_VERSION}"
 	for p in $EV_PACKAGES; do
