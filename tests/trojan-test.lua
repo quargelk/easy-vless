@@ -143,6 +143,8 @@ n = link("trojan://tr.example.com:443#NoUserinfo")
 check("validation: a link without password@ has no usable address", n ~= nil and (n.address == nil or n.error_msg ~= nil))
 LOG = {}
 n = link("trojan://secret@tr.example.com:443?type=xhttp&path=%2Fx#XHTTP")
+check("LX XHTTP: Trojan keeps the basic XHTTP options", n and n.type == "sing-box" and n.transport == "xhttp" and n.xhttp_path == "/x")
+n = link("trojan://secret@tr.example.com:443?type=mkcp#unsupported")
 check("validation: a transport sing-box does not have is skipped, not handed to Xray", n == nil and logged("Sing-Box does not support"))
 n = link("trojan://secret@tr.example.com:443?type=kcp#KCP")
 check("validation: mKCP is skipped", n == nil)

@@ -86,6 +86,7 @@ method_check() {
 		json_add_int "code" 1
 		json_add_boolean "ok" 0
 		json_add_string "node" ""
+		json_add_string "error_kind" "unknown_node"
 		json_add_string "output" "Unknown node."
 		json_dump
 		return
@@ -96,6 +97,7 @@ method_check() {
 	json_add_int "code" "$code"
 	json_add_boolean "ok" "$([ "$code" = 0 ] && echo 1 || echo 0)"
 	json_add_string "node" "$node"
+	[ "$code" = 0 ] || json_add_string "error_kind" "configuration_rejected"
 	json_add_string "output" "$out"
 	json_dump
 }
@@ -112,12 +114,14 @@ method_start() {
 	json_add_int "code" "$code"
 	json_add_boolean "ok" "$([ "$code" = 0 ] && echo 1 || echo 0)"
 	json_add_string "node" "$node"
+	[ "$code" = 0 ] || json_add_string "error_kind" "configuration_rejected"
 	json_add_string "output" "$out"
 	json_add_int "log_mark" "$(log_lines)"
 	if [ "$code" = 0 ]; then
 		uci -q set ${CONFIG}.@global[0].enabled='1'
 		uci -q commit ${CONFIG}
 		run_detached $INIT restart
+		json_add_boolean "accepted" 1
 	else
 		# Save & Apply may have committed enabled=1 from the form: an invalid
 		# configuration must not be started on the next boot either.

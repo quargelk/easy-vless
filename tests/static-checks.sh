@@ -198,7 +198,7 @@ PV=$(sed -n 's/^PKG_VERSION:=//p' Makefile); PR=$(sed -n 's/^PKG_RELEASE:=//p' M
 [ -n "$(sed -n 's/^PKG_MAINTAINER:=//p' Makefile)" ] && ok "PKG_MAINTAINER set" || bad "PKG_MAINTAINER empty"
 [ -n "$(sed -n 's/^PKG_LICENSE:=//p' Makefile)" ] && ok "PKG_LICENSE set" || bad "PKG_LICENSE empty"
 if grep -qE '^[[:space:]]*URL:=[[:space:]]*$' Makefile; then bad "a package has an empty URL:="; else ok "package URLs set"; fi
-for pkg in easy-vless easy-vless-sing-box easy-vless-xray easy-vless-geodata luci-app-easy-vless; do
+for pkg in easy-vless easy-vless-sing-box easy-vless-xray easy-vless-geodata luci-app-easy-vless sing-box-lx; do
 	grep -q "^define Package/${pkg}\$" Makefile && grep -q "BuildPackage,${pkg})" Makefile \
 		&& ok "package ${pkg} defined and built" || bad "package ${pkg} not defined/built"
 done
@@ -215,15 +215,13 @@ else
 	bad "install.sh EV_MIN_DATE '${MD}' is not a valid past date"
 fi
 grep -qF "releases/download/${IT}/install.sh" scripts/install.sh && ok "install.sh header URL uses ${IT}" || bad "install.sh header URL does not use ${IT}"
-# README: release URLs and package file names of this version only
-grep -qF "releases/download/${IT}/install.sh" README.md && ok "README installer URL uses ${IT}" || bad "README installer URL does not use ${IT}"
-grep -qF "easy-vless_${IV}_all.ipk" README.md && ok "README package names use ${IV}" || bad "README package names do not use ${IV}"
-# 1.2.0: the .apk packages for OpenWrt 25.12 (name-version.apk)
-grep -qF "easy-vless-${IV}.apk" README.md && grep -qF "luci-app-easy-vless-${IV}.apk" README.md && ok "README .apk names use ${IV}" || bad "README .apk names do not use ${IV}"
-stale=$(grep -hoE 'releases/download/v[0-9][^/ )]*|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)_[0-9][^_ ]*_all\.ipk|(easy-vless|easy-vless-sing-box|luci-app-easy-vless)-[0-9][^ `]*\.apk' README.md docs/technical.md \
-	| grep -vF -e "releases/download/${IT}" -e "_${IV}_all.ipk" -e "-${IV}.apk" | sort -u)
-[ -z "$stale" ] && ok "README and docs/technical.md have no other release versions" || bad "README or docs/technical.md mention other release versions: $(echo "$stale" | tr '\n' ' ')"
-grep -qF "**Текущая версия: ${IV}**" README.md && ok "README current version ${IV}" || bad "README current version is not ${IV}"
+# README keeps the published installation commands during development.
+grep -qF "**${IV}**" README.md && ok "README development version ${IV}" || bad "README development version is not ${IV}"
+IVLX=$(sed -n 's/^LX_PKG_VERSION="\(.*\)"$/\1/p' scripts/install.sh)
+[ "$IVLX" = "$(sed -n 's/^SINGBOX_LX_VERSION:=//p' Makefile)" ] &&
+	ok "sing-box-lx package version $IVLX" || bad "sing-box-lx package version mismatch"
+python3 tests/doc-links.py docs/CORE_INTEGRATION.md docs/BUILD_AND_PACKAGING.md \
+	docs/HARDWARE_REQUIREMENTS.md docs/LUCI_REDESIGN_READINESS.md docs/TR3000_LIVE_TRIAL.md || bad "integration documentation links"
 
 echo "== local paths, credentials, development leftovers"
 # Text files only; this script is excluded because it contains the patterns.

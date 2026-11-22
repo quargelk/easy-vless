@@ -56,6 +56,7 @@ INIT_LOCK="$R/var/lock/${CONFIG}.lock"
 APP="${EV_UPDATE_APP:-/usr/share/${CONFIG}/app.sh}"
 INIT="${EV_UPDATE_INIT:-/etc/init.d/${CONFIG}}"
 PACKAGES="easy-vless easy-vless-sing-box luci-app-easy-vless"
+ARCH="$(sed -n "s/^DISTRIB_ARCH=['\"]\?\([A-Za-z0-9_-]*\).*/\1/p" "$R/etc/openwrt_release" 2>/dev/null)"
 # package manager of this router: apk (OpenWrt 25.12, .apk packages) or opkg
 # (24.10, .ipk); test hook EV_UPDATE_PM
 PM="${EV_UPDATE_PM:-}"
@@ -168,6 +169,25 @@ sums_version() {
 	printf '%s' "$ver"
 }
 
+# New releases list the architecture-specific core as a separate asset.
+# Pre-lx releases are also accepted here so they remain usable for rollback.
+lx_asset() {
+	local sums="$1" ver="$2"
+	version_gt "$ver" 1.2.0-r9999 || return 0
+	[ -n "$ARCH" ] || return 1
+	awk -v a="$ARCH" -v pm="$PM" '
+		{
+			f = $2
+			sub(/^\*/, "", f)
+			if ((pm == "apk" && f ~ ("^sing-box-lx-[0-9][0-9.]*_p[0-9]+-r[0-9]+-" a "[.]apk$")) ||
+			    (pm == "opkg" && f ~ ("^sing-box-lx_[0-9][0-9.]*_p[0-9]+-r[0-9]+_" a "[.]ipk$"))) {
+				print f
+				count++
+			}
+		}
+		END { if (count != 1) exit 1 }' "$sums"
+}
+
 # verify_file DIR NAME: NAME in DIR matches DIR/SHA256SUMS
 verify_file() {
 	local want
@@ -268,7 +288,7 @@ do_state() {
 # download_release TAG DIR: SHA256SUMS + packages (+ install.sh) of a
 # release into DIR, every file verified. Prints the package version.
 download_release() {
-	local tag="$1" dir="$2" with_installer="${3:-1}" ver p f
+	local tag="$1" dir="$2" with_installer="${3:-1}" ver p f core
 	mkdir -p "$dir" || return 1
 	fetch "${BASE_URL}/download/${tag}/SHA256SUMS" "$dir/SHA256SUMS" || { echo "SHA256SUMS of ${tag} could not be downloaded"; return 1; }
 	ver=$(sums_version "$dir/SHA256SUMS") || { echo "SHA256SUMS of ${tag} does not list the three Easy VLESS packages with one version"; return 1; }
@@ -278,6 +298,11 @@ download_release() {
 		fetch "${BASE_URL}/download/${tag}/${f}" "$dir/$f" || { echo "${f} could not be downloaded"; return 1; }
 		verify_file "$dir" "$f" || { echo "${f} does not match SHA256SUMS of ${tag}"; return 1; }
 	done
+	core=$(lx_asset "$dir/SHA256SUMS" "$ver") || { echo "release ${tag} has no unique sing-box-lx package for ${ARCH:-this architecture}"; return 1; }
+	if [ -n "$core" ]; then
+		fetch "${BASE_URL}/download/${tag}/${core}" "$dir/$core" || { echo "${core} could not be downloaded"; return 1; }
+		verify_file "$dir" "$core" || { echo "${core} does not match SHA256SUMS of ${tag}"; return 1; }
+	fi
 	if [ "$with_installer" = 1 ]; then
 		fetch "${BASE_URL}/download/${tag}/install.sh" "$dir/install.sh" || { echo "install.sh of ${tag} could not be downloaded"; return 1; }
 		verify_file "$dir" install.sh || { echo "install.sh does not match SHA256SUMS of ${tag}"; return 1; }
@@ -303,22 +328,29 @@ service_enabled() {
 restart_service() {
 	if service_enabled; then
 		"$INIT" restart >>"$LOG_FILE" 2>&1
+	else
+		return 0
 	fi
-	return 0
 }
 
 # rollback OLD_VERSION REASON: previous packages (when they could be
 # fetched) and the saved configuration
 rollback() {
-	local old="$1" reason="$2" ipks="" p ok=1
+	local old="$1" reason="$2" ipks="" p core ok=1
 	log "rollback: $reason"
 	if [ -d "$WORK/old" ]; then
 		for p in $PACKAGES; do ipks="$ipks $WORK/old/$(pkg_file "$p" "$old")"; done
+		core=$(lx_asset "$WORK/old/SHA256SUMS" "$old") || ok=0
+		[ -z "$core" ] || ipks="$ipks $WORK/old/$core"
 		# shellcheck disable=SC2086
 		if [ "$PM" = apk ]; then
 			# verified against SHA256SUMS like the new ones; the dependencies
 			# are installed already
-			apk add --allow-untrusted --network=no $ipks >>"$LOG_FILE" 2>&1 || ok=0
+			if [ -n "$core" ]; then
+				apk add --network=no --repositories-file /dev/null $ipks >>"$LOG_FILE" 2>&1 || ok=0
+			else
+				apk add --allow-untrusted --network=no --repositories-file=/dev/null $ipks >>"$LOG_FILE" 2>&1 || ok=0
+			fi
 		else
 			opkg install --force-downgrade --force-reinstall $ipks >>"$LOG_FILE" 2>&1 || ok=0
 		fi
@@ -332,7 +364,7 @@ rollback() {
 	fi
 	rm -f "$R/tmp/luci-indexcache" "$R"/tmp/luci-indexcache.* 2>/dev/null
 	/etc/init.d/rpcd restart >/dev/null 2>&1
-	restart_service
+	restart_service || ok=0
 	if [ "$ok" = 1 ]; then
 		write_state rolled_back failed "$reason" "\"version\":\"$old\""
 	else
@@ -377,14 +409,6 @@ do_install() {
 	fi
 	log "release files of ${new} verified"
 
-	# 4: compatibility
-	write_state compatibility running "checking the router for Easy VLESS ${new}"
-	if ! sh "$WORK/new/install.sh" --check --local "$WORK/new" >>"$LOG_FILE" 2>&1; then
-		msg=$(grep -E 'ERROR:' "$LOG_FILE" | tail -n 1 | sed 's/^.*ERROR: //')
-		write_state compatibility failed "this router does not meet the requirements of ${new}: ${msg:-see the update log} - nothing was installed"
-		return 1
-	fi
-
 	# 5: configuration copy and the packages for a rollback
 	write_state backup running "saving the configuration"
 	mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR" && cp -f "$CONFIG_FILE" "$BACKUP_DIR/config" \
@@ -400,9 +424,23 @@ do_install() {
 	done
 	[ -d "$WORK/old" ] && log "packages of ${cur} fetched for a rollback" || log "packages of ${cur} are not available: a rollback can only restore the configuration"
 
+	# A new installer can reuse the already verified rollback bundle.
+	set --
+	if version_gt "$new" 1.2.0-r9999 && [ -d "$WORK/old" ]; then
+		set -- --rollback-dir "$WORK/old"
+	fi
+
+	# 4: compatibility
+	write_state compatibility running "checking the router for Easy VLESS ${new}"
+	if ! sh "$WORK/new/install.sh" --check --local "$WORK/new" "$@" >>"$LOG_FILE" 2>&1; then
+		msg=$(grep -E 'ERROR:' "$LOG_FILE" | tail -n 1 | sed 's/^.*ERROR: //')
+		write_state compatibility failed "this router does not meet the requirements of ${new}: ${msg:-see the update log} - nothing was installed"
+		return 1
+	fi
+
 	# 6: install the verified local files
 	write_state install running "installing Easy VLESS ${new}"
-	if ! sh "$WORK/new/install.sh" --local "$WORK/new" --no-start >>"$LOG_FILE" 2>&1; then
+	if ! sh "$WORK/new/install.sh" --local "$WORK/new" --no-start "$@" >>"$LOG_FILE" 2>&1; then
 		msg=$(grep -E 'ERROR:' "$LOG_FILE" | tail -n 1 | sed 's/^.*ERROR: //')
 		rollback "$cur" "the installation of ${new} failed: ${msg:-see the update log}"
 		return 1
@@ -428,7 +466,10 @@ do_install() {
 
 	# 8: service
 	write_state restart running "restarting Easy VLESS"
-	restart_service
+	if ! restart_service; then
+		rollback "$cur" "the service could not start after installing ${new}"
+		return 1
+	fi
 	rm -f "$CHECK_FILE"
 	log "updated to ${new}"
 	write_state done ok "Easy VLESS ${new} is installed" "\"version\":\"$new\",\"previous\":\"$cur\""

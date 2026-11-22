@@ -7,26 +7,40 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easy-vless
-PKG_VERSION:=1.2.0
+PKG_VERSION:=1.3.0
 PKG_RELEASE:=1
+SINGBOX_LX_VERSION:=1.14.4_p35-r1
 
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=quargelk <332162732+quargelk@users.noreply.github.com>
 
 include $(INCLUDE_DIR)/package.mk
 
-# This package ships only shell/Lua sources, static config templates and
-# service/hotplug scripts - there is no PKG_SOURCE and no real build step.
-# package.mk's default Build/Compile (Build/Compile/Default) unconditionally
-# runs "$(MAKE) -C $(PKG_BUILD_DIR) ..." and fails with "No targets specified
-# and no makefile found" for a source-less package like this one. Every real
-# upstream LuCI app package avoids this the same way: feeds/luci/luci.mk
-# defines an empty Build/Compile (conditionally there, unconditionally here
-# since we never have a src/ subdirectory). Verified directly against a real,
-# non-DUMP OpenWrt 24.10.3 package.mk/package-pack.mk build: without this
-# override, `make -C package/easy-vless compile` fails at our own package's
-# compile step; with it, all three .ipk are produced correctly.
+# Go already strips debug information. The SDK's default sstrip removes
+# section data required by Go build-info readers and ELF inspection.
+RSTRIP:=:
+
+# The runtime packages are source-only. Build the architecture-specific
+# engine only when its package is selected in the SDK.
 define Build/Compile
+	if [ -n "$(filter m y,$(CONFIG_PACKAGE_sing-box-lx))" ]; then \
+		bash ./scripts/build-core.sh "$(ARCH_PACKAGES)" "$(PKG_BUILD_DIR)/sing-box-lx"; \
+	fi
+endef
+
+define Package/sing-box-lx
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=sing-box-lx compact engine for Easy VLESS
+  URL:=https://github.com/Leadaxe/sing-box-lx
+  VERSION:=$(SINGBOX_LX_VERSION)
+  DEPENDS:=@(aarch64||x86_64) +ca-bundle
+  LICENSE:=GPL-3.0-or-later
+endef
+
+define Package/sing-box-lx/install
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sing-box-lx $(1)/usr/bin/sing-box-lx
 endef
 
 define Package/easy-vless
@@ -131,33 +145,14 @@ define Package/easy-vless-sing-box
   TITLE:=Easy VLESS - sing-box backend
   URL:=https://github.com/quargelk/easy-vless
   PKGARCH:=all
-  # NOTE: "sing-box" is intentionally NOT "+"-prefixed. The official
-  # net/sing-box/Makefile ships a second variant, sing-box-tiny, which
-  # declares PROVIDES:=sing-box (a "virtual package" with two providers:
-  # sing-box itself and sing-box-tiny). A "+sing-box" DEPENDS makes
-  # OpenWrt's Kconfig generator (scripts/package-metadata.pl:mconf_depends)
-  # resolve "sing-box" through that virtual-package table and emit a
-  # conditional "select PACKAGE_sing-box if PACKAGE_sing-box-tiny<...",
-  # which combined with sing-box-tiny's own CONFLICTS-derived
-  # "depends on ... (PACKAGE_sing-box != y)" forms a genuine Kconfig cycle:
-  # PACKAGE_sing-box-tiny -> PACKAGE_sing-box -> PACKAGE_sing-box-tiny.
-  # Reproduced directly against the real package-metadata.pl script.
-  # A plain (non-"+") DEPENDS instead generates a simple, non-circular
-  # "depends on PACKAGE_sing-box||PACKAGE_sing-box-tiny" - verified to
-  # eliminate the cycle. The "+" flag only affects Kconfig/image-build
-  # package *selection*; it has zero effect on the real .ipk's Depends:
-  # control-file field (include/package-pack.mk strips every "+" before
-  # writing Depends:), so `opkg install easy-vless-sing-box` on a router
-  # still pulls in "sing-box" exactly as before - no behavior change.
-  DEPENDS:=+easy-vless sing-box
+  DEPENDS:=+easy-vless +sing-box-lx
 endef
 
 define Package/easy-vless-sing-box/description
   sing-box backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS,
   gRPC, HTTPUpgrade, plus the AUTO group (sing-box urltest). Required for
   AUTO/URLTest nodes - Xray has no equivalent mechanism in this project.
-  Depends on the virtual package "sing-box" (provided by sing-box or
-  sing-box-tiny >= 1.12). Includes the Clash API client used by LuCI to
+  Requires the sing-box-lx package. Includes the Clash API client used by LuCI to
   read and trigger URL Test results of the running instance.
 endef
 
@@ -183,7 +178,7 @@ endef
 
 define Package/easy-vless-xray/description
   Optional Xray backend for Easy VLESS: VLESS over TCP/raw, TLS, Reality, WS,
-  gRPC, HTTPUpgrade, XHTTP and mKCP (XHTTP/mKCP nodes need Xray). Not part of
+  gRPC, HTTPUpgrade, XHTTP and mKCP. XHTTP extra options and mKCP need Xray. Not part of
   the standard installation: the web interface has no Xray-specific
   settings, and URL Test groups require sing-box. With xray-core installed,
   newly imported VLESS links may be created as Xray nodes.
@@ -421,3 +416,4 @@ $(eval $(call BuildPackage,easy-vless-sing-box))
 $(eval $(call BuildPackage,easy-vless-xray))
 $(eval $(call BuildPackage,easy-vless-geodata))
 $(eval $(call BuildPackage,luci-app-easy-vless))
+$(eval $(call BuildPackage,sing-box-lx))

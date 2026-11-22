@@ -5,31 +5,23 @@ STOP=15
 
 . $IPKG_INSTROOT/usr/share/easy_vless/utils.sh
 APP_FILE=${APP_PATH}/app.sh
+APPLIED_CONFIG=/var/run/${CONFIG}.applied
+CONFIG_FILE=/etc/config/${CONFIG}
+umask 077
 LOCK_FILE_DIR=/var/lock
 LOCK_FILE=${LOCK_FILE_DIR}/${CONFIG}.lock
 
 set_lock() {
-	[ ! -d "$LOCK_FILE_DIR" ] && mkdir -p $LOCK_FILE_DIR
-	exec 999>"$LOCK_FILE"
-	flock -xn 999
+	mkdir -p "$LOCK_FILE_DIR"
+	exec 9>>"${LOCK_FILE}.flock"
+	flock -xn 9 || return 1
+	touch "$LOCK_FILE"
 }
 
 unset_lock() {
-	flock -u 999
-	rm -rf "$LOCK_FILE"
-}
-
-unlock() {
-	failcount=1
-	while [ "$failcount" -le 10 ]; do
-		if [ -f "$LOCK_FILE" ]; then
-			let "failcount++"
-			sleep 1s
-			[ "$failcount" -ge 10 ] && unset_lock
-		else
-			break
-		fi
-	done
+	rm -f "$LOCK_FILE"
+	flock -u 9
+	exec 9>&-
 }
 
 boot_func() {
@@ -47,18 +39,32 @@ boot() {
 }
 
 start() {
-	set_lock
-	[ $? == 1 ] && log_i18n 0 "The script is already running, do not run it again. Exit." && exit 0
-	$APP_FILE start
+	set_lock || return 1
+	local rc=0
+	"$APP_FILE" start && save_applied_config || rc=$?
 	unset_lock
+	return "$rc"
 }
 
 stop() {
-	unlock
-	set_lock
-	[ $? == 1 ] && log_i18n 0 "Stop the script and wait for a timeout, then exit without repeating the process." && exit 0
-	$APP_FILE stop
+	mkdir -p "$LOCK_FILE_DIR"
+	exec 9>>"${LOCK_FILE}.flock"
+	local waited=0 rc=0
+	until flock -xn 9; do
+		[ "$waited" -lt "$EV_OP_LOCK_WAIT" ] || return 1
+		waited=$((waited + 1))
+		sleep 1
+	done
+	touch "$LOCK_FILE"
+	"$APP_FILE" stop || rc=$?
 	unset_lock
+	return "$rc"
+}
+
+save_applied_config() {
+	mkdir -p "$(dirname "$APPLIED_CONFIG")" &&
+		cat "$CONFIG_FILE" > "${APPLIED_CONFIG}.tmp" &&
+		mv -f "${APPLIED_CONFIG}.tmp" "$APPLIED_CONFIG"
 }
 
 config_sum() {
@@ -78,9 +84,8 @@ sub_lock_held() {
 }
 
 restart() {
-	local again=${LOCK_FILE_DIR}/${CONFIG}_restart_again mode=$1 sum
-	set_lock
-	if [ $? == 1 ]; then
+	local again=${LOCK_FILE_DIR}/${CONFIG}_restart_again mode=$1 sum node rc=0 previous_pid
+	if ! set_lock; then
 		# A restart is running already. It may have read the configuration
 		# before the change this request is about, so the request is not
 		# simply dropped (1.0): the running restart finds this note when it
@@ -102,14 +107,45 @@ restart() {
 	while :; do
 		rm -f "$again"
 		sum=$(config_sum)
-		$APP_FILE stop
-		$APP_FILE start $mode
+		node=$(config_n_get @global[0] node)
+		if [ "$(config_n_get @global[0] enabled 0)" = 1 ] &&
+			[ "$(config_n_get "$node" type)" = sing-box ] &&
+			! "$APP_FILE" check "$node" >/dev/null; then
+			log 0 "Easy VLESS: configuration check failed before restart."
+			rc=1
+			break
+		fi
+		previous_pid=$(cat "$EV_PID_FILE" 2>/dev/null)
+		core_owns_config "$previous_pid" "$(get_cache_var easy_vless_main_config)" || previous_pid=""
+		if ! "$APP_FILE" stop; then
+			rc=1
+			break
+		fi
+		if ! "$APP_FILE" start "$mode"; then
+			# Preserve the failed candidate for inspection and only roll
+			# back if no one saved another configuration in the meantime.
+			if [ -n "$previous_pid" ] && [ -s "$APPLIED_CONFIG" ] &&
+				[ "$(config_sum)" = "$sum" ] &&
+				cat "$CONFIG_FILE" > "${APPLIED_CONFIG}.rejected" &&
+				cat "$APPLIED_CONFIG" > "${CONFIG_FILE}.easy-vless-restore" &&
+				mv -f "${CONFIG_FILE}.easy-vless-restore" "$CONFIG_FILE"; then
+				if "$APP_FILE" start; then
+					printf '%s\n' apply_rolled_back > "$EV_STATE_ERROR"
+				else
+					printf '%s\n' rollback_failed > "$EV_STATE_ERROR"
+				fi
+			fi
+			rc=1
+			break
+		fi
+		[ "$(config_sum)" != "$sum" ] || save_applied_config || rc=1
 		[ -f "$again" ] && [ "$(config_sum)" != "$sum" ] || break
 		# "boot" (subscriptions updated on boot) belongs to the first run only
 		mode=""
 	done
 	rm -f "$again"
 	unset_lock
+	return "$rc"
 }
 
 reload() {

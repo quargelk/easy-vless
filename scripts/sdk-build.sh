@@ -2,7 +2,7 @@
 # Easy VLESS - build the packages with an official OpenWrt SDK (local builds
 # and CI). The SDK decides the package format: the 24.10 SDK writes .ipk
 # (opkg), the 25.12 SDK writes .apk (apk v3). The packages themselves are
-# architecture independent (PKGARCH:=all), so one SDK target is enough.
+# architecture independent except for sing-box-lx, built for the SDK ABI.
 #
 #   bash scripts/sdk-build.sh [--feeds] <sdk dir> <output dir>
 #
@@ -15,10 +15,10 @@
 # git: tracked and untracked, not ignored). Text files are copied with LF line
 # endings (a checkout on a Windows/NTFS file system may have CRLF), except the
 # files .gitattributes marks "-text" (byte-for-byte resources).
-# The five packages are built with the SDK's own package.mk / ipkg-build /
+# The packages are built with the SDK's own package.mk / ipkg-build /
 # apk mkpkg (make -C package/easy-vless ... compile: no rebuild of the
 # dependencies) and copied to <output dir>. Nothing is downloaded except the
-# feeds with --feeds.
+# feeds and the pinned Go sources/toolchain for the core.
 
 set -euo pipefail
 FEEDS=0
@@ -27,13 +27,13 @@ SDK="$(cd "${1:?usage: $0 [--feeds] <sdk dir> <output dir>}" && pwd)"
 # absolute: the build below runs in the SDK directory
 mkdir -p "${2:?usage: $0 [--feeds] <sdk dir> <output dir>}" && OUT="$(cd "$2" && pwd)"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-PKGS="easy-vless easy-vless-sing-box easy-vless-xray easy-vless-geodata luci-app-easy-vless"
+PKGS="easy-vless easy-vless-sing-box easy-vless-xray easy-vless-geodata luci-app-easy-vless sing-box-lx"
 
 [ -x "$SDK/scripts/feeds" ] && [ -f "$SDK/include/package.mk" ] || { echo "not an OpenWrt SDK: $SDK" >&2; exit 2; }
 
 if [ "$FEEDS" = 1 ]; then
 	(cd "$SDK" && ./scripts/feeds update packages luci \
-		&& ./scripts/feeds install -p packages coreutils curl v2ray-geoip v2ray-geosite lyaml sing-box xray-core \
+		&& ./scripts/feeds install -p packages coreutils curl v2ray-geoip v2ray-geosite lyaml xray-core \
 		&& ./scripts/feeds install -p luci luci-base luci-compat luci-lib-jsonc)
 fi
 
@@ -64,7 +64,7 @@ for p in $PKGS; do
 	grep -q "^CONFIG_PACKAGE_${p}=" .config 2>/dev/null || echo "CONFIG_PACKAGE_${p}=m" >> .config
 done
 make defconfig >/dev/null
-find bin -name '*easy-vless*' -type f -delete 2>/dev/null || true
+find bin -type f \( -name '*easy-vless*' -o -name 'sing-box-lx*' \) -delete 2>/dev/null || true
 make -C package/easy-vless TOPDIR="$SDK" clean compile V=s
 
 # ---- collect
@@ -72,10 +72,22 @@ mkdir -p "$OUT"
 v="$(sed -n 's/^PKG_VERSION:=//p' "$DST/Makefile")-r$(sed -n 's/^PKG_RELEASE:=//p' "$DST/Makefile")"
 n=0
 for p in $PKGS; do
-	f="$(find bin -type f \( -name "${p}_${v}_all.ipk" -o -name "${p}-${v}.apk" \) | head -n1)"
+	pv="$v"
+	if [ "$p" = sing-box-lx ]; then
+		pv="$(sed -n 's/^SINGBOX_LX_VERSION:=//p' "$DST/Makefile")"
+	fi
+	f="$(find bin -type f \( -name "${p}_${pv}_*.ipk" -o -name "${p}-${pv}.apk" \) | head -n1)"
 	[ -n "$f" ] || { echo "package $p $v was not built" >&2; exit 1; }
-	cp "$f" "$OUT/"
-	echo "built: $OUT/$(basename "$f")"
+	name="$(basename "$f")"
+	if [[ "$p" == sing-box-lx && "$name" == *.apk ]]; then
+		arch="$(basename "$(dirname "$(dirname "$f")")")"
+		name="${name%.apk}-$arch.apk"
+	fi
+	cp "$f" "$OUT/$name"
+	if [[ "$name" == *.apk && -n "${EV_APK_SIGNING_KEY:-}" ]]; then
+		"$SDK/staging_dir/host/bin/apk" adbsign --allow-untrusted --sign-key "$EV_APK_SIGNING_KEY" "$OUT/$name"
+	fi
+	echo "built: $OUT/$name"
 	n=$((n + 1))
 done
 echo "$n packages, version $v, SDK $(sed -n 's/^CONFIG_VERSION_NUMBER="\(.*\)"$/\1/p' .config 2>/dev/null || true) $(grep -o '^CONFIG_TARGET_BOARD="[^"]*"' .config | cut -d'"' -f2)"

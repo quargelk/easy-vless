@@ -18,12 +18,12 @@ end
 
 _M["sing-box"] = {
 	name = "Sing-Box",
-	repo = "SagerNet/sing-box",
+	repo = "Leadaxe/sing-box-lx",
 	get_url = gh_release_url,
 	cmd_version = "version | awk '{print $3}' | sed -n 1P",
 	zipped = true,
 	zipped_suffix = "tar.gz",
-	default_path = "/usr/bin/sing-box",
+	default_path = "/usr/bin/sing-box-lx",
 	match_fmt_str = "linux%%-%s",
 	file_tree = {
 		x86_64 = "amd64%-musl",

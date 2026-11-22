@@ -67,7 +67,7 @@ for f in manifest.json domains/proxy.txt domains/russia.txt; do
 		&& ok "easy-vless: resources/$f byte-identical to the source" || bad "easy-vless: resources/$f differs from the source"
 done
 
-check_pkg easy-vless-sing-box "easy-vless libc sing-box" "$ALL"
+check_pkg easy-vless-sing-box "easy-vless libc sing-box-lx" "$ALL"
 has easy-vless-sing-box usr/lib/lua/luci/easy_vless/util_sing-box.lua
 has easy-vless-sing-box usr/share/easy_vless/clash_api.lua
 hasnot easy-vless-sing-box usr/lib/lua/luci/easy_vless/util_xray.lua

@@ -9,14 +9,6 @@ local CACHE_PATH = api.CACHE_PATH
 local split = api.split
 local ech_domain = {}
 
--- Easy VLESS: this generator emits the sing-box 1.12 configuration format
--- (typed DNS servers, domain_resolver, rule actions), so 1.12.0 is the minimum.
--- Kept in sync with EV_SINGBOX_MIN_VERSION in /usr/share/easy_vless/utils.sh,
--- which app.sh checks before calling gen_config. Any package providing
--- "sing-box" (sing-box, sing-box-tiny) qualifies if its binary is new enough.
-local MIN_SINGBOX_VERSION = "1.12.0"
-local local_version = (api.get_app_version("sing-box") or ""):match("[^v]+")
-
 local GLOBAL = {
 	DNS_SERVER = {}
 }
@@ -258,6 +250,9 @@ function gen_outbound(flag, node, tag, proxy_table)
 
 		local tls = nil
 		if node.tls == "1" then
+			if node.tls_pinSHA256 and node.tls_pinSHA256 ~= "" then
+				error("Xray certificate fingerprint requires an Xray node or a trusted TLS certificate in sing-box-lx", 0)
+			end
 			local alpn = nil
 			if node.alpn and node.alpn ~= "default" then
 				alpn = {}
@@ -269,7 +264,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 				enabled = true,
 				disable_sni = (node.tls_disable_sni == "1") and true or false, -- Do not send the server name in ClientHello.
 				server_name = node.tls_serverName, -- Used to verify the hostname on the returned certificate, unless the settings are insecure. It is also included in ClientHello to support virtual hosts, unless it is an IP address.
-				insecure = node.tls_allowInsecure == "1" or (node.tls_pinSHA256 and node.tls_pinSHA256 ~= ""), -- Accepts any server certificate. (Also compatible with xray's pinnedPeerCertSha256)
+				insecure = node.tls_allowInsecure == "1",
 				alpn = alpn, -- A list of supported application layer protocols, arranged in order of priority. If both peers support ALPN, the protocol selected will be one of these protocols; otherwise, the connection will fail.
 				--max_version = "1.3",
 				fragment = fragment,
@@ -349,6 +344,24 @@ function gen_outbound(flag, node, tag, proxy_table)
 				} or nil,
 			}
 			-- TLS is not enforced. If TLS is not configured, plain HTTP 1.1 will be used.
+		end
+
+		if node.transport == "xhttp" then
+			local mode = node.xhttp_mode or "auto"
+			if not ({ auto=true, ["packet-up"]=true, ["stream-up"]=true, ["stream-one"]=true })[mode] then
+				error("Unsupported XHTTP mode", 0)
+			end
+			if node.use_xhttp_extra == "1" or (node.xhttp_extra and node.xhttp_extra ~= "") then
+				error("Xray XHTTP extra options require an Xray node", 0)
+			end
+			v2ray_transport = {
+				type = "xhttp",
+				host = node.xhttp_host,
+				path = node.xhttp_path or "/",
+				mode = mode
+			}
+		elseif node.transport == "mkcp" then
+			error("mKCP requires an Xray node", 0)
 		end
 
 		if node.transport == "http" then
@@ -1732,10 +1745,6 @@ _G.geo_convert_srs = geo_convert_srs
 
 if arg[1] then
 	local func =_G[arg[1]]
-	if func and not (local_version and api.compare_versions(local_version, ">=", MIN_SINGBOX_VERSION)) then
-		io.stderr:write(string.format("sing-box %s is not supported: Easy VLESS requires sing-box >= %s\n", local_version or "(not found)", MIN_SINGBOX_VERSION))
-		os.exit(1)
-	end
 	if func then
 		local var = nil
 		if arg[2] then

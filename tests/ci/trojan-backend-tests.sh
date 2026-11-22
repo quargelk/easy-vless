@@ -102,7 +102,7 @@ rm -f /tmp/ev11-pwned*
 echo "== import of trojan:// links"
 reset_config
 for l in "trojan://@192.0.2.1:443#no-password" "trojan://secret@192.0.2.1:99999#port" "trojan://secret@192.0.2.1:44x3#port" \
-	"trojan://secret@192.0.2.1:443?type=xhttp&path=%2Fx#xhttp" "trojan://secret@192.0.2.1:443?type=kcp#kcp" "trojan://192.0.2.1:443#no-userinfo" \
+	"trojan://secret@192.0.2.1:443?type=kcp#kcp" "trojan://192.0.2.1:443#no-userinfo" \
 	"trojan://secret@bad%20host%3Breboot:443#host"; do
 	r=$(call import "$(req links "$l")")
 	check "import adds no server for an invalid Trojan link ($l)" '[ "$(jget "$r" @.added)" = 0 ]'

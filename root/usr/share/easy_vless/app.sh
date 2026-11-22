@@ -12,7 +12,8 @@ UTIL_SINGBOX=$LUA_UTIL_PATH/util_sing-box.lua
 UTIL_XRAY=$LUA_UTIL_PATH/util_xray.lua
 # Decision #1/#5: no Shadowsocks/ShadowsocksR support, so util_shadowsocks.lua
 # (PassWall2's UTIL_SS) is not ported and not referenced here.
-SINGBOX_BIN=$(first_type $(config_n_get @global_app[0] sing_box_file) sing-box)
+SINGBOX_BIN=$(singbox_path)
+umask 077
 XRAY_BIN=$(first_type $(config_n_get @global_app[0] xray_file) xray)
 
 # dnsmasq_nftset_supported "<output of dnsmasq --version>": true only when the
@@ -114,77 +115,28 @@ check_fwmark_table_free() {
 	return 0
 }
 
-# Decision #10/#18: authoritative PID file for the main/default-node process,
-# written from a real, verified PID instead of relying on pgrep -f as the
-# management mechanism. run_singbox()/run_xray() record which bin+config
-# belong to the "acl_default" node via easy_vless_main_bin/_main_config cache
-# vars (see above); this resolves that to a live PID after the launcher
-# (ln_run/run_process_queue) has had a chance to actually start it.
-write_main_pid() {
-	local bin=$(get_cache_var "easy_vless_main_bin")
-	local cfg=$(get_cache_var "easy_vless_main_config")
-	[ -n "$bin" ] && [ -n "$cfg" ] || return 0
-
-	local tries=0 pid=""
-	while [ $tries -lt 6 ]; do
-		pid=$(busybox pgrep -f "$(basename "$bin").*-c ${cfg}" 2>/dev/null | head -n1)
-		[ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] && break
-		tries=$((tries + 1))
-		sleep 1
-	done
-
-	if [ -z "$pid" ]; then
-		log_i18n 1 "Warning: could not resolve the main process PID for %s, %s was not written." "${cfg}" "${EV_PID_FILE}"
-		return 1
-	fi
-
-	if ! tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "$cfg"; then
-		log_i18n 1 "Warning: process %s no longer matches config %s, %s was not written." "${pid}" "${cfg}" "${EV_PID_FILE}"
-		return 1
-	fi
-
-	echo "$pid" > "$EV_PID_FILE"
-	return 0
+# The main process is launched before enabling interception. Check ownership
+# of the configured listener before writing the runtime PID.
+record_main_listener() {
+	local pid="$1" cfg="$2" port="$3"
+	set_cache_var easy_vless_main_config "$cfg"
+	mkdir -p "$(dirname "$EV_PID_FILE")"
+	printf '%s\n' "$pid" > "$EV_PID_FILE" || return 1
+	core_wait_tcp "$pid" "$cfg" "$port"
 }
 
-# Called right after write_main_pid(): give the freshly started process a
-# moment to parse its config and bind its ports, then make sure it is alive.
-check_main_alive() {
-	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
-	[ -n "$pid" ] || return 1
-	sleep 2
-	kill -0 "$pid" 2>/dev/null
-}
-
-# Undo a partially completed start(): keep the tail of the main process log
-# (if node logging is enabled) for the user, then run the regular, idempotent
-# stop in a NEW process and fail. Not "( stop )": start() has sourced
-# nftables.sh, whose own start()/stop() functions replace app.sh's in this
-# shell, so a subshell would only remove the firewall rules and leave the
-# processes, dnsmasq changes and $TMP_PATH behind.
+# Roll back through the normal stop entry point while retaining the lock.
 start_rollback() {
-	local main_log="${TMP_ACL_PATH}/acl_default.log"
-	[ -s "$main_log" ] && tail -n 20 "$main_log" >> "$LOG_FILE"
-	# part of this start: runs under its operation lock (op_lock)
-	EV_OP_LOCK_INHERITED=1 ${APP_PATH}/app.sh stop >/dev/null 2>&1
+	EV_OP_LOCK_INHERITED=1 "${APP_PATH}/app.sh" stop >/dev/null 2>&1
 	exit 1
 }
 
-# Decision #10: never kill by pattern alone. Read the PID file, confirm via
-# /proc/<pid>/cmdline that it is still our own sing-box/xray process with our
-# own config before sending a signal, then always remove the stale PID file.
 kill_main_pid() {
 	[ -s "$EV_PID_FILE" ] || return 0
 	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
 	local cfg=$(get_cache_var "easy_vless_main_config")
-	if [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ]; then
-		local cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
-		# Without the cached config path (cache already gone) only accept a
-		# process that still runs one of our own configs under $TMP_PATH.
-		local match="${cfg:-${TMP_PATH}/}"
-		case "$cmdline" in
-			*"$match"*) kill -9 "$pid" >/dev/null 2>&1 ;;
-		esac
+	if core_owns_config "$pid" "$cfg"; then
+		kill "$pid" 2>/dev/null
 	fi
 	rm -f "$EV_PID_FILE"
 }
@@ -202,7 +154,6 @@ run_xray() {
 	json_add_string "loglevel" "${loglevel}"
 
 	[ -n "$flag" ] && {
-		busybox pgrep -af "$TMP_BIN_PATH" | awk -v P1="${flag}" 'BEGIN{IGNORECASE=1}$0~P1{print $1}' | xargs kill -9 >/dev/null 2>&1
 		json_add_string "flag" "${flag}"
 	}
 	[ -n "$socks_address" ] && [ -n "$socks_port" ] && {
@@ -290,7 +241,7 @@ run_xray() {
 
 	[ -n "${redir_port}" ] && {
 		json_add_string "redir_port" "${redir_port}"
-		set_cache_var "node_${node}_redir_port" "${redir_port}"
+		[ -n "$no_run" ] || set_cache_var "node_${node}_redir_port" "${redir_port}"
 		json_add_string "tcp_proxy_way" "${TCP_PROXY_WAY}"
 		[ -n "${log_out}" ] && log_out="Xray[${redir_port}] ${log_out}"
 	}
@@ -305,13 +256,12 @@ run_xray() {
 
 	$XRAY_BIN run -test -c "$config_file" > $test_log_file; local status=$?
 	if [ "${status}" == 0 ]; then
-		ln_run ${QUEUE_RUN} "$XRAY_BIN" xray $log_file run -c "$config_file"
-		# Decision #10/#18: remember the bin+config of the main/default node
-		# so start() can later resolve and record its real PID.
-		[ "$flag" = "acl_default" ] && {
-			set_cache_var "easy_vless_main_bin" "$XRAY_BIN"
-			set_cache_var "easy_vless_main_config" "$config_file"
-		}
+		if [ "$flag" = acl_default ]; then
+			ln_run 0 "$XRAY_BIN" xray "$log_file" run -c "$config_file" || return 1
+			record_main_listener "$EV_LAUNCHED_PID" "$config_file" "$redir_port" || return 1
+		else
+			ln_run "${QUEUE_RUN}" "$XRAY_BIN" xray "$log_file" run -c "$config_file" || return 1
+		fi
 		[ -n "${log_out}" ] && log 2 ${log_out}
 		unset log_out
 	else
@@ -331,18 +281,16 @@ run_singbox() {
 	[ -n "$log_file" ] || local log_file="/dev/null"
 	[ -z "$loglevel" ] && local loglevel=$(config_n_get @global[0] loglevel "warn")
 
-	# Minimum version gate (see EV_SINGBOX_MIN_VERSION in utils.sh). Any
-	# package providing "sing-box" (sing-box, sing-box-tiny, ...) is fine as
-	# long as the binary itself is new enough for the generated config format.
-	local singbox_version=$($SINGBOX_BIN version 2>/dev/null | awk 'NR==1{print $3}')
-	if [ -z "$singbox_version" ] || [ "$(lua_api "compare_versions(\"${singbox_version}\", \">=\", \"${EV_SINGBOX_MIN_VERSION}\")")" != "true" ]; then
-		mkdir -p ${TMP_PATH}
+	local info singbox_version singbox_tag
+	info="$(singbox_info "$SINGBOX_BIN")"
+	singbox_version="$(printf '%s\n' "$info" | singbox_version_from_info)"
+	singbox_tag="$(printf '%s\n' "$info" | singbox_tags_from_info)"
+	if ! singbox_compatible "$singbox_version" "$singbox_tag"; then
+		mkdir -p "${TMP_PATH}"
 		_error_log_file=${TMP_PATH}/singbox_version.log
-		echo "sing-box ${singbox_version:-(not found)} is not supported: Easy VLESS requires sing-box >= ${EV_SINGBOX_MIN_VERSION} ($SINGBOX_BIN)." > ${_error_log_file}
-		log 1 "$(cat ${_error_log_file})"
+		printf '%s\n' "Easy VLESS requires sing-box-lx >= ${EV_SINGBOX_MIN_VERSION} with uTLS and Clash API." > "$_error_log_file"
 		return 1
 	fi
-	local singbox_tag=$($SINGBOX_BIN version | grep 'Tags:' | awk '{print $2}')
 
 	json_init
 	json_add_string "tags" "${singbox_tag}"
@@ -453,7 +401,7 @@ run_singbox() {
 
 	[ -n "${redir_port}" ] && {
 		json_add_string "redir_port" "${redir_port}"
-		set_cache_var "node_${node}_redir_port" "${redir_port}"
+		[ -n "$no_run" ] || set_cache_var "node_${node}_redir_port" "${redir_port}"
 		json_add_string "tcp_proxy_way" "${TCP_PROXY_WAY}"
 		[ -n "${log_out}" ] && log_out="Sing-Box[${redir_port}] ${log_out}"
 	}
@@ -478,28 +426,26 @@ run_singbox() {
 	json_add_string "meta_file" "${config_file}.meta"
 
 	local _json_arg="$(json_dump)"
-	lua $UTIL_SINGBOX gen_config "${_json_arg}" > $config_file
+	test_log_file="${config_file}.check.log"
+	_error_log_file="$test_log_file"
+	{
+		lua "$UTIL_SINGBOX" gen_config "${_json_arg}" > "$config_file" &&
+		"$SINGBOX_BIN" check --disable-color -c "$config_file"
+	} > "$test_log_file" 2>&1 || return 1
+	[ -n "$no_run" ] && return 0
 
-	test_log_file=$log_file
-	[ "$test_log_file" = "/dev/null" ] && test_log_file="${TMP_PATH}/test.log"
-
-	$SINGBOX_BIN check --disable-color -c "$config_file" > $test_log_file 2>&1; local status=$?
-	if [ "${status}" == 0 ] && [ -n "${no_run}" ]; then
-		return 0
-	elif [ "${status}" == 0 ]; then
-		ln_run ${QUEUE_RUN} "$SINGBOX_BIN" "sing-box" "${log_file}" run -c "$config_file"
-		# Decision #10/#18: remember the bin+config of the main/default node
-		# so start() can later resolve and record its real PID.
-		[ "$flag" = "acl_default" ] && {
-			set_cache_var "easy_vless_main_bin" "$SINGBOX_BIN"
-			set_cache_var "easy_vless_main_config" "$config_file"
+	if [ "$flag" = acl_default ]; then
+		ln_run 0 "$SINGBOX_BIN" sing-box-lx "$log_file" run -c "$config_file" || return 1
+		record_main_listener "$EV_LAUNCHED_PID" "$config_file" "$redir_port" || {
+			printf '%s\n' "The main sing-box-lx process did not open its TCP listener." > "$test_log_file"
+			return 1
 		}
-		[ -n "${log_out}" ] && log 2 ${log_out}
-		unset log_out
 	else
-		_error_log_file=$test_log_file
-		return ${status}
+		ln_run "${QUEUE_RUN}" "$SINGBOX_BIN" sing-box-lx "$log_file" run -c "$config_file" || return 1
 	fi
+	[ -n "${log_out}" ] && log 2 "${log_out}"
+	unset log_out
+	return 0
 }
 
 run_socks() {
@@ -557,6 +503,12 @@ run_socks() {
 	json_add_string "server_port" "${server_port}"
 	case "$type" in
 	sing-box)
+		local info tags version
+		info="$(singbox_info "$SINGBOX_BIN")"
+		tags="$(printf '%s\n' "$info" | singbox_tags_from_info)"
+		version="$(printf '%s\n' "$info" | singbox_version_from_info)"
+		singbox_compatible "$version" "$tags" || return 1
+		json_add_string tags "$tags"
 		[ "$http_port" != "0" ] && {
 			http_flag=1
 			config_file="${config_file%%.*}+http${config_file#${config_file%%.*}}"
@@ -581,8 +533,18 @@ run_socks() {
 		json_add_string "direct_dns_${DIRECT_DNS_PROTO}_port" "${DIRECT_DNS_PORT}"
 		json_add_string "direct_dns_query_strategy" "${DIRECT_DNS_QUERY_STRATEGY}"
 		local _json_arg="$(json_dump)"
-		lua $UTIL_SINGBOX gen_config "${_json_arg}" > $config_file
-		[ -z "$no_run" ] && ln_run ${QUEUE_RUN} "$SINGBOX_BIN" "sing-box" /dev/null run -c "$config_file"
+		mkdir -p "$(dirname "$config_file")" || return 1
+		{
+			lua "$UTIL_SINGBOX" gen_config "$_json_arg" > "$config_file" &&
+			"$SINGBOX_BIN" check --disable-color -c "$config_file"
+		} > "${config_file}.check.log" 2>&1 || return 1
+		if [ -z "$no_run" ]; then
+			ln_run "${QUEUE_RUN}" "$SINGBOX_BIN" sing-box-lx "$log_file" run -c "$config_file" || return 1
+			if [ "$NO_REC_PROCESS" = 1 ]; then
+				printf '%s\n' "$EV_LAUNCHED_PID" > "${config_file}.pid"
+				core_wait_tcp "$EV_LAUNCHED_PID" "$config_file" "$socks_port" || return 1
+			fi
+		fi
 	;;
 	xray)
 		[ "$http_port" != "0" ] && {
@@ -609,7 +571,13 @@ run_socks() {
 		json_add_string "direct_dns_query_strategy" "${DIRECT_DNS_QUERY_STRATEGY}"
 		local _json_arg="$(json_dump)"
 		lua $UTIL_XRAY gen_config "${_json_arg}" > $config_file
-		[ -z "$no_run" ] && ln_run ${QUEUE_RUN} "$XRAY_BIN" "xray" $log_file run -c "$config_file"
+		if [ -z "$no_run" ]; then
+			ln_run "${QUEUE_RUN}" "$XRAY_BIN" xray "$log_file" run -c "$config_file" || return 1
+			if [ "$NO_REC_PROCESS" = 1 ]; then
+				printf '%s\n' "$EV_LAUNCHED_PID" > "${config_file}.pid"
+				core_wait_tcp "$EV_LAUNCHED_PID" "$config_file" "$socks_port" || return 1
+			fi
+		fi
 	;;
 	# Decision #1/#5: Shadowsocks/ShadowsocksR are not part of Easy VLESS.
 	# The "ssr"/"ss-rust" internal-relay cases from PassWall2's run_socks()
@@ -645,6 +613,7 @@ run_socks() {
 	unset http_flag
 
 	[ -z "$no_run" ] && [ "${server_host}" != "127.0.0.1" ] && [ "$type" != "sing-box" ] && [ "$type" != "xray" ] && echo "${node}" >> $TMP_PATH/direct_node_list
+	return 0
 }
 
 socks_node_switch() {
@@ -958,25 +927,23 @@ acl_node() {
 		lua $APP_PATH/helper_dnsmasq.lua restart "$(json_dump)"
 	}
 	local run_func
-	[ -n "${XRAY_BIN}" ] && run_func="run_xray"
-	[ -n "${SINGBOX_BIN}" ] && run_func="run_singbox"
 	for nid in $(jsonfilter -s "${ACL_JSON}" -e '$.node_order[*]'); do
 		[ ! -f ${TMP_ACL_PATH}/acl_node_${nid} ] && continue
 		local _var=$(cat ${TMP_ACL_PATH}/acl_node_${nid} 2>/dev/null)
 		eval local ${_var}
 		local type=$(echo $(config_n_get $node type) | tr 'A-Z' 'a-z')
 		[ -n "${type}" ] || continue
-		if [ "${type}" = "xray" ] && [ -n "${XRAY_BIN}" ]; then
-			run_func="run_xray"
-		elif [ "${type}" = "sing-box" ] && [ -n "${SINGBOX_BIN}" ]; then
-			run_func="run_singbox"
-		fi
-		${run_func} ${_var}
+		case "$type" in
+			xray) run_func=run_xray ;;
+			sing-box) run_func=run_singbox ;;
+			*) [ "$flag" = acl_default ] && return 1; continue ;;
+		esac
+		"${run_func}" ${_var}
 		local status=$?
 		if [ "$status" != 0 ]; then
 			log_i18n 2 "[%s] process %s error, skip this transparent proxy!" "${node}" "${config_file}"
-			cat ${_error_log_file} >> ${LOG_FILE}
 			unset _error_log_file
+			[ "$flag" = acl_default ] && return 1
 			continue
 		fi
 		local run_new_dnsmasq=1
@@ -1018,10 +985,11 @@ acl_node() {
 		}
 		rm -f ${TMP_ACL_PATH}/acl_node_${nid}
 	done
+	return 0
 }
 
 start() {
-	busybox pgrep -f ${TMP_PATH}/bin > /dev/null 2>&1 && {
+	busybox pgrep -f "^$TMP_BIN_PATH/" > /dev/null 2>&1 && {
 		logger -t EV-RESTART "Upgrade or overload residue is detected, and the subprocess is being called to perform complete cleaning..."
 		(stop)
 		sleep 2
@@ -1069,8 +1037,8 @@ start() {
 			ENABLED_DEFAULT_ACL=0
 			ENABLED_ACLS=0
 		else
-			source $APP_PATH/${USE_TABLES}.sh start
 			set_cache_var "USE_TABLES" "$USE_TABLES"
+			source "$APP_PATH/${USE_TABLES}.sh" start || start_rollback
 		fi
 	}
 	if [ "$ENABLED_DEFAULT_ACL" == 1 ] || [ "$ENABLED_ACLS" == 1 ]; then
@@ -1084,21 +1052,7 @@ start() {
 		}
 	fi
 	run_process_queue
-	# The main sing-box/xray process is only queued by acl_node() (QUEUE_RUN=1)
-	# and really launched by run_process_queue() above, so its PID can only be
-	# resolved and verified here. If the default node was rejected or its
-	# process died right away, roll back every network change instead of
-	# leaving TPROXY rules that point at nothing.
-	if [ "$ENABLED_DEFAULT_ACL" == 1 ]; then
-		if [ -z "$(get_cache_var "easy_vless_main_config")" ]; then
-			log_i18n 0 "Easy VLESS did not start: node [%s] could not be started (see the messages above). Rolling back all network changes." "${NODE}"
-			start_rollback
-		fi
-		if ! write_main_pid || ! check_main_alive; then
-			log_i18n 0 "Easy VLESS did not start: the main process of node [%s] exited right after launch. Rolling back all network changes." "${NODE}"
-			start_rollback
-		fi
-	fi
+
 	start_crontab
 	log_i18n 0 "Running complete!"
 	echolog "\n"
@@ -1115,6 +1069,7 @@ start() {
 			lua $APP_PATH/subscribe.lua start $cfgids cron > /dev/null 2>&1 &
 		}
 	}
+	return 0
 }
 
 stop() {
@@ -1137,20 +1092,22 @@ stop() {
 		fi
 	done
 	busybox pgrep -af "${CONFIG}/monitor\.sh" | xargs -r kill -9 >/dev/null 2>&1
-	busybox pgrep -f "sleep.*(6s|9s|58s)" | xargs -r kill -9 >/dev/null 2>&1
-	# test.sh (0.8.0): the Server Test queue runner and tests waiting for the
+		# test.sh (0.8.0): the Server Test queue runner and tests waiting for the
 	# operation lock; their sing-box instances never run during a stop (op_lock)
 	# diag.lua (0.9.0): read-only diagnostics; killing it would only turn its
 	# answer into an empty one. backup.lua, update.sh: a restore, an import
 	# or an update (whose package upgrade stops the service) must never be
 	# cut off half-way.
-	busybox pgrep -af "${CONFIG}/" | awk '! /app\.sh|test\.sh|subscribe\.lua|diag\.lua|backup\.lua|update\.sh|tasks\.sh|server_app\.lua|ujail/{print $1}' | xargs -r kill -9 >/dev/null 2>&1
+	busybox pgrep -f "^$TMP_BIN_PATH/" | xargs -r kill -TERM >/dev/null 2>&1
+	busybox pgrep -f "^(/bin/(a)?sh )?$APP_PATH/lease2hosts\.sh([[:space:]]|$)" | xargs -r kill -TERM >/dev/null 2>&1
 	unset V2RAY_LOCATION_ASSET
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
 	stop_crontab
-	rm -rf $DEFAULT_DNSMASQ_CONF
-	rm -rf $DEFAULT_DNSMASQ_CONF_PATH
+	local dns_include=0
+	[ -n "$DEFAULT_DNSMASQ_CONF" ] && [ -e "$DEFAULT_DNSMASQ_CONF" ] && dns_include=1
+	[ -z "$DEFAULT_DNSMASQ_CONF" ] || rm -f -- "$DEFAULT_DNSMASQ_CONF"
+	[ -z "$DEFAULT_DNSMASQ_CONF_PATH" ] || rm -rf -- "$DEFAULT_DNSMASQ_CONF_PATH"
 	[ "1" = "1" ] && {
 		#restore logic
 		bak_dnsmasq_dns_redirect=$(config_n_get @global[0] dnsmasq_dns_redirect)
@@ -1160,9 +1117,11 @@ stop() {
 			uci -q delete ${CONFIG}.@global[0].dnsmasq_dns_redirect
 			uci -q commit ${CONFIG}
 		}
-		if [ -z "${ACL_default_dns_port}" ] || [ -n "${bak_dnsmasq_dns_redirect}" ]; then
-			uci -q del_list dhcp.@dnsmasq[0].addnmount="${DEFAULT_DNSMASQ_CONF_PATH}"
-			uci -q commit dhcp
+		if [ "$dns_include" = 1 ] || [ -n "${bak_dnsmasq_dns_redirect}" ]; then
+			if [ -n "$DEFAULT_DNSMASQ_CONF_PATH" ]; then
+				uci -q del_list dhcp.@dnsmasq[0].addnmount="${DEFAULT_DNSMASQ_CONF_PATH}"
+				uci -q commit dhcp
+			fi
 
 			json_init
 			json_add_string "LOG" "0"
@@ -1260,7 +1219,7 @@ check_config() {
 		return 1
 	fi
 	if [ -z "$SINGBOX_BIN" ] || [ ! -f "$UTIL_SINGBOX" ]; then
-		echo "The sing-box backend is not installed (sing-box binary or easy-vless-sing-box missing)."
+		echo "The sing-box-lx backend is not installed (sing-box-lx or easy-vless-sing-box missing)."
 		return 1
 	fi
 	rm -rf "$check_dir"
@@ -1273,7 +1232,7 @@ check_config() {
 	dns_port=${dns_server##* }
 	dns_server=${dns_server%% *}
 	[ "$dns_port" = "$dns_server" ] && dns_port=53
-	TCP_PROXY_WAY=$(config_n_get @global_forwarding[0] tcp_proxy_way tproxy)
+	TCP_PROXY_WAY=$(config_n_get @global_forwarding[0] tcp_proxy_way redirect)
 	_error_log_file=""
 	# every argument is one name=value word (as app_acl.lua writes them for a
 	# start): a setting with white space in it must not become a second argument
@@ -1291,11 +1250,18 @@ check_config() {
 		config_file=${check_dir}/config.json log_file=${check_dir}/check.log loglevel=warn
 	local status=$?
 	if [ "$status" = 0 ]; then
-		echo "OK: sing-box $($SINGBOX_BIN version 2>/dev/null | awk 'NR==1{print $3}') accepted the configuration of node [${node}] (${check_dir}/config.json)."
+		echo "OK: sing-box-lx $(singbox_info "$SINGBOX_BIN" | singbox_version_from_info) accepted the configuration of node [${node}] (${check_dir}/config.json)."
 	else
-		cat "${_error_log_file:-${check_dir}/check.log}" 2>/dev/null
+		local reason log_path="${_error_log_file:-${check_dir}/config.json.check.log}"
+		for reason in "Unsupported XHTTP mode" "Xray XHTTP extra options require an Xray node" \
+			"mKCP requires an Xray node" "Xray certificate fingerprint requires an Xray node"; do
+			grep -Fq -- "$reason" "$log_path" 2>/dev/null || continue
+			printf '%s\n' "$reason"
+			break
+		done
+		echo "Configuration rejected. Details for the administrator: $log_path"
 	fi
-	return $status
+	return "$status"
 }
 
 # "app.sh diag_config <dir>" (0.9.0, Route Explain and diagnostics): put a
@@ -1314,7 +1280,7 @@ diag_config() {
 	fi
 	src=$(get_cache_var "easy_vless_main_config")
 	pid=$(cat "$EV_PID_FILE" 2>/dev/null)
-	if [ -n "$src" ] && [ -s "$src" ] && [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+	if [ -s "$src" ] && core_owns_config "$pid" "$src"; then
 		kind=running
 	else
 		if ! msg=$(check_config 2>&1); then
@@ -1352,13 +1318,49 @@ env_check() {
 status_json() {
 	local pid=$(cat "$EV_PID_FILE" 2>/dev/null)
 	local running=0
-	[ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "${TMP_PATH}/" && running=1
+	core_owns_config "$pid" "$(get_cache_var easy_vless_main_config)" && running=1
 	[ "$running" = 1 ] || pid=""
 	local nft_table=0
 	nft list table inet ${CONFIG} >/dev/null 2>&1 && nft_table=1
-	local version=""
-	[ -n "$SINGBOX_BIN" ] && version=$($SINGBOX_BIN version 2>/dev/null | awk 'NR==1{print $3}')
+	local info version tags compatible=0 busy=0 state
+	info="$(singbox_info "$SINGBOX_BIN")"
+	version="$(printf '%s\n' "$info" | singbox_version_from_info)"
+	tags="$(printf '%s\n' "$info" | singbox_tags_from_info)"
+	singbox_compatible "$version" "$tags" && compatible=1
+	if [ -e "/var/lock/${CONFIG}.lock.flock" ]; then
+		( exec 9<"/var/lock/${CONFIG}.lock.flock"; ! flock -xn 9 ) && busy=1
+	fi
+	state=stopped
+	[ "$running" = 1 ] && state=running
+	[ "$busy" = 1 ] && state=applying
+	[ -f "$EV_STATE_ERROR" ] && [ "$busy" = 0 ] && [ "$running" = 0 ] && state=error
 	json_init
+	json_add_int api_version 1
+	json_add_string state "$state"
+	json_add_string last_error "$(cat "$EV_STATE_ERROR" 2>/dev/null)"
+	json_add_object core
+	json_add_string name sing-box-lx
+	json_add_string version "$version"
+	json_add_boolean installed "$([ -n "$SINGBOX_BIN" ] && echo 1 || echo 0)"
+	json_add_boolean compatible "$compatible"
+	json_add_array tags
+	local tag
+	for tag in $(printf '%s' "$tags" | tr ',' ' '); do json_add_string "" "$tag"; done
+	json_close_array
+	json_close_object
+	json_add_object system
+	json_add_string openwrt_version "$(sed -n "s/^DISTRIB_RELEASE='\(.*\)'$/\1/p" /etc/openwrt_release 2>/dev/null)"
+	json_add_string architecture "$(sed -n "s/^DISTRIB_ARCH='\(.*\)'$/\1/p" /etc/openwrt_release 2>/dev/null)"
+	local mem_available overlay_available dns_nftset=0 fw4_installed=0
+	mem_available="$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)"
+	overlay_available="$(df -Pk /overlay 2>/dev/null | awk 'NR == 2 {print $4}')"
+	[ -n "$mem_available" ] && json_add_int available_ram_kb "$mem_available"
+	[ -n "$overlay_available" ] && json_add_int free_overlay_kb "$overlay_available"
+	dnsmasq_nftset_supported "$(dnsmasq --version 2>/dev/null)" && dns_nftset=1
+	command -v fw4 >/dev/null 2>&1 && fw4_installed=1
+	json_add_boolean dnsmasq_nftset "$dns_nftset"
+	json_add_boolean fw4_installed "$fw4_installed"
+	json_close_object
 	json_add_boolean "enabled" "$(config_n_get @global[0] enabled 0)"
 	json_add_string "node" "$(config_n_get @global[0] node)"
 	json_add_boolean "running" "$running"
@@ -1370,7 +1372,7 @@ status_json() {
 	json_add_string "singbox_min_version" "$EV_SINGBOX_MIN_VERSION"
 	json_add_string "routing_mode" "$(config_n_get @global[0] routing_mode singbox)"
 	# busy: /etc/init.d/easy_vless holds its lock while starting/stopping.
-	json_add_boolean "busy" "$([ -f /var/lock/${CONFIG}.lock ] && echo 1 || echo 0)"
+	json_add_boolean "busy" "$busy"
 	if [ "$running" = 1 ]; then
 		json_add_int "rss_kb" "$(awk '/^VmRSS:/{print $2}' /proc/$pid/status 2>/dev/null)"
 		json_add_int "rss_peak_kb" "$(awk '/^VmHWM:/{print $2}' /proc/$pid/status 2>/dev/null)"
@@ -1458,9 +1460,11 @@ socks_node_switch)
 	;;
 start)
 	op_lock start || exit 1
-	trap op_unlock EXIT
-	start $@
+	rm -f "$EV_STATE_ERROR"
+	trap 'rc=$?; [ "$rc" -eq 0 ] || printf "%s\n" start_failed > "$EV_STATE_ERROR"; op_unlock' EXIT
+	start "$@"
 	;;
+
 check)
 	op_lock "the configuration check" || exit 1
 	trap op_unlock EXIT
@@ -1486,6 +1490,7 @@ env_check)
 stop)
 	op_lock stop || exit 1
 	trap op_unlock EXIT
+	rm -f "$EV_STATE_ERROR"
 	stop
 	;;
 esac

@@ -300,7 +300,6 @@ add_shunt_t_rule() {
 
 load_acl() {
 	log_i18n 1 "Access Control:"
-	acl_node
 	for sid in $(jsonfilter -s "${ACL_JSON}" -e '$.acl[*].flag'); do
 		# name="value" lines written by app_acl.lua (values made shell-safe
 		# there); sourced, not "eval $(cat ...)": no word splitting, no globbing
@@ -708,7 +707,7 @@ update_wan_sets() {
 
 add_firewall_rule() {
 	log_i18n 0 "Starting to load %s firewall rules..." "nftables"
-	gen_nft_tables
+	gen_nft_tables || return 1
 	add_script_mwan3
 	mwan3_start
 
@@ -721,6 +720,8 @@ add_firewall_rule() {
 	gen_nftset $NFTSET_DIRECT6 ipv6_addr 0 "-1"
 	gen_nftset $NFTSET_VPS6 ipv6_addr 0 "-1"
 	gen_nftset $NFTSET_WAN6 ipv6_addr 0 "-1"
+
+	acl_node || return 1
 
 	get_local_ips ip4 | insert_nftset $NFTSET_LOCAL "-1"
 	get_local_ips ip6 | insert_nftset $NFTSET_LOCAL6 "-1"
@@ -857,8 +858,8 @@ add_firewall_rule() {
 	[ -z "${is_tproxy}" ] && nft "add rule $NFTABLE_NAME EV_NAT ip daddr @$NFTSET_WAN counter return comment \"WAN_IP_RETURN\""
 	nft "add rule $NFTABLE_NAME EV_MANGLE ip daddr @$NFTSET_WAN counter return comment \"WAN_IP_RETURN\""
 
-	ip rule add fwmark ${FWMARK} table ${EV_ROUTE_TABLE} priority ${EV_ROUTE_TABLE}
-	ip route add local 0.0.0.0/0 dev lo table ${EV_ROUTE_TABLE}
+	ip rule add fwmark ${FWMARK} table ${EV_ROUTE_TABLE} priority ${EV_ROUTE_TABLE} || return 1
+	ip route add local 0.0.0.0/0 dev lo table ${EV_ROUTE_TABLE} || return 1
 
 	#ipv6 tproxy mode and udp
 	nft "add chain $NFTABLE_NAME EV_MANGLE_V6"
@@ -897,11 +898,11 @@ add_firewall_rule() {
 		nft "add rule $NFTABLE_NAME mangle_output ip6 daddr != @$NFTSET_DIRECT6 meta nfproto {ipv6} counter jump EV_OUTPUT_MANGLE_V6 comment \"EV_OUTPUT_MANGLE\""
 		nft "add rule $NFTABLE_NAME EV_MANGLE_V6 ip6 daddr @$NFTSET_WAN6 counter return comment \"WAN6_IP_RETURN\""
 
-		ip -6 rule add fwmark ${FWMARK} table ${EV_ROUTE_TABLE} priority ${EV_ROUTE_TABLE}
-		ip -6 route add local ::/0 dev lo table ${EV_ROUTE_TABLE}
+		ip -6 rule add fwmark ${FWMARK} table ${EV_ROUTE_TABLE} priority ${EV_ROUTE_TABLE} || return 1
+		ip -6 route add local ::/0 dev lo table ${EV_ROUTE_TABLE} || return 1
 	}
 
-	load_acl
+	load_acl || return 1
 
 	filter_direct_node_list > /dev/null 2>&1 &
 
@@ -909,35 +910,13 @@ add_firewall_rule() {
 }
 
 del_firewall_rule() {
-	for nft in "dstnat" "srcnat" "nat_output" "mangle_prerouting" "mangle_output"; do
-		local handles=$(nft -a list chain $NFTABLE_NAME ${nft} 2>/dev/null | grep -E "EV_" | awk -F '# handle ' '{print$2}')
-		for handle in $handles; do
-			nft delete rule $NFTABLE_NAME ${nft} handle ${handle} 2>/dev/null
-		done
-	done
-
-	for handle in $(nft -a list chains | grep -E "chain EV_" | grep -v "EV_RULE" | awk -F '# handle ' '{print$2}'); do
-		nft delete chain $NFTABLE_NAME handle ${handle} 2>/dev/null
-	done
-
-	# Need to be removed at the end, otherwise it will show "Resource busy"
-	nft delete chain $NFTABLE_NAME handle $(nft -a list chains | grep -E "EV_RULE" | awk -F '# handle ' '{print$2}') 2>/dev/null
+	nft delete table $NFTABLE_NAME 2>/dev/null
 
 	ip rule del fwmark ${FWMARK} 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table ${EV_ROUTE_TABLE} 2>/dev/null
 
 	ip -6 rule del fwmark ${FWMARK} 2>/dev/null
 	ip -6 route del local ::/0 dev lo table ${EV_ROUTE_TABLE} 2>/dev/null
-
-	destroy_nftset $NFTSET_LOCAL
-	destroy_nftset $NFTSET_WAN
-	destroy_nftset $NFTSET_DIRECT
-	destroy_nftset $NFTSET_VPS
-
-	destroy_nftset $NFTSET_LOCAL6
-	destroy_nftset $NFTSET_WAN6
-	destroy_nftset $NFTSET_DIRECT6
-	destroy_nftset $NFTSET_VPS6
 
 	del_script_mwan3
 
@@ -984,7 +963,7 @@ gen_include() {
 
 start() {
 	[ "$ENABLED_DEFAULT_ACL" == 0 -a "$ENABLED_ACLS" == 0 ] && return
-	add_firewall_rule
+	add_firewall_rule || return 1
 	gen_include
 }
 
@@ -999,12 +978,7 @@ stop() {
 		rm -rf $TMP_PATH2/singbox*
 		rm -rf $TMP_PATH2/geo_output
 	}
-	# Easy VLESS (decisions.md #24): stop removes our own table completely.
-	# PassWall2 keeps the emptied base chains and sets for a faster restart,
-	# but app.sh check_fwmark_table_free() refuses to start while
-	# "inet easy_vless" exists, so a leftover table would block every
-	# restart. Nothing else uses this table.
-	nft delete table $NFTABLE_NAME 2>/dev/null
+
 	flush_include
 }
 

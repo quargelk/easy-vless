@@ -26,7 +26,7 @@ test_url() {
 	local extra_params=$4
 	curl --help all | grep "\-\-retry-all-errors" > /dev/null
 	[ $? == 0 ] && extra_params="--retry-all-errors ${extra_params}"
-	status=$(/usr/bin/curl -I -o /dev/null -skL $extra_params --connect-timeout ${timeout} --retry ${try} -w %{http_code} "$url")
+	status=$(/usr/bin/curl -I -o /dev/null -sSL $extra_params --connect-timeout ${timeout} --retry ${try} -w %{http_code} "$url")
 	case "$status" in
 		204|\
 		200)
@@ -62,9 +62,16 @@ url_test_node() {
 	fi
 	[ -n "${_type}" ] && {
 		local _tmp_port=$(get_new_port 48900 tcp,udp)
-		NO_REC_PROCESS=1 /usr/share/${CONFIG}/app.sh run_socks flag="url_test_${node_id}" node=${node_id} bind=127.0.0.1 socks_port=${_tmp_port} config_file=url_test_${node_id}.json
+		local cfg="${TMP_PATH}/url_test_${node_id}.json" pid
+		if ! NO_REC_PROCESS=1 /usr/share/"${CONFIG}"/app.sh run_socks flag="url_test_${node_id}" node="${node_id}" bind=127.0.0.1 socks_port="${_tmp_port}" config_file="$cfg"; then
+			pid=$(cat "$cfg.pid" 2>/dev/null)
+			core_owns_config "$pid" "$cfg" && kill "$pid" 2>/dev/null
+			rm -f "$cfg" "$cfg.pid" "$cfg.check.log"
+			op_unlock
+			echo "000:0:97:the temporary core did not open its SOCKS5 listener"
+			return
+		fi
 		local curlx="socks5h://127.0.0.1:${_tmp_port}"
-		sleep 2s
 		# Connectivity / HTTP test of one server: a real HTTPS request through
 		# the node's VLESS outbound (temporary sing-box SOCKS instance + curl).
 		local probeUrl=$(config_n_get @global_other[0] url_test_url https://www.gstatic.com/generate_204)
@@ -78,12 +85,10 @@ url_test_node() {
 		# Output: <http code>:<seconds>:<curl exit code>:<curl error message>
 		# (url_test_json turns this into PASS/FAIL, latency, HTTP status and
 		# the real error reason).
-		result=$(curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_starttransfer}:%{exitcode}:%{errormsg}" -x ${curlx} "${probeUrl}")
-		# End the SS plugin process
-		local pid_file="${TMP_PATH}/url_test_${node_id}_plugin.pid"
-		[ -s "$pid_file" ] && kill -9 "$(head -n 1 "$pid_file")" >/dev/null 2>&1
-		busybox pgrep -af "url_test_${node_id}" | awk '! /test\.sh/{print $1}' | xargs kill -9 >/dev/null 2>&1
-		rm -rf ${TMP_PATH}/*url_test_${node_id}*.*
+		result=$(curl --connect-timeout 3 --max-time 5 -o /dev/null -I -sSL -w "%{http_code}:%{time_starttransfer}:%{exitcode}:%{errormsg}" -x ${curlx} "${probeUrl}")
+		pid=$(cat "$cfg.pid" 2>/dev/null)
+		core_owns_config "$pid" "$cfg" && kill "$pid" 2>/dev/null
+		rm -f "$cfg" "$cfg.pid" "$cfg.check.log"
 		op_unlock
 	}
 	echo $result

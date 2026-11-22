@@ -376,12 +376,16 @@ function VALIDATE.nodes(o)
 		if o.uuid ~= nil then return "uuid" end
 		if o.flow ~= nil and o.flow ~= "" then return "flow" end
 		if o.type ~= nil and o.type ~= "sing-box" then return "type" end
-		if o.transport and not set({ "tcp", "ws", "grpc", "httpupgrade", "http", "quic" })[o.transport] then return "transport" end
+		if o.transport and not set({ "tcp", "ws", "grpc", "httpupgrade", "http", "quic", "xhttp" })[o.transport] then return "transport" end
 	else
 		if type(o.uuid) ~= "string" or not o.uuid:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") then return "uuid" end
 		if o.password ~= nil then return "password" end
 	end
 	if o.transport and not set({ "tcp", "raw", "ws", "grpc", "httpupgrade", "xhttp", "http", "mkcp", "quic" })[o.transport] then return "transport" end
+	if o.transport == "xhttp" and o.xhttp_mode and
+		not set({ "auto", "packet-up", "stream-up", "stream-one" })[o.xhttp_mode] then
+		return "xhttp_mode"
+	end
 	for _, k in ipairs({ "tls", "reality", "utls", "tls_allowInsecure" }) do
 		if o[k] ~= nil and o[k] ~= "0" and o[k] ~= "1" then return k end
 	end

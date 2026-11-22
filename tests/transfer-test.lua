@@ -318,7 +318,7 @@ do
 	check("trojan import: the same server twice is added once, another password is another server", #r.add == 2 and why(r) == "duplicate:nil")
 
 	for field, o in pairs({ password = { password = false }, uuid = { uuid = UUID }, flow = { flow = "xtls-rprx-vision" }, type = { type = "Xray" },
-		transport = { transport = "xhttp" }, port = { port = "0" }, address = { address = "tr.example.net; reboot" }, tls_allowInsecure = { tls_allowInsecure = "yes" } }) do
+		transport = { transport = "mkcp" }, xhttp_mode = { transport = "xhttp", xhttp_mode = "invalid" }, port = { port = "0" }, address = { address = "tr.example.net; reboot" }, tls_allowInsecure = { tls_allowInsecure = "yes" } }) do
 		r = imp({ tr(o) })
 		check("trojan import: invalid " .. field .. " is refused", #r.add == 0 and why(r) == "invalid:" .. field)
 	end

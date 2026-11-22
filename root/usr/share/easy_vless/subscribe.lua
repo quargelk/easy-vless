@@ -760,6 +760,19 @@ local function parseSingBoxOutbound(ob, index, add_mode, group, sub_cfg)
 			result.xhttp_host = type(tr.host) == "table" and singbox_str(tr.host[1]) or singbox_str(tr.host)
 			result.xhttp_path = singbox_str(tr.path)
 		end
+	elseif ttype == "xhttp" and result.type == "sing-box" then
+		for k in pairs(tr) do
+			if not ({ type=true, host=true, path=true, mode=true })[k] then
+				return nil
+			end
+		end
+		result.transport = "xhttp"
+		result.xhttp_host = singbox_str(tr.host)
+		result.xhttp_path = singbox_str(tr.path)
+		result.xhttp_mode = singbox_str(tr.mode) or "auto"
+		if not ({ auto=true, ["packet-up"]=true, ["stream-up"]=true, ["stream-one"]=true })[result.xhttp_mode] then
+			return nil
+		end
 	elseif ttype == "tcp" then
 		result.transport = (result.type == "Xray") and "raw" or "tcp"
 		result.tcp_guise = "none"
@@ -961,7 +974,10 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 
 			if not params.type then params.type = "tcp" end
 			params.type = string.lower(params.type)
-			if not is_trojan and ({ xhttp=true, kcp=true, mkcp=true })[params.type] and result.type ~= "Xray" and has_xray then
+			if params.type == "splithttp" then params.type = "xhttp" end
+			local needs_xray = params.type == "kcp" or params.type == "mkcp" or
+				(params.type == "xhttp" and params.extra and params.extra ~= "")
+			if not is_trojan and needs_xray and result.type ~= "Xray" and has_xray then
 				result.type = "Xray"
 			end
 			if result.type == "sing-box" and params.type == "raw" then 
@@ -1087,12 +1103,17 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 				result.tls_allowInsecure = (insecure == "1" or insecure == "0") and insecure or (sub_allowinsecure and "1" or "0")
 			end
 
+			if result.type == "sing-box" and result.transport == "xhttp" and
+				not ({ auto=true, ["packet-up"]=true, ["stream-up"]=true, ["stream-one"]=true })[result.xhttp_mode] then
+				return nil
+			end
+
 			result.port = port
 			result.tcp_fast_open = params.tfo
 			result.use_finalmask = (params.fm and params.fm ~= "") and "1" or nil
 			result.finalmask = (params.fm and params.fm ~= "") and api.base64Encode(params.fm) or nil
 
-			if result.type == "sing-box" and (result.transport == "mkcp" or result.transport == "xhttp") then
+			if result.type == "sing-box" and needs_xray then
 				log(2, i18n.translatef("Skip node: %s. Because Sing-Box does not support the %s protocol's %s transmission method, Xray needs to be used instead.", result.remarks, szType, result.transport))
 				return nil
 			end

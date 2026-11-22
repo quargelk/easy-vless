@@ -22,10 +22,8 @@ TMP_PROCESS_LIST_PATH=${TMP_PATH}/process_list
 FWMARK="0x45560000"
 EV_ROUTE_TABLE="998"
 EV_PID_FILE="/var/run/${CONFIG}.pid"
-# util_sing-box.lua emits the sing-box 1.12 configuration format (typed DNS
-# servers, domain_resolver, rule actions), so 1.12.0 is the minimum usable
-# version. Checked in app.sh:run_singbox() before any config is generated.
-EV_SINGBOX_MIN_VERSION="1.12.0"
+EV_STATE_ERROR="/var/run/${CONFIG}.error"
+EV_SINGBOX_MIN_VERSION="1.14.4-lx.35"
 # sing-box Clash API of the main instance (URL Test results/control for LuCI).
 # Bound to 127.0.0.1 only, protected by a random per-start secret; the
 # "<port> <secret>" pair is published in EV_CLASH_API_FILE while running.
@@ -460,7 +458,8 @@ ln_run() {
 	}
 
 	# 7>&-: long-running processes do not keep the operation lock fd (op_lock)
-	${file_func:-log 1 "${ln_name}"} "$@" >${output} 2>&1 7>&- &
+	"${file_func}" "$@" >"${output}" 2>&1 7>&- 9>&- &
+	EV_LAUNCHED_PID=$!
 
 	[ -n "$NO_REC_PROCESS" ] && return
 
@@ -578,4 +577,74 @@ get_local_ips() {
 	for ip in $NET_ADDR; do
 		echo "$ip"
 	done
+}
+
+# Keep the UCI engine ID and migrate the old default path implicitly.
+singbox_path() {
+	local path
+	path="$(config_n_get @global_app[0] sing_box_file)"
+	case "$path" in ""|/usr/bin/sing-box) path=/usr/bin/sing-box-lx ;; esac
+	[ -f "$path" ] && [ -x "$path" ] && printf '%s\n' "$path"
+}
+
+singbox_info() {
+	[ -n "$1" ] || return 1
+	timeout 5 "$1" version 2>/dev/null
+}
+
+singbox_version_from_info() {
+	sed -n '1s/^sing-box version \([0-9][0-9.]*-lx\.[0-9][0-9]*\)$/\1/p'
+}
+
+singbox_tags_from_info() {
+	sed -n 's/^Tags: //p'
+}
+
+singbox_compatible() {
+	local version="$1" tags="$2"
+	[ -n "$version" ] || return 1
+	printf '%s\n' "$version" | awk -F '[.-]' '
+		NF == 5 && $4 == "lx" {
+			ok = $1 > 1 || ($1 == 1 && ($2 > 14 ||
+				($2 == 14 && ($3 > 4 || ($3 == 4 && $5 >= 35)))))
+		}
+		END { exit !ok }' || return 1
+	case ",$tags," in *,with_utls,*) ;; *) return 1 ;; esac
+	case ",$tags," in *,with_clash_api,*) ;; *) return 1 ;; esac
+}
+
+# Match an exact configuration argument, so stale or reused PIDs never
+# identify a process belonging to another service.
+core_owns_config() {
+	case "$1" in ""|*[!0-9]*) return 1 ;; esac
+	[ -n "$2" ] && [ -r "/proc/$1/cmdline" ] &&
+		tr '\0' '\n' < "/proc/$1/cmdline" 2>/dev/null | grep -Fxq -- "$2"
+}
+
+# /proc supplies the TCP listener inode; confirm that the identified process
+# owns it. This also works for transparent listeners without probing them.
+core_wait_tcp() {
+	local pid="$1" cfg="$2" port="$3" tries=0 owned=0 inodes fd target
+	port="$(printf '%04X' "$port")" || return 1
+	while [ "$tries" -lt 25 ]; do
+		kill -0 "$pid" 2>/dev/null || return 1
+		if ! core_owns_config "$pid" "$cfg"; then
+			[ "$owned" = 0 ] || return 1
+			tries=$((tries + 1))
+			sleep 1
+			continue
+		fi
+		owned=1
+		inodes="$(awk -v port="$port" '$4 == "0A" && $2 ~ (":" port "$") { print $10 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null)"
+		if [ -n "$inodes" ]; then
+			for fd in /proc/"$pid"/fd/*; do
+				target="$(readlink "$fd" 2>/dev/null)"
+				case "$target" in socket:\[*\]) target=${target#socket:\[}; target=${target%\]} ;; *) continue ;; esac
+				printf '%s\n' "$inodes" | grep -Fxq -- "$target" && return 0
+			done
+		fi
+		tries=$((tries + 1))
+		sleep 1
+	done
+	return 1
 }

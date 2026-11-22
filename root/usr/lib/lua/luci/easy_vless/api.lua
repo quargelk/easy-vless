@@ -803,11 +803,11 @@ end
 function finded_com(e)
 	local bin = get_app_path(e)
 	if not bin then return end
-	local s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
-	if s == "" then
-		s = nil
+	if e == "sing-box" then
+		return fs.access(bin, "x") and bin or nil
 	end
-	return s
+	local found = luci.sys.exec("command -v " .. shellquote(bin) .. " 2>/dev/null"):gsub("%s+$", "")
+	return found ~= "" and found or nil
 end
 
 function finded(e)
@@ -857,6 +857,7 @@ function get_app_path(app_name)
 	if com[app_name] then
 		local def_path = com[app_name].default_path
 		local path = uci_get_c("@global_app[0]", app_name:gsub("%-","_") .. "_file")
+		if app_name == "sing-box" and path == "/usr/bin/sing-box" then path = nil end
 		path = path and (#path>0 and path or def_path) or def_path
 		return path
 	end
@@ -864,6 +865,10 @@ end
 
 function get_app_version(app_name, file)
 	if file == nil then file = get_app_path(app_name) end
+	if app_name == "sing-box" then
+		if not file or not fs.access(file, "x") then return "" end
+		return sys.exec("timeout 5 " .. shellquote(file) .. " version 2>/dev/null | sed -n '1s/^sing-box version //p'"):gsub("%s+$", "")
+	end
 	return get_bin_version_cache(file, com[app_name].cmd_version)
 end
 

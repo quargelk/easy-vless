@@ -22,11 +22,6 @@ uci -q batch <<-EOF
 	set firewall.easy_vless.type='script'
 	set firewall.easy_vless.path='/var/etc/easy_vless.include'
 
-	set dhcp.@dnsmasq[0].localuse=1
-	commit dhcp
-
-	set uhttpd.main.max_requests=50
-	commit uhttpd
 EOF
 
 uci -q set firewall.easy_vless.reload='1'
