@@ -125,14 +125,14 @@ for f in dist/sing-box-lx-integration/*/SHA256SUMS; do
 done
 ```
 
-Ветка: `feature/sing-box-lx-integration`. Коммиты и абсолютные пути созданных
-архивов:
+Ветка: `feature/sing-box-lx-integration`. Текущие изменения коммитятся локально.
+Архивы финального состояния:
 
-- Исходники: `/tmp/easy-vless-handoff-20261122/easy-vless-source-044aacea.tar.gz`
-- Пакеты: `/tmp/easy-vless-handoff-20261122/easy-vless-openwrt-packages-1.3.0-r1.tar.gz`
-- Контрольные суммы архивов: `/tmp/easy-vless-handoff-20261122/SHA256SUMS`
-- Архив пакетов: `95c21f20299affb7ecc6ef055a2ee18bca4a52f4a3c77e7c1ec939fb5e12013e`
-- Архив исходников после коммита: сверить по `SHA256SUMS` в каталоге выше.
+- Исходники: `/tmp/easy-vless-release-20261122/easy-vless-source-final.tar.gz`
+- Release assets: `/tmp/easy-vless-release-20261122/easy-vless-release-assets-1.3.0.tar.gz`
+- Контрольные суммы архивов: `/tmp/easy-vless-release-20261122/SHA256SUMS`
+- Папка для загрузки GitHub Release: `dist/release-assets-1.3.0-r1/`
 
-Push, публикация релиза, новые сборки и live trial в рамках подготовки handoff
-не выполнялись.
+APK пока имеют `UNTRUSTED signature`; не публиковать и не обходить проверку,
+пока владелец не выберет постоянный ключ доверия и чистый OpenWrt 25.12 не
+примет его подпись. Push, публикация, пересборка и live trial не выполнялись.
