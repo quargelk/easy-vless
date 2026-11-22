@@ -6,3 +6,26 @@
 /prototype/
 # Python bytecode (tests import scripts/po2lmo.py)
 __pycache__/
+
+# Local credentials and development output. Public signing keys may use .pem
+# and remain eligible for explicit release publication; private-key filenames
+# and dedicated secret directories are excluded.
+.env
+.env.*
+!.env.example
+.secrets/
+.secrets-*/
+*.log
+*.tmp
+*.swp
+*.key
+*.p12
+*.pfx
+*.rsa
+*.priv.pem
+*_private.pem
+*-private.pem
+*_private_key.pem
+*_private-key.pem
+id_rsa*
+id_ed25519*

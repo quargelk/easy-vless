@@ -135,4 +135,21 @@ done
 
 APK пока имеют `UNTRUSTED signature`; не публиковать и не обходить проверку,
 пока владелец не выберет постоянный ключ доверия и чистый OpenWrt 25.12 не
-примет его подпись. Push, публикация, пересборка и live trial не выполнялись.
+примет его подпись. Установлена причина: SDK выдаёт unsigned APK; helper
+`scripts/sign-release-apks.sh` подписывает подготовленный комплект и проверяет
+его с временным trust root. Одноразовый RSA test прошёл на apk-tools 3.0.5;
+тестовый ключ удалён. Production-ключ отсутствует. Аудит Git-истории не нашёл
+приватных ключей, токенов или рабочих VLESS/Trojan URL. Локальная резервная
+конфигурация роутера содержит потенциальные credentials, сохранена без
+изменений и исключена из release assets. Полный результат и следующий шаг:
+[RELEASE_1.3.0.md](RELEASE_1.3.0.md).
+
+Архивы предыдущего среза сохранены и сверены в `dist/backups/`:
+`easy-vless-source-final.tar.gz`, `easy-vless-release-assets-1.3.0.tar.gz`
+и исходный `SHA256SUMS`. Они содержат срез предыдущей сессии; свежий архив
+текущего коммита и текущих unsigned release assets хранятся как
+`easy-vless-source-current.tar.gz` и
+`easy-vless-release-assets-1.3.0-r1-unsigned.tar.gz`. Манифест свежей пары —
+`dist/backups/SHA256SUMS-current`.
+
+Push, публикация, пересборка и live trial не выполнялись.
