@@ -127,7 +127,7 @@ Easy VLESS ${EV_VERSION} installer for stable OpenWrt 24.x (24.10.x: opkg,
 Usage: sh install.sh [options]
 
   --check, --dry-run only run the checks (router, RAM, flash, time, HTTPS,
-                     package manager and feeds, sing-box, dnsmasq, release
+                     package manager and feeds, sing-box-lx, dnsmasq, release
                      files, free space); install and change nothing (files
                      are only downloaded to a temporary directory in /tmp)
   --local DIR        install the Easy VLESS packages of this router's channel
@@ -1612,7 +1612,7 @@ if [ -x /usr/share/easy_vless/app.sh ] &&
 	EV_WAS_RUNNING=1
 fi
 OLD_EV="$(installed_version easy-vless)"
-say "installing easy-vless, easy-vless-sing-box, luci-app-easy-vless ${EV_VERSION}${OLD_EV:+ (installed now: ${OLD_EV})} ..."
+say "installing sing-box-lx, easy-vless, easy-vless-sing-box, luci-app-easy-vless ${EV_VERSION}${OLD_EV:+ (installed now: ${OLD_EV})} ..."
 IPKS=""
 for p in $EV_PACKAGES; do
 	IPKS="$IPKS $PKGDIR/$(pkg_file "$p")"
