@@ -117,5 +117,13 @@ done
 ```
 
 Ветка: `feature/sing-box-lx-integration`. Коммиты и абсолютные пути созданных
-архивов зафиксированы в итоговом сообщении сессии. Push, публикация релиза,
-новые сборки и live trial в рамках подготовки handoff не выполнялись.
+архивов:
+
+- Исходники: `/tmp/easy-vless-handoff-20261122/easy-vless-source-044aacea.tar.gz`
+- Пакеты: `/tmp/easy-vless-handoff-20261122/easy-vless-openwrt-packages-1.3.0-r1.tar.gz`
+- Контрольные суммы архивов: `/tmp/easy-vless-handoff-20261122/SHA256SUMS`
+- Архив пакетов: `95c21f20299affb7ecc6ef055a2ee18bca4a52f4a3c77e7c1ec939fb5e12013e`
+- Архив исходников после коммита: сверить по `SHA256SUMS` в каталоге выше.
+
+Push, публикация релиза, новые сборки и live trial в рамках подготовки handoff
+не выполнялись.
