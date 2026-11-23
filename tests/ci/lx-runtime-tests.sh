@@ -4,6 +4,9 @@
 set -eu
 W=${W:-/w}
 DIST=${DIST:-$W/dist}
+manifest=$(sha256sum "$DIST/SHA256SUMS")
+pin="${manifest%% *}"
+export DIST
 APP=/usr/share/easy_vless/app.sh
 CONFIG=/etc/config/easy_vless
 mkdir -p /var/lock /var/run
@@ -16,19 +19,18 @@ retry() {
 	done
 }
 
-unsigned=
 if [ "${EV_CI_CHANNEL:-ipk}" = apk ]; then
 	retry apk update
 	retry apk add --cache-predownload firewall4 dnsmasq-full rpcd
-	unsigned=--allow-unsigned
+		cp "$DIST/easy-vless-ci-test.pem" /etc/apk/keys/
 else
 	retry opkg update
 	opkg remove dnsmasq
 	retry opkg install firewall4 dnsmasq-full rpcd
 fi
 
-retry sh "$W/scripts/install.sh" --check --local "$DIST" $unsigned
-retry sh "$W/scripts/install.sh" --local "$DIST" $unsigned --no-start
+retry sh "$W/scripts/install.sh" --check --manifest-sha256 "$pin" --local "$DIST"
+retry sh "$W/scripts/install.sh" --manifest-sha256 "$pin" --local "$DIST" --no-start
 
 SKIP_INSTALL=1 W="$W" DIST="$DIST" sh "$W/tests/ci/openwrt-runtime-tests.sh"
 status=$(ubus call luci.easy_vless status)
@@ -127,8 +129,8 @@ if [ -n "${EV_OLD_BUNDLE:-}" ]; then
 fi
 
 cp "$CONFIG" /tmp/ev-before.uci
-sh "$W/scripts/install.sh" --check --local "$DIST" $unsigned --offline
-sh "$W/scripts/install.sh" --local "$DIST" $unsigned --offline --no-start
+sh "$W/scripts/install.sh" --check --manifest-sha256 "$pin" --local "$DIST" --offline
+sh "$W/scripts/install.sh" --manifest-sha256 "$pin" --local "$DIST" --offline --no-start
 cmp "$CONFIG" /tmp/ev-before.uci
 if [ "${EV_CI_CHANNEL:-ipk}" = apk ]; then
 	apk del luci-app-easy-vless easy-vless-sing-box easy-vless sing-box-lx

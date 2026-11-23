@@ -3,7 +3,7 @@
 # verified offline rollback and verifies the restored router state.
 set -eu
 umask 077
-dir="$(cd "${2:?usage: live-trial-watchdog.sh arm|status|rollback DIR [SECONDS]}" && pwd)"
+dir="$(cd "${2:?usage: live-trial-watchdog.sh arm|status|rollback|run DIR [SECONDS|COMMAND...]}" && pwd)"
 self="$dir/live-trial-watchdog.sh"
 verified() {
 	[ -s "$dir/recovery.sha256" ] && [ -f "$dir/rollback.sh" ] &&
@@ -16,7 +16,7 @@ restore() {
 		flock -x 9
 		[ ! -f "$dir/restored" ] || exit 0
 		rm -f "$dir/rollback_failed"
-		if verified && (cd "$dir"; sh ./rollback.sh); then
+		if verified && (cd "$dir"; sh ./rollback.sh 9>&-); then
 			date -u > "$dir/restored"
 		else
 			date -u > "$dir/rollback_failed"
@@ -43,6 +43,17 @@ case "$1" in
 		done
 		echo "Watchdog did not start" >&2
 		exit 1
+	;;
+	run)
+		shift 2
+		[ "$#" -gt 0 ] || exit 2
+		(
+			exec 9>"$dir/rollback.lock"
+			flock -xn 9
+			[ ! -e "$dir/restored" ] && [ ! -e "$dir/rollback_failed" ]
+			kill -0 "$(cat "$dir/watchdog.pid")" 2>/dev/null
+			"$@" 9>&-
+		)
 	;;
 	wait)
 		trap '' HUP

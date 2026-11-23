@@ -75,9 +75,26 @@ jobs:
           bash tests/core-package-check.sh out/sing-box-lx*."$CHANNEL" "$arch" "$PWD/sdk/staging_dir/host/bin/apk"
           cp scripts/install.sh out/
           (cd out && sha256sum * > SHA256SUMS && sha256sum -c SHA256SUMS)
+      - name: Sign disposable APKs for runtime CI
+        if: matrix.channel == 'apk'
+        run: |
+          set -euo pipefail
+          umask 077
+          keys=$(mktemp -d)
+          trap 'rm -rf "$keys"' EXIT
+          apk="$PWD/sdk/staging_dir/host/bin/apk"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$keys/ci-only.rsa"
+          mkdir -p "$keys/root/etc/apk/keys"
+          openssl pkey -in "$keys/ci-only.rsa" -pubout -out out/easy-vless-ci-test.pem
+          cp out/easy-vless-ci-test.pem "$keys/root/etc/apk/keys/"
+          for file in out/*.apk; do
+            "$apk" adbsign --allow-untrusted --reset-signatures --sign-key "$keys/ci-only.rsa" "$file"
+            "$apk" --root "$keys/root" verify "$file"
+          done
+          (cd out && rm SHA256SUMS && sha256sum * > SHA256SUMS && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.channel }}-${{ steps.build.outputs.arch }}
+          name: ci-packages-${{ matrix.channel }}-${{ steps.build.outputs.arch }}
           path: out/
           if-no-files-found: error
 
@@ -97,7 +114,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: packages-${{ matrix.channel }}-x86_64
+          name: ci-packages-${{ matrix.channel }}-x86_64
           path: dist
       - name: Stage the previous release for a rollback test
         env:

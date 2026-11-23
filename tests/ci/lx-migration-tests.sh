@@ -4,7 +4,8 @@ set -eu
 new=${DIST:-/bundle}
 old=${EV_OLD_BUNDLE:-/old}
 config=/etc/config/easy_vless
-args="--offline --no-start --rollback-dir $old --local $new"
+manifest=$(sha256sum "$new/SHA256SUMS")
+args="--manifest-sha256 ${manifest%% *} --offline --no-start --rollback-dir $old --local $new"
 
 retry() {
 	local n=1
@@ -16,18 +17,19 @@ retry() {
 }
 
 if command -v apk >/dev/null 2>&1; then
-	args="$args --allow-unsigned"
-	retry apk update
-	retry apk add --cache-predownload sing-box-tiny
-	apk add --network=no --repositories-file /dev/null --allow-untrusted \
+	apk info --exists sing-box-tiny >/dev/null || retry apk add --cache-predownload sing-box-tiny
+	mkdir -p /tmp/ev-legacy-cache
+	apk add --network=no --repositories-file /dev/null --cache-dir /tmp/ev-legacy-cache --allow-untrusted \
 		"$old/easy-vless-1.2.0-r1.apk" "$old/easy-vless-sing-box-1.2.0-r1.apk" "$old/luci-app-easy-vless-1.2.0-r1.apk"
-	apk del --network=no sing-box-lx
+	apk del --network=no --repositories-file /dev/null sing-box-lx
 	version() {
 		apk query --installed --fields name,version "$1" | awk -v p="$1" '$1 == "Name:" { n = $2 } $1 == "Version:" && n == p { print $2 }'
 	}
 else
-	retry opkg update
-	retry opkg install sing-box-tiny
+	if ! opkg list-installed | grep -q '^sing-box-tiny '; then
+		retry opkg update
+		retry opkg install sing-box-tiny
+	fi
 	opkg install --force-downgrade "$old"/*_all.ipk
 	opkg remove sing-box-lx
 	version() { opkg list-installed | awk -v p="$1" '$1 == p { print $3 }'; }

@@ -2,16 +2,18 @@
 # Flatten four verified bundles into unique assets for one GitHub Release.
 set -eu
 ROOT=${1:-dist/sing-box-lx-integration}
-OUT=${2:-dist/release-assets-1.3.0-r1}
+OUT=${2:-dist/release-assets-v1.3.0-rc.1-staged}
+CORE_SOURCE=${3:-}
 SRC=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$ROOT" && pwd)
-mkdir -p "$OUT"
-OUT=$(cd "$OUT" && pwd)
+[ ! -e "$OUT" ] && [ ! -L "$OUT" ] || { echo "output directory already exists: $OUT" >&2; exit 2; }
+mkdir -p "$(dirname "$OUT")"
+OUT=$(cd "$(dirname "$OUT")" && pwd -P)/$(basename "$OUT")
 case "$OUT/" in "$ROOT"/*) echo "output must be outside input bundle tree" >&2; exit 2 ;; esac
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required" >&2; exit 2; }
-tmp="$OUT/.prepare-release-assets.$$"
-trap 'rm -rf "$tmp"' EXIT HUP INT TERM
-mkdir "$tmp"
+tmp=$(mktemp -d "$(dirname "$OUT")/.prepare-release-assets.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 1' HUP INT TERM
 for channel in ipk-x86_64 ipk-aarch64_cortex-a53 apk-x86_64 apk-aarch64_cortex-a53; do
 	dir="$ROOT/$channel"
 	[ -d "$dir" ] || { echo "missing bundle: $channel" >&2; exit 1; }
@@ -27,10 +29,13 @@ for channel in ipk-x86_64 ipk-aarch64_cortex-a53 apk-x86_64 apk-aarch64_cortex-a
 	done
 done
 cp "$SRC/scripts/install.sh" "$tmp/install.sh"
-(cd "$tmp" && sha256sum ./*.apk ./*.ipk ./install.sh | sed 's#  \./#  #' | sort -k2 > SHA256SUMS)
-(cd "$tmp" && sha256sum -c SHA256SUMS >/dev/null)
-rm -f "$OUT"/*.apk "$OUT"/*.ipk "$OUT"/install.sh "$OUT"/SHA256SUMS
-cp "$tmp"/* "$OUT/"
-echo "Release assets prepared in $OUT"
-echo "Assets: $(find "$OUT" -maxdepth 1 -type f | wc -l | tr -d ' ') (including SHA256SUMS)"
-echo "Verify with: (cd '$OUT' && sha256sum -c SHA256SUMS)"
+cp "$SRC/docs/INSTALL-1.3.0-RC.md" "$tmp/INSTALL-RC.md"
+cp "$SRC/docs/RELEASE-NOTES-1.3.0-RC1.md" "$tmp/RELEASE-NOTES.md"
+cp "$SRC/docs/THIRD-PARTY-RC.md" "$tmp/THIRD-PARTY.md"
+if [ -n "$CORE_SOURCE" ]; then
+	cp "$CORE_SOURCE" "$tmp/sing-box-lx-1.14.4-lx.35-source.tar.gz"
+fi
+(cd "$tmp" && sha256sum * > SHA256SUMS && sha256sum -c SHA256SUMS >/dev/null)
+mv -T --no-clobber "$tmp" "$OUT"
+[ ! -e "$tmp" ] || { echo "output directory appeared during preparation" >&2; exit 2; }
+printf 'Staged assets: %s\n' "$OUT"

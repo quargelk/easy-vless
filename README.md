@@ -4,7 +4,7 @@
 
 **Текущая версия: 1.2.0-r1** · стабильные OpenWrt **24.x** (`opkg`, `.ipk`) и **25.x** (`apk`, `.apk`) · Лицензия **GPL-3.0-only** · [Релизы](https://github.com/quargelk/easy-vless/releases) · [Issues](https://github.com/quargelk/easy-vless/issues)
 
-Ветка интеграции готовит Easy VLESS **1.3.0-r1** с ядром sing-box-lx.
+Ветка интеграции готовит `v1.3.0-rc.1` с пакетами Easy VLESS **1.3.0-r1** и ядром sing-box-lx. [Инструкция для RC](docs/INSTALL-1.3.0-RC.md).
 Сборка из исходников, установщик для локальных пакетов и границы проверок
 описаны в [инструкции по сборке](docs/BUILD_AND_PACKAGING.md) и в
 [результатах аппаратных испытаний](docs/HARDWARE_REQUIREMENTS.md).

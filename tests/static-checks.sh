@@ -205,7 +205,7 @@ done
 IV=$(sed -n 's/^EV_VERSION="\(.*\)"$/\1/p' scripts/install.sh)
 IT=$(sed -n 's/^EV_TAG="\(.*\)"$/\1/p' scripts/install.sh)
 [ "$IV" = "${PV}-r${PR}" ] && ok "install.sh EV_VERSION = ${IV}" || bad "install.sh EV_VERSION '${IV}' != ${PV}-r${PR}"
-case "$IT" in "v${PV}"|"v${PV}-r${PR}") ok "install.sh EV_TAG = ${IT}" ;; *) bad "install.sh EV_TAG '${IT}' does not match ${PV}" ;; esac
+case "$IT" in "v${PV}"|"v${PV}-r${PR}"|"v${PV}-rc."[1-9]*) ok "install.sh EV_TAG = ${IT}" ;; *) bad "install.sh EV_TAG '${IT}' does not match ${PV}" ;; esac
 # EV_MIN_DATE: the installer refuses a clock before this date, so it must be
 # a valid date that is not in the future
 MD=$(sed -n 's/^EV_MIN_DATE="\(.*\)"$/\1/p' scripts/install.sh)
