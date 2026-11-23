@@ -54,6 +54,14 @@ commit easy_vless
 UCI
 cp "$config" /tmp/ev-migration.uci
 
+if sh "$new/install.sh" --check --offline --local "$new" --manifest-sha256 "${manifest%% *}" > /tmp/ev-no-rollback.log 2>&1; then
+	echo "upgrade preflight accepted a missing rollback bundle" >&2
+	exit 1
+fi
+grep -F -- '--rollback-dir' /tmp/ev-no-rollback.log
+cmp "$config" /tmp/ev-migration.uci
+[ "$(version easy-vless)" = 1.2.0-r1 ]
+
 if EV_TEST_FAIL_EV_INSTALL=1 sh "$new/install.sh" $args; then
 	echo "fault injection did not report failure" >&2
 	exit 1

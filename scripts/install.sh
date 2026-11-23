@@ -134,7 +134,8 @@ Usage: sh install.sh [options]
                      SHA-256 of the independently authenticated SHA256SUMS
                      (required for both IPK and APK)
   --offline         use --local and currently installed system dependencies
-  --rollback-dir DIR use verified previous Easy VLESS packages from DIR
+  --rollback-dir DIR supply the previous Easy VLESS packages locally
+                     (required to replace an installed version)
   --dnsmasq-rollback-dir DIR
                      use a previously saved official signed index and exact
                      installed dnsmasq package when the current feed changed
@@ -1488,7 +1489,7 @@ legacy_digest() {
 # Verify a rollback set before touching packages. For 1.2.0 this contains the
 # three application packages; the old core remains installed at its own path.
 prepare_rollback() {
-	local p old f dir sum got base expected legacy
+	local p old f dir sum got expected legacy
 	mkdir -p "$WORKDIR/previous" "$WORKDIR/opkg-lists" || return 1
 	for p in $EV_PACKAGES; do
 		old="$(installed_version "$p")"
@@ -1506,14 +1507,8 @@ prepare_rollback() {
 			f="$(pkg_file "$p" "$old")"
 		fi
 		legacy="$(legacy_digest "$f")"
-		if [ -n "$OPT_ROLLBACK" ]; then
-			cp "$OPT_ROLLBACK/$f" "$dir/" || return 1
-		else
-			[ "$OPT_OFFLINE" = 0 ] && [ -n "$legacy" ] ||
-				die "provide authenticated previous $p $old with --rollback-dir"
-			base="https://github.com/$EV_REPO/releases/download/v1.2.0"
-			fetch "$base/$f" "$dir/$f" "$f"
-		fi
+		[ -n "$OPT_ROLLBACK" ] || die "provide authenticated previous $p $old with --rollback-dir"
+		cp "$OPT_ROLLBACK/$f" "$dir/" || return 1
 		sum="$legacy"
 		if [ -z "$sum" ]; then
 			sum="$(awk -v f="$f" 'NF == 2 && $2 == f && $1 ~ /^[0-9a-f]+$/ && length($1) == 64 { print $1; n++ } END { if (n != 1) exit 1 }' "$OPT_ROLLBACK/SHA256SUMS")" || return 1
