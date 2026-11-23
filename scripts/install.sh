@@ -5,7 +5,7 @@
 # https://github.com/quargelk/easy-vless
 #
 # A plain, readable shell script: download it, read it, then run it as root.
-#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.3.0-rc.1/install.sh
+#   wget -O /tmp/install.sh https://github.com/quargelk/easy-vless/releases/download/v1.3.0-rc.2/install.sh
 # See INSTALL-RC.md for verification and the required manifest digest.
 #
 # Package channel: chosen from the OpenWrt release in /etc/openwrt_release
@@ -30,11 +30,13 @@
 set -u
 
 EV_VERSION="1.3.0-r1"
-EV_TAG="v1.3.0-rc.1"
+EV_TAG="v1.3.0-rc.2"
 EV_REPO="quargelk/easy-vless"
 EV_BASE_URL="https://github.com/${EV_REPO}/releases/download/${EV_TAG}"
 # Release date of this installer: a system clock before this date is certainly
 # wrong, and TLS certificates cannot be verified with it.
+EV_PACKAGE_MANIFEST_SHA256="6149e9523aba4bd03ceb672cfb2e767344c8d3c4e72eb93e1b0f7bca8aa325b2"
+EV_RELEASE_KEY_SHA256="a0e5a799df7896e811964d6a94bbeadd20f0f0b580ee57e8a1d295022e0a4939"
 EV_MIN_DATE="2026-11-22"
 EV_PACKAGES="sing-box-lx easy-vless easy-vless-sing-box luci-app-easy-vless"
 LX_PKG_VERSION="1.14.4_p35-r1"
@@ -100,10 +102,14 @@ OPT_REPLACE_DNSMASQ=0
 OPT_YES=0
 OPT_NO_START=0
 OPT_FORCE=0
+RECOVERY_DIR=""
+RECOVERY_PARENT=""
+RECOVERY_START=""
+RELEASE_MANIFEST=PACKAGES.sha256
+APK_KEYS=""
+DNS_CAPSULE=""
 
 WORKDIR=""
-DNSMASQ_STAGE=""
-EV_STAGE=""
 EV_PREVIOUS_FILES=""
 EV_LEGACY_APKS=""
 EV_WAS_ENABLED=0
@@ -131,11 +137,11 @@ Usage: sh install.sh [options]
                      (.ipk for opkg, .apk for apk) and SHA256SUMS from DIR
                      instead of downloading them from GitHub
   --manifest-sha256 HEX
-                     SHA-256 of the independently authenticated SHA256SUMS
-                     (required for both IPK and APK)
+                     use an independently authenticated SHA256SUMS instead
+                     of the package manifest pinned by this installer
   --offline         use --local and currently installed system dependencies
-  --rollback-dir DIR supply the previous Easy VLESS packages locally
-                     (required to replace an installed version)
+  --rollback-dir DIR supply previous Easy VLESS packages locally
+                     (known v1.2.0 packages can be downloaded automatically)
   --dnsmasq-rollback-dir DIR
                      use a previously saved official signed index and exact
                      installed dnsmasq package when the current feed changed
@@ -161,7 +167,11 @@ while [ $# -gt 0 ]; do
 		--check|--dry-run) OPT_CHECK=1 ;;
 		--local) [ $# -ge 2 ] || die "--local needs a directory"; OPT_LOCAL="$2"; shift ;;
 		--offline) OPT_OFFLINE=1 ;;
-		--manifest-sha256) [ $# -ge 2 ] || die "--manifest-sha256 needs a digest"; OPT_MANIFEST_SHA256="$2"; shift ;;
+		--manifest-sha256) [ $# -ge 2 ] || die "--manifest-sha256 needs a digest"; OPT_MANIFEST_SHA256="$2"; RELEASE_MANIFEST=SHA256SUMS; shift ;;
+		--recover-internal)
+			[ "$#" = 4 ] || die "invalid recovery invocation"
+			RECOVERY_DIR="$2"; RECOVERY_PARENT="$3"; RECOVERY_START="$4"
+			break ;;
 		--dnsmasq-rollback-dir) [ $# -ge 2 ] || die "--dnsmasq-rollback-dir needs a directory"; OPT_DNS_ROLLBACK="$2"; shift ;;
 		--rollback-dir) [ $# -ge 2 ] || die "--rollback-dir needs a directory"; OPT_ROLLBACK="$2"; shift ;;
 		--base-url) [ $# -ge 2 ] || die "--base-url needs a URL"; EV_BASE_URL="${2%/}"; USER_BASE_URL=1; shift ;;
@@ -180,7 +190,8 @@ case "$EV_BASE_URL" in
 	*) die "--base-url must be an https:// URL (downloads are never made without TLS): $EV_BASE_URL" ;;
 esac
 
-[ "${#OPT_MANIFEST_SHA256}" = 64 ] || die "provide --manifest-sha256 from the verified release manifest (see INSTALL-RC.md)"
+OPT_MANIFEST_SHA256="${OPT_MANIFEST_SHA256:-$EV_PACKAGE_MANIFEST_SHA256}"
+[ "${#OPT_MANIFEST_SHA256}" = 64 ] || die "invalid --manifest-sha256 length"
 case "$OPT_MANIFEST_SHA256" in *[!0-9a-f]*) die "invalid --manifest-sha256 (expected 64 lowercase hex digits)" ;; esac
 [ "$OPT_OFFLINE" = 0 ] || [ -n "$OPT_LOCAL" ] || die "--offline requires --local"
 [ -z "$OPT_ROLLBACK" ] || OPT_ROLLBACK="$(cd "$OPT_ROLLBACK" && pwd)" || die "invalid rollback directory"
@@ -325,12 +336,11 @@ now_epoch() { echo "${EV_TEST_NOW:-$(date +%s)}"; }
 # dnsmasq_rollback: reinstall the dnsmasq package that was removed for
 # dnsmasq-full, from the copy downloaded before anything was changed
 dnsmasq_rollback() {
-	DNSMASQ_STAGE=""
-	warn "restoring ${DNSMASQ_PKG:-dnsmasq} ..."
+		warn "restoring ${DNSMASQ_PKG:-dnsmasq} ..."
 	local rc=0
 	if [ "$PM" = apk ]; then
 		if [ -n "$(installed_version dnsmasq-full)" ] && [ "$DNSMASQ_PKG" != dnsmasq-full ]; then
-			apk del --network=no dnsmasq-full >&2 || rc=1
+			apk del --network=no --repositories-file /dev/null dnsmasq-full >&2 || rc=1
 		fi
 		if [ -n "${DNSMASQ_PKG:-}" ] && [ "$(installed_version "$DNSMASQ_PKG")" != "$OLD_DNS_VERSION" ]; then
 			apk add --network=no --repositories-file /dev/null --repository "$WORKDIR/dnsmasq/packages.adb" "${DNSMASQ_PKG}=${OLD_DNS_VERSION}" >&2 || rc=1
@@ -344,8 +354,8 @@ dnsmasq_rollback() {
 			opkg install "$WORKDIR/dnsmasq/$OLD_IPK" >&2 || rc=1
 		fi
 	fi
-	if [ -f /etc/config/dhcp.easy-vless.bak ]; then
-		cp -p /etc/config/dhcp.easy-vless.bak /etc/config/dhcp || rc=1
+	if [ -f "$WORKDIR/dhcp.config" ]; then
+		cp -p "$WORKDIR/dhcp.config" /etc/config/dhcp || rc=1
 	fi
 	if [ -n "${DNSMASQ_PKG:-}" ]; then
 		/etc/init.d/dnsmasq restart >/dev/null 2>&1 || rc=1
@@ -373,12 +383,24 @@ rollback_easy_vless() {
 		case " $EV_ADDED " in
 			*" $p "*)
 				[ -z "$(installed_version "$p")" ] ||
-					{ if [ "$PM" = apk ]; then apk del --network=no "$p"; else opkg remove "$p"; fi; } >&2 || rc=1
+					{ if [ "$PM" = apk ]; then apk del --network=no --repositories-file /dev/null "$p"; else opkg remove "$p"; fi; } >&2 || rc=1
 			;;
 		esac
 	done
-	[ ! -f "$WORKDIR/easy_vless.config" ] ||
-		cp -p "$WORKDIR/easy_vless.config" /etc/config/easy_vless || rc=1
+	local config
+	for config in easy_vless firewall ucitrack; do
+		if [ -f "$WORKDIR/$config.config" ]; then
+			if ! cmp -s "$WORKDIR/$config.config" "/etc/config/$config"; then
+				cp -p "$WORKDIR/$config.config" "/etc/config/$config" || rc=1
+				[ "$config" != firewall ] || /etc/init.d/firewall reload >&2 || rc=1
+			fi
+		elif [ "$config" = easy_vless ] || [ "$config" = firewall ]; then
+			rm -f "/etc/config/$config" || rc=1
+		fi
+	done
+	if [ -f "$WORKDIR/direct_ip.config" ]; then
+		mkdir -p /usr/share/easy_vless && cp -p "$WORKDIR/direct_ip.config" /usr/share/easy_vless/direct_ip || rc=1
+	fi
 	if [ -x /etc/init.d/easy_vless ]; then
 		if [ "$EV_WAS_ENABLED" = 1 ]; then
 			/etc/init.d/easy_vless enable >&2 || rc=1
@@ -390,26 +412,148 @@ rollback_easy_vless() {
 	return "$rc"
 }
 
+# Snapshot exact package versions, not merely package names.
+package_snapshot() {
+	if [ "$PM" = apk ]; then
+		apk --network=no --repositories-file /dev/null info -v > "$WORKDIR/snapshot.raw" || return 1
+	else
+		opkg list-installed > "$WORKDIR/snapshot.raw" || return 1
+	fi
+	LC_ALL=C sort "$WORKDIR/snapshot.raw"
+}
+
+restore_transaction() {
+	local rc=0 extra
+	(cd "$WORKDIR" && sha256sum -c recovery.sha256 >/dev/null) || return 1
+	if [ -f "$WORKDIR/app.started" ]; then
+		rollback_easy_vless || rc=1
+	fi
+	if [ -f "$WORKDIR/dns.started" ]; then
+		dnsmasq_rollback || rc=1
+	fi
+	if [ "$PM" = apk ]; then
+		cp -p "$WORKDIR/baseline.world" /etc/apk/world || rc=1
+	else
+		# opkg leaves newly installed dependencies behind. Remove only names
+		# that did not exist in the baseline and are still present.
+		package_snapshot > "$WORKDIR/restored.packages" || return 1
+		extra="$(awk 'NR==FNR { have[$1]=1; next } !($1 in have) { print $1 }' "$WORKDIR/baseline.packages" "$WORKDIR/restored.packages")"
+		[ -z "$extra" ] || opkg remove $extra >&2 || rc=1
+	fi
+	package_snapshot > "$WORKDIR/restored.packages" || return 1
+	cmp -s "$WORKDIR/baseline.packages" "$WORKDIR/restored.packages" || rc=1
+	if [ -f "$WORKDIR/app.started" ] && [ "$EV_WAS_RUNNING" = 1 ]; then
+		/etc/init.d/easy_vless restart >&2 || rc=1
+	fi
+	return "$rc"
+}
+
 on_exit() {
 	local rc=$?
 	trap - EXIT INT TERM HUP
-	local keep=0
-	if [ "$EV_STAGE" = active ]; then
-		rollback_easy_vless || keep=1
+	if [ -n "$WORKDIR" ] && [ -f "$WORKDIR/recovery.active" ]; then
+		if ! restore_transaction; then
+			warn "rollback could not be completed; recovery files kept in $WORKDIR"
+			exit 1
+		fi
 	fi
-	if [ "$DNSMASQ_STAGE" = "removed" ]; then
-		dnsmasq_rollback || keep=1
-	fi
-	if [ "$EV_STAGE" = active ] && [ "${EV_WAS_RUNNING:-0}" = 1 ]; then
-		/etc/init.d/easy_vless restart >&2 || keep=1
-	fi
-	if [ "$keep" = 0 ]; then
-		[ -n "$WORKDIR" ] && [ -d "$WORKDIR" ] && rm -rf "$WORKDIR"
-	else
-		warn "rollback could not be completed; recovery files kept in $WORKDIR"
-	fi
+	[ -z "$WORKDIR" ] || rm -rf "$WORKDIR"
 	[ "$OPT_CHECK" = 1 ] || flock -u 8 2>/dev/null || :
 	exit "$rc"
+}
+
+# Shared by the installer and the detached rollback process.
+apk() {
+	if [ -n "$APK_KEYS" ]; then set -- --keys-dir "$APK_KEYS" "$@"; fi
+	if [ "$OPT_CHECK" = 1 ]; then set -- --logfile=no "$@"; fi
+	if [ -n "$WORKDIR" ]; then set -- --cache-dir "$WORKDIR/apk-cache" "$@"; fi
+	command apk "$@"
+}
+opkg() {
+	if [ -n "$WORKDIR" ]; then set -- --conf "$WORKDIR/opkg.conf" "$@"; fi
+	command opkg "$@"
+}
+
+proc_start() {
+	awk '{ sub(/^.*\) /, ""); print $20 }' "/proc/$1/stat" 2>/dev/null
+}
+
+watchdog_recover() {
+	trap - EXIT HUP INT TERM
+	trap '' HUP
+	[ "$(id -u)" = 0 ] || return 1
+	case "$RECOVERY_DIR" in /tmp/easy-vless-install.*) ;; *) return 1 ;; esac
+	case "$RECOVERY_PARENT:$RECOVERY_START" in *[!0-9:]*) return 1 ;; esac
+	[ -d "$RECOVERY_DIR" ] && [ ! -L "$RECOVERY_DIR" ] || return 1
+	WORKDIR="$RECOVERY_DIR"
+	touch "$WORKDIR/watchdog.ready" || return 1
+	while [ -f "$WORKDIR/recovery.active" ] && [ "$(proc_start "$RECOVERY_PARENT")" = "$RECOVERY_START" ]; do
+		sleep 1
+	done
+	[ -f "$WORKDIR/recovery.active" ] || return 0
+	exec 8>>/var/lock/easy_vless_install.lock
+	flock -x 8 || return 1
+	[ -f "$WORKDIR/recovery.active" ] || return 0
+	(cd "$WORKDIR" && sha256sum -c recovery.sha256 >/dev/null) || return 1
+	. "$WORKDIR/recovery.state"
+	if restore_transaction; then
+		say "watchdog restored the previous Easy VLESS and DNS state"
+		rm -rf "$WORKDIR"
+	else
+		warn "watchdog rollback incomplete; recovery files kept in $WORKDIR"
+		return 1
+	fi
+}
+
+prepare_transaction() {
+	local name value file config
+	umask 077
+	package_snapshot > "$WORKDIR/baseline.packages" || return 1
+	[ -s "$WORKDIR/baseline.packages" ] || return 1
+	if [ "$PM" = apk ]; then
+		cp -p /etc/apk/world "$WORKDIR/baseline.world" || return 1
+	fi
+	for config in easy_vless firewall ucitrack; do
+		[ ! -f "/etc/config/$config" ] || cp -p "/etc/config/$config" "$WORKDIR/$config.config" || return 1
+	done
+	if [ -f /usr/share/easy_vless/direct_ip ]; then
+		cp -p /usr/share/easy_vless/direct_ip "$WORKDIR/direct_ip.config" || return 1
+	fi
+	if [ "$NEED_DNSMASQ" = 1 ]; then
+		cp -p /etc/config/dhcp "$WORKDIR/dhcp.config" || return 1
+	fi
+	/etc/init.d/easy_vless enabled >/dev/null 2>&1 && EV_WAS_ENABLED=1
+	EV_WAS_RUNNING=0
+	if [ -x /usr/share/easy_vless/app.sh ] &&
+		[ "$(/usr/share/easy_vless/app.sh status | jsonfilter -e '@.running' 2>/dev/null)" = true ]; then
+		EV_WAS_RUNNING=1
+	fi
+	for name in PM APK_KEYS DNSMASQ_PKG OLD_DNS_VERSION OLD_IPK EV_PREVIOUS_FILES EV_LEGACY_APKS EV_ADDED EV_WAS_ENABLED EV_WAS_RUNNING; do
+		eval 'value="${'"$name"'}"'
+		case "$value" in *[!A-Za-z0-9_./+\ -]*) return 1 ;; esac
+		printf '%s="%s"\n' "$name" "$value" || return 1
+	done > "$WORKDIR/recovery.state" || return 1
+	cp "$INSTALL_SCRIPT" "$WORKDIR/recover-install.sh" || return 1
+	(cd "$WORKDIR" && {
+		sha256sum baseline.packages recovery.state recover-install.sh || exit 1
+		for file in baseline.world ./*.config dnsmasq/* previous/*/* apk-keys/* opkg.conf; do
+			[ ! -f "$file" ] || sha256sum "$file" || exit 1
+		done
+	} > recovery.sha256 && sha256sum -c recovery.sha256 >/dev/null) || return 1
+}
+
+arm_transaction() {
+	local start n
+	start="$(proc_start "$$")"
+	[ -n "$start" ] || return 1
+	touch "$WORKDIR/recovery.active" || return 1
+	setsid sh "$WORKDIR/recover-install.sh" --recover-internal "$WORKDIR" "$$" "$start" \
+		8>&- </dev/null >"$WORKDIR/watchdog.log" 2>&1 &
+	for n in 1 2 3 4 5; do
+		[ ! -f "$WORKDIR/watchdog.ready" ] || return 0
+		sleep 1
+	done
+	return 1
 }
 on_signal() { echo >&2; die "interrupted"; }
 trap on_exit EXIT
@@ -478,6 +622,18 @@ fetch() {
 	echo "[easy-vless]   URL:    ${url}" >&2
 	echo "[easy-vless]   output: $(echo "${text:-wget exit code $rc}" | tr '\n' ' ')" >&2
 	die "$(explain_download_error "$url" "$text")"
+}
+
+stage_release_file() {
+	local file="$1" dest="$2" want
+	want="$(awk -v f="$file" '$2 == f && NF == 2 && length($1) == 64 && $1 !~ /[^0-9a-f]/ { print $1; n++ } END { if (n != 1) exit 1 }' "$PKGDIR/SHA256SUMS")" ||
+		die "$file is missing from the authenticated release manifest"
+	if [ -n "$OPT_LOCAL" ]; then
+		cp "$OPT_LOCAL/$file" "$dest" || die "cannot stage $file"
+	else
+		fetch "$EV_BASE_URL/$file" "$dest" "$file"
+	fi
+	[ "$(sha256_of "$dest")" = "$want" ] || die "checksum mismatch for $file"
 }
 
 # ---------------------------------------------------------------- preflight
@@ -604,8 +760,8 @@ check_apk_arch() {
 # changed.
 detect_channel() {
 	local series want have_opkg=0 have_apk=0 v a
-	command -v opkg >/dev/null 2>&1 && have_opkg=1
-	if command -v apk >/dev/null 2>&1; then
+	sh -c "command -v opkg >/dev/null 2>&1" && have_opkg=1
+	if sh -c "command -v apk >/dev/null 2>&1"; then
 		v="$(apk --version 2>/dev/null | head -n1)"
 		case "$v" in
 			"apk-tools 3."*) have_apk=1 ;;
@@ -893,7 +1049,7 @@ resolve_base_url() {
 	case "$EV_BASE_URL" in https://github.com/*) ;; *) return 0 ;; esac
 
 	# A real request for the release index: if github.com answers, keep it.
-	https_probe "${EV_BASE_URL}/SHA256SUMS" && return 0
+	https_probe "${EV_BASE_URL}/${RELEASE_MANIFEST}" && return 0
 	# Fall back only when github.com is unreachable, not on 404/TLS/other errors.
 	case "$HTTPS_ERR" in
 		*"timed out"*|*"Connection failed"*|*"reset"*|*"refused"*|*"No route"*|*"unreachable"*|*"Connection error"*|*"Failed to send request"*) ;;
@@ -905,7 +1061,7 @@ resolve_base_url() {
 		case "$m" in https://?*) ;; *) continue ;; esac
 		m="${m%/}"
 		cand="${m}/${EV_BASE_URL}"
-		if https_probe "${cand}/SHA256SUMS"; then
+		if https_probe "${cand}/${RELEASE_MANIFEST}"; then
 			EV_BASE_URL="$cand"
 			warn "github.com blocked: using HTTPS mirror ${m} with the supplied manifest digest"
 			return 0
@@ -1217,11 +1373,15 @@ check_space_apk() {
 		wants="dnsmasq-full $DNSMASQ_CONSTRAINT"
 	fi
 	# shellcheck disable=SC2086
-	if ! apk add --simulate $APK_OFFLINE $files $wants >"$log" 2>&1; then
+	if ! apk add --simulate --pretty-print=no --progress=no $APK_OFFLINE $files $wants >"$log" 2>&1; then
 		err="$(grep -v -e '^(' -e '^OK:' "$log" | head -n 8 | tr '\n' ' ')"
 		die "apk cannot resolve the installation with the package feeds of this router (${DISTRIB_ARCH}): ${err:-see $log} - Easy VLESS cannot be installed on this architecture/firmware with the official feeds"
 	fi
-	removal="$(sed -n -E 's/^\([ 0-9]+\/[ 0-9]+\) (Purging|Removing) ([^ ]+) .*$/\3/p' "$log")"
+	# Parse fields with awk. BusyBox sed on OpenWrt does not interpret the
+	# escaped ERE used by rc.1 the same way as GNU sed.
+	awk '{ if (sub("^\\([[:space:]]*[0-9]+/[[:space:]]*[0-9]+\\)[[:space:]]+", "")) print $1, $2 }' "$log" > "$WORKDIR/apk-plan" ||
+		die "cannot parse the APK transaction plan"
+	removal="$(awk '$1 == "Purging" || $1 == "Removing" { print $2 }' "$WORKDIR/apk-plan")"
 	for p in $removal; do
 		[ "$NEED_DNSMASQ" = 1 ] && [ "$p" = "$DNSMASQ_PKG" ] ||
 			die "apk would remove $p; refusing to change unrelated packages"
@@ -1230,12 +1390,10 @@ check_space_apk() {
 		printf '%s\n' "$removal" | grep -Fxq "$DNSMASQ_PKG" ||
 			die "apk did not plan a replacement of $DNSMASQ_PKG by dnsmasq-full"
 	fi
-	for p in $(sed -n -E 's/^\([ 0-9]+\/[ 0-9]+\) (Upgrading|Downgrading|Replacing|Reinstalling) ([^ ]+) .*$/\3/p' "$log"); do
+	for p in $(awk '$1 ~ /^(Upgrading|Downgrading|Replacing|Reinstalling)$/ { print $2 }' "$WORKDIR/apk-plan"); do
 		case " $EV_PACKAGES " in *" $p "*) ;; *) die "apk would change installed dependency $p; update the router separately before installing Easy VLESS" ;; esac
 	done
-	# new or replaced packages from the feeds (the Easy VLESS packages are
-	# counted from their own files)
-	names="$(sed -n -E 's/^\([ 0-9]+\/[ 0-9]+\) Installing ([^ ]+) .*$/\1/p' "$log" \
+	names="$(awk '$1 == "Installing" { print $2 }' "$WORKDIR/apk-plan" \
 		| grep -vx -e sing-box-lx -e easy-vless -e easy-vless-sing-box -e luci-app-easy-vless | sort -u)"
 	res=""
 	if [ -n "$names" ]; then
@@ -1258,6 +1416,8 @@ check_space_apk() {
 	# apk keeps a copy of the indexes next to the downloads in /tmp
 	space_verdict "$res" "$own_kb" 8192
 }
+
+if [ -n "$RECOVERY_DIR" ]; then watchdog_recover; exit $?; fi
 
 # ---------------------------------------------------------------- 1. checks
 say "Easy VLESS ${EV_TAG} (${EV_VERSION}) installer"
@@ -1283,24 +1443,18 @@ if [ "$PM" = opkg ] && command -v opkg >/dev/null 2>&1; then
 fi
 
 MISSING=""
-for t in wget tar gzip sha256sum awk sed grep df flock pgrep uci mktemp; do
+for t in wget tar gzip sha256sum awk sed grep df flock pgrep uci mktemp setsid; do
 	command -v "$t" >/dev/null 2>&1 || MISSING="$MISSING $t"
 done
 [ -z "$MISSING" ] || die "required tools missing:${MISSING}"
 
+INSTALL_SCRIPT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)/$(basename "$0")"
 WORKDIR="$(mktemp -d /tmp/easy-vless-install.XXXXXX)" || die "cannot create a temporary directory in /tmp"
 # apk options for every installation from the feeds: all downloads (to /tmp)
 # are finished before the transaction changes anything
 APK_DL="--cache-predownload"
 if [ "$PM" = "apk" ]; then
 	mkdir -p "$WORKDIR/apk-cache" || die "cannot create $WORKDIR/apk-cache"
-	apk() {
-		if [ "$OPT_CHECK" = 1 ]; then
-			command apk --cache-dir "$WORKDIR/apk-cache" --logfile=no "$@"
-		else
-			command apk --cache-dir "$WORKDIR/apk-cache" "$@"
-		fi
-	}
 else
 	mkdir -p "$WORKDIR/opkg-lists" || die "cannot create temporary opkg lists directory"
 	# An explicit lists_dir in /etc/opkg.conf overrides the CLI flag on
@@ -1309,7 +1463,6 @@ else
 		die "cannot copy opkg configuration"
 	printf 'lists_dir ext %s\n' "$WORKDIR/opkg-lists" >> "$WORKDIR/opkg.conf" ||
 		die "cannot configure temporary opkg lists"
-	opkg() { command opkg --conf "$WORKDIR/opkg.conf" "$@"; }
 fi
 
 check_system_requirements
@@ -1404,18 +1557,7 @@ else
 	say "  - ${DNSMASQ_PKG:-dnsmasq} is removed and dnsmasq-full installed from the downloaded file;"
 	say "  - DHCP/DNS on this router stop for a few seconds while dnsmasq restarts;"
 	say "  - if installing dnsmasq-full fails or the installer is interrupted, ${DNSMASQ_PKG:-dnsmasq} is reinstalled from its downloaded file."
-	if [ "$OPT_CHECK" = "1" ]; then
-		say "(--check: nothing is changed; run without --check to be asked, or with --replace-dnsmasq)"
-	elif [ "$OPT_REPLACE_DNSMASQ" = "1" ] && [ "$OPT_YES" = "1" ]; then
-		DNSMASQ_ACTION="replace"
-	elif ask "Replace ${DNSMASQ_PKG:-dnsmasq} with dnsmasq-full now?"; then
-		DNSMASQ_ACTION="replace"
-	elif [ "$OPT_REPLACE_DNSMASQ" = "1" ] && [ ! -t 0 ]; then
-		DNSMASQ_ACTION="replace"
-	fi
-	if [ "$OPT_CHECK" = "0" ] && [ "$DNSMASQ_ACTION" != "replace" ]; then
-		die "dnsmasq-full is required and was not installed. Run again with --replace-dnsmasq (the steps above are shown before anything is changed)."
-	fi
+
 fi
 
 # ---------------------------------------------------------------- 5. packages
@@ -1426,8 +1568,8 @@ mkdir -p "$PKGDIR" || die "cannot create $PKGDIR"
 if [ -n "$OPT_LOCAL" ]; then
 	OPT_LOCAL="$(cd "$OPT_LOCAL" && pwd)" || die "cannot access --local directory"
 	[ -d "$OPT_LOCAL" ] || die "--local: $OPT_LOCAL is not a directory"
-	[ -f "$OPT_LOCAL/SHA256SUMS" ] || die "--local: SHA256SUMS not found in $OPT_LOCAL"
-	cp "$OPT_LOCAL/SHA256SUMS" "$PKGDIR/SHA256SUMS" || die "--local: cannot copy SHA256SUMS"
+	[ -f "$OPT_LOCAL/$RELEASE_MANIFEST" ] || die "--local: $RELEASE_MANIFEST not found in $OPT_LOCAL"
+	cp "$OPT_LOCAL/$RELEASE_MANIFEST" "$PKGDIR/SHA256SUMS" || die "--local: cannot copy SHA256SUMS"
 	[ "$(sha256_of "$PKGDIR/SHA256SUMS")" = "$OPT_MANIFEST_SHA256" ] ||
 		die "release manifest digest mismatch; nothing was installed"
 	EXT=".ipk"; [ "$PM" = "apk" ] && EXT=".apk"
@@ -1444,13 +1586,24 @@ if [ -n "$OPT_LOCAL" ]; then
 else
 	resolve_base_url
 	say "downloading Easy VLESS ${EV_VERSION} from ${EV_BASE_URL}"
-	fetch "${EV_BASE_URL}/SHA256SUMS" "$PKGDIR/SHA256SUMS" "SHA256SUMS of Easy VLESS ${EV_VERSION}"
+	fetch "${EV_BASE_URL}/${RELEASE_MANIFEST}" "$PKGDIR/SHA256SUMS" "$RELEASE_MANIFEST of Easy VLESS ${EV_VERSION}"
 	[ "$(sha256_of "$PKGDIR/SHA256SUMS")" = "$OPT_MANIFEST_SHA256" ] ||
 		die "release manifest digest mismatch; nothing was installed"
 	for p in $EV_PACKAGES; do
 		f="$(pkg_file "$p")"
 		fetch "${EV_BASE_URL}/${f}" "$PKGDIR/$f" "$f"
 	done
+fi
+if [ "$PM" = apk ] && [ "$RELEASE_MANIFEST" = PACKAGES.sha256 ]; then
+	stage_release_file easy-vless-release.pem "$WORKDIR/release.pem"
+	[ "$(sha256_of "$WORKDIR/release.pem")" = "$EV_RELEASE_KEY_SHA256" ] ||
+		die "unexpected release public key"
+	APK_KEYS="$WORKDIR/apk-keys"
+	mkdir -p "$APK_KEYS" || die "cannot create temporary APK trust store"
+	for f in /etc/apk/keys/* /lib/apk/keys/*; do
+		[ ! -f "$f" ] || cp -L "$f" "$APK_KEYS/" || die "cannot copy an OpenWrt APK key"
+	done
+	cp "$WORKDIR/release.pem" "$APK_KEYS/easy-vless-release.pem" || die "cannot stage release key"
 fi
 for p in $EV_PACKAGES; do
 	f="$(pkg_file "$p")"
@@ -1507,8 +1660,13 @@ prepare_rollback() {
 			f="$(pkg_file "$p" "$old")"
 		fi
 		legacy="$(legacy_digest "$f")"
-		[ -n "$OPT_ROLLBACK" ] || die "provide authenticated previous $p $old with --rollback-dir"
-		cp "$OPT_ROLLBACK/$f" "$dir/" || return 1
+		if [ -n "$OPT_ROLLBACK" ]; then
+			cp "$OPT_ROLLBACK/$f" "$dir/" || return 1
+		elif [ -n "$legacy" ] && [ "$OPT_OFFLINE" = 0 ]; then
+			fetch "https://github.com/$EV_REPO/releases/download/v1.2.0/$f" "$dir/$f" "$f (rollback)"
+		else
+			die "cannot obtain authenticated previous $p $old; provide the exact archive with --rollback-dir"
+		fi
 		sum="$legacy"
 		if [ -z "$sum" ]; then
 			sum="$(awk -v f="$f" 'NF == 2 && $2 == f && $1 ~ /^[0-9a-f]+$/ && length($1) == 64 { print $1; n++ } END { if (n != 1) exit 1 }' "$OPT_ROLLBACK/SHA256SUMS")" || return 1
@@ -1541,6 +1699,16 @@ prepare_dnsmasq_apk() {
 		# rollback copy: the package and the signed index of its feed, so
 		# that it can be reinstalled without DNS (official .apk files are
 		# not signed one by one - the index signature covers them)
+		if [ -z "$OPT_DNS_ROLLBACK" ] && [ "$RELEASE_MANIFEST" = PACKAGES.sha256 ] &&
+			[ "${DISTRIB_RELEASE}:$DISTRIB_TARGET:$DISTRIB_ARCH:$DNSMASQ_PKG:$OLD_DNS_VERSION" = "25.12.6:mediatek/filogic:aarch64_cortex-a53:dnsmasq:2.93-r1" ] &&
+			awk -v RS='' '/(^|\n)P:dnsmasq(\n|$)/ && /(^|\n)C:Q1d5x3KFTDTcKJp\+XU467GBs4\+Nx4=(\n|$)/ { found[FILENAME]=1 } END { exit !(found[ARGV[1]] && found[ARGV[2]]) }' \
+				/rom/lib/apk/db/installed /lib/apk/db/installed; then
+			DNS_CAPSULE="$WORKDIR/dnsmasq-archive"
+			mkdir "$DNS_CAPSULE" || die "cannot stage stock dnsmasq archive"
+			stage_release_file rollback-tr3000-25.12.6-2.93-r1.apk "$DNS_CAPSULE/dnsmasq-2.93-r1.apk"
+			stage_release_file rollback-tr3000-25.12.6-2.93-r1.adb "$DNS_CAPSULE/packages.adb"
+			OPT_DNS_ROLLBACK="$DNS_CAPSULE"
+		fi
 		if [ -n "$OPT_DNS_ROLLBACK" ]; then
 			cp "$OPT_DNS_ROLLBACK/packages.adb" "$WORKDIR/dnsmasq/packages.adb" ||
 				die "cannot stage the signed dnsmasq rollback index"
@@ -1559,8 +1727,11 @@ prepare_dnsmasq_apk() {
 		OLD_IPK="$(cd "$WORKDIR/dnsmasq" && ls "${DNSMASQ_PKG}"-[0-9]*.apk 2>/dev/null | head -n1)"
 		[ -s "$WORKDIR/dnsmasq/$OLD_IPK" ] ||
 			die "rollback copy of $DNSMASQ_PKG not found - nothing was changed"
-		[ "$(apk_file_field "$WORKDIR/dnsmasq/$OLD_IPK" version)" = "$OLD_DNS_VERSION" ] ||
+		[ "$(apk_file_field "$WORKDIR/dnsmasq/$OLD_IPK" name) $(apk_file_field "$WORKDIR/dnsmasq/$OLD_IPK" version) $(apk_file_field "$WORKDIR/dnsmasq/$OLD_IPK" arch)" = "$DNSMASQ_PKG $OLD_DNS_VERSION $DISTRIB_ARCH" ] ||
 			die "exact dnsmasq rollback package unavailable; supply a signed archive with --dnsmasq-rollback-dir"
+		apk add --simulate --network=no --repositories-file /dev/null \
+			--repository "$WORKDIR/dnsmasq/packages.adb" "${DNSMASQ_PKG}=${OLD_DNS_VERSION}" >/dev/null ||
+			die "apk cannot resolve offline restoration of ${DNSMASQ_PKG}=${OLD_DNS_VERSION}"
 	fi
 }
 
@@ -1611,16 +1782,32 @@ if [ "$NEED_DNSMASQ" = 1 ]; then
 	if [ "$PM" = apk ]; then prepare_dnsmasq_apk; else prepare_dnsmasq_ipk; fi
 fi
 
+prepare_transaction || die "cannot prepare and verify the automatic recovery snapshot"
+say "plan: install $EV_PACKAGES; replace dnsmasq: $NEED_DNSMASQ; offline rollback is staged"
 if [ "$OPT_CHECK" = "1" ]; then
 	say "check finished: no blocking problem found (nothing was changed)"
 	[ "$NEED_DNSMASQ" = "1" ] && say "  the installer will ask to replace dnsmasq with dnsmasq-full (or use --replace-dnsmasq)"
 	exit 0
 fi
 
+if [ "$NEED_DNSMASQ" = 1 ]; then
+	if [ "$OPT_YES" = 1 ] || ask "Apply this plan, including replacing ${DNSMASQ_PKG:-dnsmasq}?"; then
+		DNSMASQ_ACTION=replace
+	elif [ "$OPT_REPLACE_DNSMASQ" = 1 ] && [ ! -t 0 ]; then
+		DNSMASQ_ACTION=replace
+	else
+		die "DNS replacement declined; nothing was installed"
+	fi
+fi
+package_snapshot > "$WORKDIR/pre-commit.packages" &&
+	cmp -s "$WORKDIR/baseline.packages" "$WORKDIR/pre-commit.packages" ||
+	die "installed packages changed during preparation; rerun the installer"
+arm_transaction || die "cannot start autonomous recovery before installation"
+
 # ---------------------------------------------------------------- 4b. dnsmasq
 replace_dnsmasq_apk() {
 	cp -p /etc/config/dhcp /etc/config/dhcp.easy-vless.bak 2>/dev/null || die "cannot back up /etc/config/dhcp - nothing was changed"
-	DNSMASQ_STAGE="removed"
+	touch "$WORKDIR/dns.started" || die "cannot register DNS transaction"
 	# fault injection for the rollback test (tests/ci/installer-scenarios.sh)
 	[ "${EV_TEST_SIGNAL_AFTER_DNSMASQ_REMOVE:-0}" = "1" ] && kill -TERM $$
 	# shellcheck disable=SC2086
@@ -1641,6 +1828,7 @@ if [ "$DNSMASQ_ACTION" = "replace" ] && [ "$PM" = "apk" ]; then
 	say "replacing ${DNSMASQ_PKG:-dnsmasq} with dnsmasq-full ..."
 	replace_dnsmasq_apk
 elif [ "$DNSMASQ_ACTION" = "replace" ]; then
+	touch "$WORKDIR/dns.started" || die "cannot register DNS transaction"
 	say "replacing ${DNSMASQ_PKG:-dnsmasq} with dnsmasq-full ..."
 	DEPS="$(pkg_field dnsmasq-full Depends | tr ',' '\n' | sed 's/([^)]*)//g; s/^[[:space:]]*//; s/[[:space:]].*$//' | grep -v -e '^$' -e '^libc$')"
 	if [ -n "$DEPS" ]; then
@@ -1649,7 +1837,7 @@ elif [ "$DNSMASQ_ACTION" = "replace" ]; then
 	fi
 	cp -p /etc/config/dhcp /etc/config/dhcp.easy-vless.bak 2>/dev/null || die "cannot back up /etc/config/dhcp - nothing was changed"
 	if [ -n "$DNSMASQ_PKG" ]; then
-		DNSMASQ_STAGE="removed"
+		touch "$WORKDIR/dns.started" || die "cannot register DNS transaction"
 		opkg remove "$DNSMASQ_PKG" || die "opkg remove $DNSMASQ_PKG failed"
 		# fault injection for the rollback test (tests/ci/installer-tests.sh)
 		[ "${EV_TEST_SIGNAL_AFTER_DNSMASQ_REMOVE:-0}" = "1" ] && kill -TERM $$
@@ -1668,14 +1856,6 @@ elif [ "$DNSMASQ_ACTION" = "replace" ]; then
 fi
 
 # ---------------------------------------------------------------- 6. install
-[ ! -f /etc/config/easy_vless ] ||
-	cp -p /etc/config/easy_vless "$WORKDIR/easy_vless.config" || die "configuration backup failed"
-EV_WAS_RUNNING=0
-/etc/init.d/easy_vless enabled >/dev/null 2>&1 && EV_WAS_ENABLED=1
-if [ -x /usr/share/easy_vless/app.sh ] &&
-	[ "$(/usr/share/easy_vless/app.sh status | jsonfilter -e '@.running' 2>/dev/null)" = true ]; then
-	EV_WAS_RUNNING=1
-fi
 OLD_EV="$(installed_version easy-vless)"
 say "installing sing-box-lx, easy-vless, easy-vless-sing-box, luci-app-easy-vless ${EV_VERSION}${OLD_EV:+ (installed now: ${OLD_EV})} ..."
 IPKS=""
@@ -1701,8 +1881,9 @@ ev_install() {
 	fi
 	[ "${EV_TEST_FAIL_EV_INSTALL:-0}" = 0 ]
 }
-EV_STAGE=active
+touch "$WORKDIR/app.started" || die "cannot register app transaction"
 ev_install || die "$PM_INSTALL failed; restoring the previous Easy VLESS installation"
+[ "${EV_TEST_KILL_AFTER_INSTALL:-0}" = 0 ] || kill -KILL "$$"
 for p in $EV_PACKAGES; do
 	[ "$(installed_version "$p")" = "$(pkg_version "$p")" ] || die "$p was not installed in the expected version"
 done
@@ -1722,6 +1903,11 @@ if [ "$OPT_NO_START" = "1" ]; then
 elif [ "$ENABLED" = "1" ]; then
 	say "Main switch is on - restarting Easy VLESS ..."
 	/etc/init.d/easy_vless restart || die "service restart failed; see /tmp/log/easy_vless.log"
+	for attempt in 1 2 3 4 5; do
+		[ "$(ubus call luci.easy_vless status 2>/dev/null | jsonfilter -e '@.running')" != true ] || break
+		[ "$attempt" != 5 ] || die "Easy VLESS did not enter running state after restart"
+		sleep 1
+	done
 else
 	say "Main switch is off (new installation): add a server in LuCI -> Services -> Easy VLESS, then switch Main on and use Save & Start."
 fi
@@ -1735,6 +1921,5 @@ if dnsmasq_has_nftset; then say "dnsmasq nftset support: yes"; else warn "dnsmas
 if /etc/init.d/easy_vless enabled 2>/dev/null; then say "service: enabled at boot"; else warn "service: not enabled at boot"; fi
 STATUS="$(ubus call luci.easy_vless status 2>/dev/null | sed -n 's/^[[:space:]]*"running": \(.*\),$/\1/p' | head -n1)"
 say "running: ${STATUS:-unknown}"
-EV_STAGE=""
-DNSMASQ_STAGE=""
+rm -f "$WORKDIR/recovery.active" || die "cannot commit transaction"
 say "done. Web interface: LuCI -> Services -> Easy VLESS"

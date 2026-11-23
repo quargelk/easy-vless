@@ -19,5 +19,5 @@ for f in \
 	[ -s "$OUT/assets/$f" ] || { echo "missing release asset: $f" >&2; exit 1; }
 done
 grep -q 'EV_VERSION="1.3.0-r1"' "$OUT/assets/install.sh"
-grep -Fxq 'EV_TAG="v1.3.0-rc.1"' "$OUT/assets/install.sh"
+grep -Fxq 'EV_TAG="v1.3.0-rc.2"' "$OUT/assets/install.sh"
 echo "release asset tests passed"
