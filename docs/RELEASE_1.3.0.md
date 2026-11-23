@@ -30,29 +30,32 @@ sh scripts/prepare-release-assets.sh dist/sing-box-lx-integration \
 
 ## Постоянный ключ
 
-Владелец выпуска создаёт ключ на подписывающей машине в приватном каталоге
-на зашифрованном носителе или в другом утверждённом хранилище. Резервная
-копия ключа также шифруется. Для `apk adbsign` используется доступный
-процессу подписания RSA PEM с правами `0600` или `0400`. Если ключ
-хранится зашифрованным отдельно, распакуйте его только на время подписания
-в защищённый каталог на зашифрованном томе или в приватный tmpfs.
+Ключ RC — RSA-3072 в постоянной коллекции `login` GNOME Keyring
+на машине сопровождающего. Публичный отпечаток SHA-256
+DER SubjectPublicKeyInfo зафиксирован ниже.
+
+```text
+1ace0d12040968ea2bea4ed56479b05be5f4c331ce8b2e7aee31a272fb3d875b
+```
+
+Владелец выпуска передаёт отпечаток установщикам по отдельно проверенному
+каналу. Для будущих выпусков используется та же запись Secret Service.
+При подписании сохраните закрытый PEM только в приватный tmpfs.
 
 ```sh
 umask 077
-keydir=/path/to/encrypted-storage/easy-vless
-install -d -m 0700 "$keydir"
-( set -C
-  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 > "$keydir/production.rsa"
-) || exit 1
+keydir=$(mktemp -d /tmp/easy-vless-sign.XXXXXX) || exit 1
+trap 'rm -rf "$keydir"' EXIT
+secret-tool lookup project quargelk/easy-vless purpose apk-production-signing-v1 \
+  > "$keydir/production.rsa" || exit 1
+test -s "$keydir/production.rsa" || exit 1
+fingerprint=1ace0d12040968ea2bea4ed56479b05be5f4c331ce8b2e7aee31a272fb3d875b
 openssl pkey -in "$keydir/production.rsa" -pubout -outform DER -out "$keydir/public.der" || exit 1
-sha256sum "$keydir/public.der"
+printf '%s  %s\n' "$fingerprint" "$keydir/public.der" | sha256sum -c - || exit 1
 ```
 
-Зафиксируйте отпечаток DER SubjectPublicKeyInfo у владельца выпуска и
-передайте его установщикам по отдельно проверенному каналу. При ротации
-сначала распространите и проверьте новый отпечаток. Приватный PEM
-остаётся в хранилище. Для следующих выпусков используется тот же
-подтверждённый ключ до согласованной ротации.
+Резервная копия ключа хранится только в защищённом хранилище
+владельца выпуска. При ротации заранее распространите новый отпечаток.
 
 ## Подписать и проверить
 

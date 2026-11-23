@@ -2,24 +2,45 @@
 
 ## Проверка комплекта на ПК
 
-Получите отпечаток SHA-256 публичного ключа у сопровождающего по заранее
-доверенному каналу. Скачайте полный комплект выпуска. Для проверки
-используйте `scripts/verify-release-assets.sh` из уже доверенной копии
-репозитория. Запустите её на ПК с OpenSSL и GNU Coreutils.
+Получите у сопровождающего по заранее доверенному каналу SHA-256
+отпечаток публичного ключа выпуска. На ПК с curl и OpenSSL скачайте
+установщик, ключ и подписанный манифест в новый каталог.
 
 ```sh
-assets=/path/to/verified-download
-fingerprint=вставьте_64_строчных_шестнадцатеричных_символа
-pin=$(sh scripts/verify-release-assets.sh "$assets" "$fingerprint") || exit 1
-printf '%s\n' "$pin"
+mkdir -m 700 easy-vless-rc1 && cd easy-vless-rc1 || exit 1
+base=https://github.com/quargelk/easy-vless/releases/download/v1.3.0-rc.1
+for f in install.sh SHA256SUMS SHA256SUMS.sig easy-vless-release.pem; do
+  curl -fsSL --proto '=https' --proto-redir '=https' "$base/$f" -o "$f" || exit 1
+done
+
+fingerprint=отпечаток_из_доверенного_канала
+openssl pkey -pubin -in easy-vless-release.pem -outform DER -out release-key.der || exit 1
+printf '%s  %s\n' "$fingerprint" release-key.der | sha256sum -c - || exit 1
+openssl dgst -sha256 -verify easy-vless-release.pem -signature SHA256SUMS.sig SHA256SUMS || exit 1
+awk '$2 == "install.sh" { installer++; print }
+     $2 == "easy-vless-release.pem" { key++; print }
+     END { if (installer != 1 || key != 1) exit 1 }' SHA256SUMS > bootstrap.sha256 || exit 1
+sha256sum -c bootstrap.sha256 || exit 1
+sha256sum SHA256SUMS | cut -d ' ' -f1 > manifest.sha256
 ```
 
-Скрипт сверяет хеш публичного ключа в DER SubjectPublicKeyInfo, проверяет
-`SHA256SUMS.sig`, затем сверяет перечисленные файлы, включая `install.sh`.
-Перенесите проверенный установщик и полученный хеш манифеста на роутер по SSH
-с уже проверенным ключом хоста.
+Для проверки всех скачанных assets используйте
+`scripts/verify-release-assets.sh` из доверенной копии репозитория.
+Перенесите проверенный установщик и `manifest.sha256` на роутер
+по SSH с проверенным ключом хоста. Для стандартного OpenWrt с Dropbear
+используйте SCP в режиме `-O`.
 
-Для OpenWrt 25.12.x перенесите тот же проверенный PEM. От имени root
+```sh
+scp -O -o StrictHostKeyChecking=yes install.sh manifest.sha256 root@192.168.10.1:/tmp/
+```
+
+Для OpenWrt 25.12.x перенесите тот же проверенный PEM с ПК.
+
+```sh
+scp -O -o StrictHostKeyChecking=yes easy-vless-release.pem root@192.168.10.1:/tmp/
+```
+
+На роутере от имени root
 проверьте, что имя ключа свободно или уже занято идентичным файлом, затем
 добавьте его отдельным файлом.
 
@@ -38,7 +59,8 @@ fi
 Для загрузки с GitHub или с доверенного HTTPS-зеркала используйте
 
 ```sh
-sh /tmp/install.sh --check --manifest-sha256 "$pin"
+pin=$(cat /tmp/manifest.sha256)
+sh /tmp/install.sh --check --no-mirror --manifest-sha256 "$pin"
 sh /tmp/install.sh --check --manifest-sha256 "$pin" --base-url https://mirror.example/easy-vless/v1.3.0-rc.1
 ```
 
@@ -62,6 +84,19 @@ sh /tmp/install.sh --check --manifest-sha256 "$pin" --local /tmp/ev-rc --offline
 порядок подготовки локального индекса по проверенной базе ROM описан в
 `docs/TR3000_LIVE_TRIAL.md` репозитория. Проверьте
 переключение DNS/DHCP с отдельного LAN-клиента и сохраните доступ по SSH.
+
+Пример для TR3000 в исходном состоянии с обычным `dnsmasq 2.93-r1`.
+Каталог `/tmp/dnsmasq-rollback` должен содержать проверенные
+`packages.adb` и `dnsmasq-2.93-r1.apk`. Выполните подготовку
+восстановления до второй команды.
+
+```sh
+pin=$(cat /tmp/manifest.sha256)
+sh /tmp/install.sh --check --no-mirror --manifest-sha256 "$pin" \
+  --dnsmasq-rollback-dir /tmp/dnsmasq-rollback
+sh /tmp/install.sh --no-start --replace-dnsmasq --no-mirror --manifest-sha256 "$pin" \
+  --dnsmasq-rollback-dir /tmp/dnsmasq-rollback
+```
 
 ## Восстановление
 
